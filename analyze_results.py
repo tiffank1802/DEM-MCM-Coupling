@@ -773,7 +773,697 @@ class MarkovAnalyzer:
             "n_states": n_states,
         }
 
+    """
+Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
+"""
 
+# ═══════════════════════════════════════════════════════════════════
+# CHARGEMENT DES DONNÉES DEM
+# ═══════════════════════════════════════════════════════════════════
+
+    def load_dem_snapshots(self, file_indices=None, sample_every=1):
+        """
+        Charge les positions des particules DEM à plusieurs instants.
+
+        Les particules conservent leur index (ligne) entre les fichiers:
+        la particule i dans le fichier t est la même particule physique
+        que la particule i dans le fichier t+1.
+
+        Args:
+            file_indices: liste d'indices de fichiers (None = auto)
+            sample_every: sous-échantillonnage spatial (1 = toutes)
+
+        Returns:
+            list de dict {t, coords} stocké dans self.dem_snapshots
+        """
+        import polars as pl
+
+        if not hasattr(self, '_dem_fs'):
+            self._dem_fs = HfFileSystem()
+            self._dem_files = sorted(
+                self._dem_fs.glob("hf://buckets/ktongue/DEM_MCM/Output Paraview/*.csv")
+            )
+            print(f"📁 {len(self._dem_files)} fichiers DEM disponibles")
+
+        if file_indices is None:
+            file_indices = list(range(0, min(len(self._dem_files), 500), 10))
+
+        self.dem_snapshots = []
+        self.dem_file_indices = file_indices
+
+        print(f"📂 Chargement de {len(file_indices)} snapshots DEM...")
+
+        for i, idx in enumerate(file_indices):
+            with self._dem_fs.open(self._dem_files[idx], "rb") as f:
+                df = pl.read_csv(f)
+
+            coords = np.column_stack([
+                df["coordinates:0"].to_numpy(),
+                df["coordinates:1"].to_numpy(),
+                df["coordinates:2"].to_numpy(),
+            ])[::sample_every]
+
+            self.dem_snapshots.append({"t": idx, "coords": coords})
+
+            if (i + 1) % 10 == 0 or i == len(file_indices) - 1:
+                print(f"   [{i+1}/{len(file_indices)}] t={idx}: {len(coords)} particules")
+
+        self.n_particles = len(self.dem_snapshots[0]["coords"])
+        print(f"✅ {len(self.dem_snapshots)} snapshots | {self.n_particles} particules/snapshot")
+
+        return self.dem_snapshots
+
+
+    def label_species(self, criterion="z_median", custom_labels=None):
+        """
+        Étiquette chaque particule comme espèce A (1) ou B (0) à t=0.
+
+        L'étiquette est PERMANENTE: une particule garde son espèce
+        quel que soit son déplacement.
+
+        Args:
+            criterion: méthode d'étiquetage:
+                - "z_median": z > médiane(z) → espèce A
+                - "z_half":   z > (zmin+zmax)/2 → espèce A
+                - "x_median": x > médiane(x) → espèce A
+                - "y_median": y > médiane(y) → espèce A
+                - "r_median": r > médiane(r) → espèce A (radial)
+                - "random":   50/50 aléatoire
+                - "quadrant": haut-gauche vs bas-droite
+            custom_labels: array bool de taille n_particles (override)
+
+        Returns:
+            np.array bool de taille n_particles (True = espèce A)
+        """
+        if custom_labels is not None:
+            self.species_labels = np.asarray(custom_labels, dtype=bool)
+            n_a = self.species_labels.sum()
+            print(f"🏷️  Labels custom: {n_a} A / {len(self.species_labels) - n_a} B")
+            return self.species_labels
+
+        coords_t0 = self.dem_snapshots[0]["coords"]
+        x, y, z = coords_t0[:, 0], coords_t0[:, 1], coords_t0[:, 2]
+
+        if criterion == "z_median":
+            labels = z > np.median(z)
+        elif criterion == "z_half":
+            labels = z > (z.min() + z.max()) / 2
+        elif criterion == "x_median":
+            labels = x > np.median(x)
+        elif criterion == "y_median":
+            labels = y > np.median(y)
+        elif criterion == "r_median":
+            xc, yc = (x.min() + x.max()) / 2, (y.min() + y.max()) / 2
+            r = np.sqrt((x - xc)**2 + (y - yc)**2)
+            labels = r > np.median(r)
+        elif criterion == "random":
+            rng = np.random.RandomState(42)
+            labels = rng.rand(len(x)) > 0.5
+        elif criterion == "quadrant":
+            labels = (z > np.median(z)) & (x > np.median(x))
+        else:
+            raise ValueError(f"Critère inconnu: {criterion}")
+
+        self.species_labels = labels
+        n_a = labels.sum()
+        print(f"🏷️  Espèces ({criterion}): {n_a} A / {len(labels) - n_a} B")
+
+        return self.species_labels
+
+
+    def create_partitioner_for_comparison(self, method, method_kwargs):
+        """
+        Crée et fit un partitionneur sur les données DEM.
+
+        Args:
+            method: "cartesian", "voronoi", "cylindrical", "quantile"
+            method_kwargs: dict de paramètres
+
+        Returns:
+            partitioner fitté
+        """
+        from partitioners import create_partitioner
+
+        # Agréger les données pour le fit
+        all_coords = np.vstack([s["coords"] for s in self.dem_snapshots])
+
+        part = create_partitioner(method, **method_kwargs)
+        part.fit(all_coords)
+
+        diag = part.diagnostics(all_coords)
+        print(f"🔧 {part.label}: {part.n_cells} cellules | "
+            f"{diag['n_visited']} visitées | "
+            f"pop μ={diag['pop_mean']:.0f} σ={diag['pop_std']:.0f}")
+
+        return part
+
+
+    # ═══════════════════════════════════════════════════════════════════
+    # CALCUL DU RSD — DONNÉES DEM RÉELLES
+    # ═══════════════════════════════════════════════════════════════════
+
+    def compute_dem_rsd(self, partitioner, species_labels=None):
+        """
+        Calcule le RSD à partir des données DEM réelles.
+
+        À chaque instant t:
+        1. Assigner chaque particule à sa cellule
+        2. Pour chaque cellule i:
+            C_i(t) = n_A(i,t) / n_total(i,t)
+            (concentration de l'espèce A dans la cellule i)
+        3. RSD(t) = std(C_i) / mean(C_i)  sur les cellules non-vides
+
+        Args:
+            partitioner: partitionneur fitté
+            species_labels: array bool (None = self.species_labels)
+
+        Returns:
+            dict avec:
+                - times: array des temps
+                - rsd: array des RSD
+                - rsd_percent: idem en %
+                - concentrations: list de arrays C_i(t)
+                - n_particles_per_cell: list de arrays
+                - entropy: entropie normalisée
+                - intensity_of_segregation: I(t) = σ²(C) / (C̄(1-C̄))
+        """
+        if species_labels is None:
+            species_labels = self.species_labels
+
+        n_states = partitioner.n_cells
+        n_snaps = len(self.dem_snapshots)
+
+        times = np.zeros(n_snaps)
+        rsd = np.zeros(n_snaps)
+        entropy = np.zeros(n_snaps)
+        intensity_seg = np.zeros(n_snaps)
+        concentrations = []
+        populations = []
+
+        for k, snap in enumerate(self.dem_snapshots):
+            coords = snap["coords"]
+            times[k] = snap["t"]
+
+            # Assigner les particules aux cellules
+            states = partitioner.compute_states(
+                coords[:, 0], coords[:, 1], coords[:, 2]
+            )
+
+            # Compter par cellule: total et espèce A
+            n_total = np.bincount(states, minlength=n_states).astype(float)
+            n_A = np.bincount(states[species_labels], minlength=n_states).astype(float)
+
+            # Concentration C_i = n_A / n_total
+            C = np.zeros(n_states)
+            mask = n_total > 0
+            C[mask] = n_A[mask] / n_total[mask]
+
+            concentrations.append(C.copy())
+            populations.append(n_total.copy())
+
+            # RSD sur cellules non-vides
+            C_active = C[mask]
+            if len(C_active) > 1 and C_active.mean() > 0:
+                rsd[k] = C_active.std() / C_active.mean()
+            else:
+                rsd[k] = 0
+
+            # Entropie de mélange normalisée
+            # H = -Σ [C_i ln(C_i) + (1-C_i) ln(1-C_i)] / N_cells
+            C_clip = np.clip(C_active, 1e-10, 1 - 1e-10)
+            H = -np.mean(C_clip * np.log(C_clip) + (1 - C_clip) * np.log(1 - C_clip))
+            H_max = np.log(2)  # entropie max pour distribution binaire
+            entropy[k] = H / H_max if H_max > 0 else 0
+
+            # Intensité de ségrégation: I = σ²(C) / (C̄(1-C̄))
+            C_bar = C_active.mean()
+            if C_bar > 0 and C_bar < 1:
+                intensity_seg[k] = C_active.var() / (C_bar * (1 - C_bar))
+            else:
+                intensity_seg[k] = 0
+
+        # Temps de mélange
+        rsd_0 = rsd[0] if rsd[0] > 0 else 1.0
+        mixing_time_50 = None
+        mixing_time_90 = None
+        for k in range(n_snaps):
+            if mixing_time_50 is None and rsd[k] < 0.5 * rsd_0:
+                mixing_time_50 = int(times[k])
+            if mixing_time_90 is None and rsd[k] < 0.1 * rsd_0:
+                mixing_time_90 = int(times[k])
+
+        return {
+            "times": times,
+            "rsd": rsd,
+            "rsd_percent": rsd * 100,
+            "concentrations": concentrations,
+            "populations": populations,
+            "entropy": entropy,
+            "intensity_of_segregation": intensity_seg,
+            "rsd_initial": float(rsd[0]),
+            "rsd_final": float(rsd[-1]),
+            "mixing_time_50": mixing_time_50,
+            "mixing_time_90": mixing_time_90,
+            "n_states": n_states,
+            "source": "DEM",
+        }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# CALCUL DU RSD — PRÉDICTION MARKOV
+# ═══════════════════════════════════════════════════════════════════
+
+    def compute_markov_rsd_from_dem(self, P, partitioner, species_labels=None):
+        """
+        Calcule le RSD prédit par la chaîne de Markov à partir
+        de la condition initiale DEM réelle.
+
+        Principe:
+        1. À t=0: compter φ_A(i,0) et φ_total(i,0) depuis le DEM
+        2. Prédire: φ_A(i,t+1) = φ_A(t) @ P
+                    φ_total(i,t+1) = φ_total(t) @ P
+        3. C_i(t) = φ_A(i,t) / φ_total(i,t)
+        4. RSD(t) = std(C) / mean(C)
+
+        Args:
+            P: matrice de transition
+            partitioner: partitionneur fitté
+            species_labels: array bool
+
+        Returns:
+            dict similaire à compute_dem_rsd
+        """
+        if species_labels is None:
+            species_labels = self.species_labels
+
+        n_states = partitioner.n_cells
+        n_snaps = len(self.dem_snapshots)
+
+        # ── Condition initiale depuis les données DEM ──
+        coords_t0 = self.dem_snapshots[0]["coords"]
+        states_t0 = partitioner.compute_states(
+            coords_t0[:, 0], coords_t0[:, 1], coords_t0[:, 2]
+        )
+
+        # Distribution initiale des particules A et totales par cellule
+        phi_total = np.bincount(states_t0, minlength=n_states).astype(float)
+        phi_A = np.bincount(states_t0[species_labels], minlength=n_states).astype(float)
+
+        # ── Prédiction Markov ──
+        times = np.zeros(n_snaps)
+        rsd = np.zeros(n_snaps)
+        entropy = np.zeros(n_snaps)
+        intensity_seg = np.zeros(n_snaps)
+        concentrations = []
+
+        # État courant
+        current_phi_A = phi_A.copy()
+        current_phi_total = phi_total.copy()
+
+        for k in range(n_snaps):
+            times[k] = self.dem_snapshots[k]["t"]
+
+            if k > 0:
+                # Nombre de pas Markov entre deux snapshots
+                dt = self.dem_snapshots[k]["t"] - self.dem_snapshots[k - 1]["t"]
+                for _ in range(int(dt)):
+                    current_phi_A = current_phi_A @ P
+                    current_phi_total = current_phi_total @ P
+
+            # Concentration prédite
+            C = np.zeros(n_states)
+            mask = current_phi_total > 1e-10
+            C[mask] = current_phi_A[mask] / current_phi_total[mask]
+            C = np.clip(C, 0, 1)
+
+            concentrations.append(C.copy())
+
+            # RSD
+            C_active = C[mask]
+            if len(C_active) > 1 and C_active.mean() > 0:
+                rsd[k] = C_active.std() / C_active.mean()
+            else:
+                rsd[k] = 0
+
+            # Entropie
+            C_clip = np.clip(C_active, 1e-10, 1 - 1e-10)
+            H = -np.mean(C_clip * np.log(C_clip) + (1 - C_clip) * np.log(1 - C_clip))
+            H_max = np.log(2)
+            entropy[k] = H / H_max if H_max > 0 else 0
+
+            # Intensité de ségrégation
+            C_bar = C_active.mean()
+            if 0 < C_bar < 1:
+                intensity_seg[k] = C_active.var() / (C_bar * (1 - C_bar))
+            else:
+                intensity_seg[k] = 0
+
+        # Temps de mélange
+        rsd_0 = rsd[0] if rsd[0] > 0 else 1.0
+        mixing_time_50 = None
+        mixing_time_90 = None
+        for k in range(n_snaps):
+            if mixing_time_50 is None and rsd[k] < 0.5 * rsd_0:
+                mixing_time_50 = int(times[k])
+            if mixing_time_90 is None and rsd[k] < 0.1 * rsd_0:
+                mixing_time_90 = int(times[k])
+
+        return {
+            "times": times,
+            "rsd": rsd,
+            "rsd_percent": rsd * 100,
+            "concentrations": concentrations,
+            "entropy": entropy,
+            "intensity_of_segregation": intensity_seg,
+            "rsd_initial": float(rsd[0]),
+            "rsd_final": float(rsd[-1]),
+            "mixing_time_50": mixing_time_50,
+            "mixing_time_90": mixing_time_90,
+            "n_states": n_states,
+            "source": "Markov",
+        }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# COMPARAISON DEM vs MARKOV
+# ═══════════════════════════════════════════════════════════════════
+
+    def compare_dem_vs_markov(self, method, method_kwargs,
+                            folder_name=None,
+                            species_criterion="z_median",
+                            file_indices=None,
+                            figsize=(20, 16)):
+        """
+        Comparaison complète DEM vs Markov pour un partitionnement donné.
+
+        1. Charge les snapshots DEM (si pas déjà fait)
+        2. Crée le partitionneur et calcule le RSD DEM
+        3. Charge (ou calcule) la matrice P
+        4. Calcule le RSD Markov depuis la même condition initiale
+        5. Affiche la comparaison
+
+        Args:
+            method: "cartesian", "voronoi", "cylindrical", "quantile"
+            method_kwargs: paramètres du partitionneur
+            folder_name: nom de l'expérience dans le bucket (None = recalculer P)
+            species_criterion: critère d'étiquetage des espèces
+            file_indices: indices des fichiers DEM à charger
+            figsize: taille de la figure
+
+        Returns:
+            dict avec dem_rsd, markov_rsd
+        """
+        from partitioners import create_partitioner
+
+        # ── 1. Charger les snapshots DEM ──
+        if not hasattr(self, 'dem_snapshots') or not self.dem_snapshots:
+            if file_indices is None:
+                file_indices = list(range(0, 500, 5))
+            self.load_dem_snapshots(file_indices)
+
+        # ── 2. Étiqueter les espèces ──
+        self.label_species(species_criterion)
+
+        # ── 3. Créer le partitionneur ──
+        partitioner = self.create_partitioner_for_comparison(method, method_kwargs)
+
+        # ── 4. RSD DEM ──
+        print("\n📊 Calcul RSD DEM...")
+        dem_rsd = self.compute_dem_rsd(partitioner)
+        print(f"   RSD DEM: {dem_rsd['rsd_initial']*100:.1f}% → {dem_rsd['rsd_final']*100:.1f}%")
+
+        # ── 5. Matrice P ──
+        if folder_name and folder_name in self.results:
+            P = self.results[folder_name]["matrix"]
+            print(f"   Matrice P chargée: {folder_name}")
+        else:
+            print("   Calcul de la matrice P depuis les données DEM...")
+            P = self._compute_P_from_dem(partitioner)
+
+        # ── 6. RSD Markov ──
+        print("📊 Calcul RSD Markov...")
+        markov_rsd = self.compute_markov_rsd_from_dem(P, partitioner)
+        print(f"   RSD Markov: {markov_rsd['rsd_initial']*100:.1f}% → {markov_rsd['rsd_final']*100:.1f}%")
+
+        # ── 7. Visualisation ──
+        self._plot_dem_vs_markov_comparison(
+            dem_rsd, markov_rsd, partitioner, method, figsize
+        )
+
+        return {"dem": dem_rsd, "markov": markov_rsd, "partitioner": partitioner, "P": P}
+
+
+    def _compute_P_from_dem(self, partitioner):
+        """
+        Calcule la matrice P directement depuis les snapshots DEM chargés.
+        """
+        n_states = partitioner.n_cells
+        T = np.zeros((n_states, n_states))
+
+        for k in range(len(self.dem_snapshots) - 1):
+            coords_prev = self.dem_snapshots[k]["coords"]
+            coords_curr = self.dem_snapshots[k + 1]["coords"]
+
+            states_prev = partitioner.compute_states(
+                coords_prev[:, 0], coords_prev[:, 1], coords_prev[:, 2]
+            )
+            states_curr = partitioner.compute_states(
+                coords_curr[:, 0], coords_curr[:, 1], coords_curr[:, 2]
+            )
+
+            n = min(len(states_prev), len(states_curr))
+            for i in range(n):
+                T[states_prev[i], states_curr[i]] += 1
+
+        # Normaliser
+        row_sums = T.sum(axis=1, keepdims=True)
+        P = np.divide(T, row_sums, where=row_sums > 0, out=np.zeros_like(T))
+
+        print(f"   P calculée: {n_states}×{n_states}, diag_mean={np.diag(P).mean():.3f}")
+        return P
+
+
+    def _plot_dem_vs_markov_comparison(self, dem_rsd, markov_rsd,
+                                        partitioner, method, figsize=(20, 16)):
+        """Affiche la comparaison complète DEM vs Markov."""
+        import matplotlib.gridspec as gridspec
+
+        fig = plt.figure(figsize=figsize)
+        fig.suptitle(
+            f"COMPARAISON DEM vs MARKOV — {method.upper()}\n"
+            f"{partitioner.label} | {partitioner.n_cells} cellules",
+            fontsize=15, fontweight="bold",
+        )
+        gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.4, wspace=0.35)
+
+        times_dem = dem_rsd["times"]
+        times_mkv = markov_rsd["times"]
+
+        # ── 1. RSD: DEM vs Markov ──
+        ax = fig.add_subplot(gs[0, 0])
+        ax.plot(times_dem, dem_rsd["rsd_percent"], "o-", color="#1f77b4",
+                lw=2, markersize=4, label="DEM (réel)")
+        ax.plot(times_mkv, markov_rsd["rsd_percent"], "s--", color="#ff7f0e",
+                lw=2, markersize=4, label="Markov (prédit)")
+        ax.set_xlabel("Temps (index fichier)")
+        ax.set_ylabel("RSD (%)")
+        ax.set_title("RSD: DEM vs Markov")
+        ax.legend(fontsize=10)
+        ax.grid(True, alpha=0.3)
+
+        # ── 2. RSD en échelle log ──
+        ax = fig.add_subplot(gs[0, 1])
+        rsd_dem_pos = np.clip(dem_rsd["rsd_percent"], 1e-3, None)
+        rsd_mkv_pos = np.clip(markov_rsd["rsd_percent"], 1e-3, None)
+        ax.semilogy(times_dem, rsd_dem_pos, "o-", color="#1f77b4",
+                    lw=2, markersize=4, label="DEM")
+        ax.semilogy(times_mkv, rsd_mkv_pos, "s--", color="#ff7f0e",
+                    lw=2, markersize=4, label="Markov")
+        ax.set_xlabel("Temps")
+        ax.set_ylabel("RSD (%) — log")
+        ax.set_title("RSD (échelle logarithmique)")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+        # ── 3. Intensité de ségrégation ──
+        ax = fig.add_subplot(gs[1, 0])
+        ax.plot(times_dem, dem_rsd["intensity_of_segregation"], "o-",
+                color="#1f77b4", lw=2, markersize=4, label="DEM")
+        ax.plot(times_mkv, markov_rsd["intensity_of_segregation"], "s--",
+                color="#ff7f0e", lw=2, markersize=4, label="Markov")
+        ax.set_xlabel("Temps")
+        ax.set_ylabel("I(t)")
+        ax.set_title("Intensité de ségrégation I(t) = σ²(C) / C̄(1-C̄)")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        ax.set_ylim(bottom=0)
+
+        # ── 4. Entropie ──
+        ax = fig.add_subplot(gs[1, 1])
+        ax.plot(times_dem, dem_rsd["entropy"], "o-", color="#1f77b4",
+                lw=2, markersize=4, label="DEM")
+        ax.plot(times_mkv, markov_rsd["entropy"], "s--", color="#ff7f0e",
+                lw=2, markersize=4, label="Markov")
+        ax.axhline(1.0, color="gray", ls=":", alpha=0.5, label="Mélange parfait")
+        ax.set_xlabel("Temps")
+        ax.set_ylabel("Entropie normalisée")
+        ax.set_title("Entropie de mélange")
+        ax.set_ylim(0, 1.1)
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+        # ── 5. Erreur relative ──
+        ax = fig.add_subplot(gs[2, 0])
+        rsd_dem = dem_rsd["rsd"]
+        rsd_mkv = markov_rsd["rsd"]
+        n = min(len(rsd_dem), len(rsd_mkv))
+
+        abs_error = np.abs(rsd_dem[:n] - rsd_mkv[:n]) * 100
+        rel_error = np.zeros(n)
+        for k in range(n):
+            if rsd_dem[k] > 1e-6:
+                rel_error[k] = abs(rsd_dem[k] - rsd_mkv[k]) / rsd_dem[k] * 100
+
+        ax.bar(times_dem[:n], abs_error, width=times_dem[1] - times_dem[0] if n > 1 else 1,
+            color="#d62728", alpha=0.7, label="Erreur absolue (%)")
+        ax.set_xlabel("Temps")
+        ax.set_ylabel("Erreur RSD (%)")
+        ax.set_title(f"Erreur |RSD_DEM - RSD_Markov| — "
+                    f"moyenne={abs_error.mean():.2f}%")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+        # ── 6. Tableau récapitulatif ──
+        ax = fig.add_subplot(gs[2, 1])
+        ax.axis("off")
+
+        # Corrélation
+        corr = np.corrcoef(rsd_dem[:n], rsd_mkv[:n])[0, 1] if n > 2 else 0
+        rmse = np.sqrt(np.mean((rsd_dem[:n] - rsd_mkv[:n])**2)) * 100
+
+        table_data = [
+            ["", "DEM", "Markov"],
+            ["RSD initial (%)", f"{dem_rsd['rsd_initial']*100:.1f}", f"{markov_rsd['rsd_initial']*100:.1f}"],
+            ["RSD final (%)", f"{dem_rsd['rsd_final']*100:.1f}", f"{markov_rsd['rsd_final']*100:.1f}"],
+            ["t₅₀", f"{dem_rsd['mixing_time_50'] or 'N/A'}", f"{markov_rsd['mixing_time_50'] or 'N/A'}"],
+            ["t₉₀", f"{dem_rsd['mixing_time_90'] or 'N/A'}", f"{markov_rsd['mixing_time_90'] or 'N/A'}"],
+            ["", "", ""],
+            ["Corrélation", f"{corr:.4f}", ""],
+            ["RMSE (%)", f"{rmse:.2f}", ""],
+            ["Erreur moy (%)", f"{abs_error.mean():.2f}", ""],
+            ["Erreur max (%)", f"{abs_error.max():.2f}", ""],
+        ]
+
+        table = ax.table(
+            cellText=table_data,
+            loc="center",
+            cellLoc="center",
+            colWidths=[0.4, 0.3, 0.3],
+        )
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(1.2, 1.8)
+
+        # Style
+        for j in range(3):
+            table[0, j].set_facecolor("#4472C4")
+            table[0, j].set_text_props(color="white", fontweight="bold")
+        for i in range(1, len(table_data)):
+            for j in range(3):
+                if i == 5:
+                    table[i, j].set_height(0.02)
+                if i >= 6:
+                    table[i, j].set_facecolor("#E2EFDA")
+
+        ax.set_title("Résumé", fontsize=12, fontweight="bold", pad=20)
+
+        plt.savefig(f"dem_vs_markov_{method}.png", dpi=200, bbox_inches="tight")
+        plt.show()
+
+
+    def compare_all_methods_dem_vs_markov(self, species_criterion="z_median",
+                                        file_indices=None, figsize=(16, 10)):
+        """
+        Compare DEM vs Markov pour TOUTES les méthodes sur un seul graphique.
+
+        Args:
+            species_criterion: critère de labeling
+            file_indices: indices des fichiers DEM
+        """
+        from partitioners import create_partitioner
+
+        # Charger les données
+        if not hasattr(self, 'dem_snapshots') or not self.dem_snapshots:
+            if file_indices is None:
+                file_indices = list(range(0, 500, 5))
+            self.load_dem_snapshots(file_indices)
+
+        self.label_species(species_criterion)
+
+        # Configurations à tester
+        configs = {
+            "Cartésien (5³)": {"method": "cartesian", "kwargs": {"nx": 15, "ny": 15, "nz": 15}},
+            "Cylindrique": {"method": "cylindrical", "kwargs": {"nr": 5, "ntheta": 8, "nz": 5, "radial_mode": "equal_area"}},
+            "Voronoï (125)": {"method": "voronoi", "kwargs": {"n_cells": 125}},
+            "Quantile (5³)": {"method": "quantile", "kwargs": {"nx": 5, "ny": 5, "nz": 5}},
+        }
+
+        fig, axes = plt.subplots(2, 2, figsize=figsize)
+        fig.suptitle(
+            f"DEM vs MARKOV — Toutes les méthodes\n"
+            f"(espèces: {species_criterion} | {len(self.dem_snapshots)} snapshots)",
+            fontsize=14, fontweight="bold",
+        )
+
+        all_results = {}
+
+        colors_dem = "#1f77b4"
+        colors_mkv = "#ff7f0e"
+
+        for idx, (name, config) in enumerate(configs.items()):
+            row, col = divmod(idx, 2)
+            ax = axes[row, col]
+
+            print(f"\n{'─'*50}")
+            print(f"📐 {name}")
+
+            # Créer partitionneur
+            part = self.create_partitioner_for_comparison(config["method"], config["kwargs"])
+
+            # RSD DEM
+            dem_rsd = self.compute_dem_rsd(part)
+
+            # Matrice P
+            P = self._compute_P_from_dem(part)
+
+            # RSD Markov
+            mkv_rsd = self.compute_markov_rsd_from_dem(P, part)
+
+            all_results[name] = {"dem": dem_rsd, "markov": mkv_rsd}
+
+            # Plot
+            t = dem_rsd["times"]
+            ax.plot(t, dem_rsd["rsd_percent"], "o-", color=colors_dem,
+                    lw=2, markersize=3, label="DEM", alpha=0.8)
+            ax.plot(t, mkv_rsd["rsd_percent"], "s--", color=colors_mkv,
+                    lw=2, markersize=3, label="Markov", alpha=0.8)
+
+            # Corrélation
+            n = min(len(dem_rsd["rsd"]), len(mkv_rsd["rsd"]))
+            corr = np.corrcoef(dem_rsd["rsd"][:n], mkv_rsd["rsd"][:n])[0, 1] if n > 2 else 0
+
+            ax.set_title(f"{name}\nCorr={corr:.3f}", fontsize=11)
+            ax.set_xlabel("Temps")
+            ax.set_ylabel("RSD (%)")
+            ax.legend(fontsize=9)
+            ax.grid(True, alpha=0.3)
+
+        plt.tight_layout(rect=[0, 0, 1, 0.93])
+        plt.savefig("dem_vs_markov_all_methods.png", dpi=200, bbox_inches="tight")
+        plt.show()
+
+        return all_results
+        
     def plot_experiment(self, folder_name, n_steps=200, figsize=(20, 16)):
         """
         Visualisation complète d'une expérience incluant le RSD.
