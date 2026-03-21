@@ -151,24 +151,28 @@ class CartesianPartitioner(BasePartitioner):
         return self.nx * self.ny * self.nz
 
     @property
-    def label(self):
+    def label(self)-> str:
         return f"cartesian_nx{self.nx}_ny{self.ny}_nz{self.nz}"
 
-    def fit(self, coordinates):
+    def fit(self, coordinates:np.ndarray):
         eps = 0.001
-        mins = coordinates.min(axis=0) - eps
+        coordinates=np.asarray(coordinates) # contient les coordonnées [x,y,z] de toutes les particules
+        mins = coordinates.min(axis=0) - eps # contient le minimum de [x,y,z]
         maxs = coordinates.max(axis=0) + eps
         self._bounds = (mins[0], maxs[0], mins[1], maxs[1], mins[2], maxs[2])
         return self
 
-    def compute_states(self, x, y, z):
+    def compute_states(self, x:np.ndarray, y:np.ndarray, z:np.ndarray)-> int:
+        """"Cette fonction permet de determiner l'état de la particule: la partition dans laquelle la particule reside."""
+        # convertion des coordonnées en tableaux numpy
         x = np.asarray(x, dtype=np.float64)
         y = np.asarray(y, dtype=np.float64)
         z = np.asarray(z, dtype=np.float64)
         xmin, xmax, ymin, ymax, zmin, zmax = self._bounds
 
         ix = np.clip(
-            ((x - xmin) * self.nx / (xmax - xmin)).astype(np.int64), 0, self.nx - 1
+            ((x - xmin) * self.nx / (xmax - xmin)).astype(np.int64), 0, self.nx - 1 # attribut une partition suivant l'axe des abcisses à chacune des particules
+            # la fonction clip permet de normaliser la position de la particule dans l'ensemble des partitions
         )
         iy = np.clip(
             ((y - ymin) * self.ny / (ymax - ymin)).astype(np.int64), 0, self.ny - 1
