@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from ..partitioners import CartesianPartitioner as Cart
+from ...partitioners import CartesianPartitioner as Cart
 
 """
 Hypothèses sur le partitionnement:la numérotation
@@ -169,8 +169,8 @@ def test_compute_state_coord_y_10():
 #=======================================================================
 
 
-def test_compute_state_coord_x_0():
-    """vérifie que la particule de coordonnées en x=0 est bien dans la partition d'indice 0+P.nx*0+P.nx*P.ny*0"""
+def test_compute_state_coord_z_0():
+    """vérifie que la particule de coordonnées en z=0 est bien dans la partition d'indice 0+P.nx*0+P.nx*P.ny*0"""
     coordinates=[[0,0,0],[0,0,0]]
     P=Cart() # le nombre de partitons par défaut est nx=5,ny=5,nz=5
     P=P.fit(coordinates=coordinates)
@@ -179,8 +179,8 @@ def test_compute_state_coord_x_0():
     np.testing.assert_(state,expected)
 
 
-def test_compute_state_coord_x_1():
-    """Vérifie que la particule de coordonnées en x=1 est dans la partion d'indice 0+P.nx*0+P.nx*P.ny*0"""
+def test_compute_state_coord_z_1():
+    """Vérifie que la particule de coordonnées en z=1 est dans la partion d'indice 0+P.nx*0+P.nx*P.ny*0"""
     coordinates=[[0,0,0],[0,0,1]]
     P=Cart() # le nombre de partitons par défaut est nx=5,ny=5,nz=5
     P=P.fit(coordinates=coordinates)
@@ -188,8 +188,8 @@ def test_compute_state_coord_x_1():
     expected=0+P.nx*0+P.nx*P.ny*0
     np.testing.assert_(state,expected)
 
-def test_compute_state_coord_x_2():
-    """Vérifie que la particule de coordonnées en x=2 est dans la partion d'indice 0+P.nx*0+P.nx*P.ny*1"""
+def test_compute_state_coord_z_2():
+    """Vérifie que la particule de coordonnées en z=2 est dans la partion d'indice 0+P.nx*0+P.nx*P.ny*1"""
     coordinates=[[0,0,0],[0,0,2]]
     P=Cart() # le nombre de partitons par défaut est nx=5,ny=5,nz=5
     P=P.fit(coordinates=coordinates)
@@ -197,8 +197,8 @@ def test_compute_state_coord_x_2():
     expected=0+P.nx*0+P.nx*P.ny*1
     np.testing.assert_(state,expected)
 
-def test_compute_state_coord_x_3():
-    """Vérifie que la particule de coordonnées en x=3 est dans la partion d'indice 0+P.nx*0+P.nx*P.ny*2"""
+def test_compute_state_coord_z_3():
+    """Vérifie que la particule de coordonnées en z=3 est dans la partion d'indice 0+P.nx*0+P.nx*P.ny*2"""
     coordinates=[[0,0,0],[0,0,3]]
     P=Cart() # le nombre de partitons par défaut est nx=5,ny=5,nz=5
     P=P.fit(coordinates=coordinates)
@@ -206,8 +206,8 @@ def test_compute_state_coord_x_3():
     expected=0+P.nx*0+P.nx*P.ny*2
     np.testing.assert_(state,expected)
 
-def test_compute_state_coord_x_4():
-    """Vérifie que la particule de coordonnées en x=4 est dans la partion d'indice 0+P.nx*0+P.nx*P.ny*3"""
+def test_compute_state_coord_z_4():
+    """Vérifie que la particule de coordonnées en z=4 est dans la partion d'indice 0+P.nx*0+P.nx*P.ny*3"""
     coordinates=[[0,0,0],[0,0,4]]
     P=Cart() # le nombre de partitons par défaut est nx=5,ny=5,nz=5
     P=P.fit(coordinates=coordinates)
@@ -215,8 +215,8 @@ def test_compute_state_coord_x_4():
     expected=0+P.nx*0+P.nx*P.ny*3
     np.testing.assert_(state,expected)
     
-def test_compute_state_coord_x_5():
-    """Vérifie que la particule de coordonnées en x=5 est dans la partion d'indice 0+P.nx*0+P.nx*P.ny*4"""
+def test_compute_state_coord_z_5():
+    """Vérifie que la particule de coordonnées en z=5 est dans la partion d'indice 0+P.nx*0+P.nx*P.ny*4"""
     coordinates=[[0,0,0],[0,0,5]]
     P=Cart() # le nombre de partitons par défaut est nx=5,ny=5,nz=5
     P=P.fit(coordinates=coordinates)
@@ -224,8 +224,8 @@ def test_compute_state_coord_x_5():
     expected=0+P.nx*0+P.nx*P.ny*4
     np.testing.assert_(state,expected)
     
-def test_compute_state_coord_x_6():
-    """Vérifie que la particule de coordonnées en x=6 qui est supérieure nombre de partitions suivant l'axe de abcisses est dans la partion d'indice 0+P.nx*0+P.nx*P.ny*4"""
+def test_compute_state_coord_z_6():
+    """Vérifie que la particule de coordonnées en z=6 qui est supérieure nombre de partitions suivant l'axe de abcisses est dans la partion d'indice 0+P.nx*0+P.nx*P.ny*4"""
     coordinates=[[0,0,0],[0,0,6]]
     P=Cart() # le nombre de partitons par défaut est nx=5,ny=5,nz=5
     P=P.fit(coordinates=coordinates)
@@ -233,8 +233,8 @@ def test_compute_state_coord_x_6():
     expected=0+P.nx*0+P.nx*P.ny*4
     np.testing.assert_(state,expected)
     
-def test_compute_state_coord_x_10():
-    """Vérifie que la particule de coordonnées en x=10 qui est supérieure nombre de partitions suivant l'axe de abcisses est dans la partion d'indice 0+P.nx*0+P.nx*P.ny*4"""
+def test_compute_state_coord_z_10():
+    """Vérifie que la particule de coordonnées en z=10 qui est supérieure nombre de partitions suivant l'axe de abcisses est dans la partion d'indice 0+P.nx*0+P.nx*P.ny*4"""
     coordinates=[[0,0,0],[0,0,10]]
     P=Cart() # le nombre de partitons par défaut est nx=5,ny=5,nz=5
     P=P.fit(coordinates=coordinates)

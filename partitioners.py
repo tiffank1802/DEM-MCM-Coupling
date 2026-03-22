@@ -231,19 +231,20 @@ class CylindricalPartitioner(BasePartitioner):
 
     def fit(self, coordinates):
         eps = 0.001
+        coordinates=np.asarray(coordinates)
         x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
 
-        self._x_center = (x.min() + x.max()) / 2
-        self._y_center = (y.min() + y.max()) / 2
+        self._x_center = (x.min() + x.max()) / 2  # est un scalaire       # position en x du centre de la distribution des particules 
+        self._y_center = (y.min() + y.max()) / 2  # est un scalaire       # position en y du centre de la distribution des particules
 
-        r = np.sqrt((x - self._x_center) ** 2 + (y - self._y_center) ** 2)
+        r = np.sqrt((x - self._x_center) ** 2 + (y - self._y_center) ** 2) # rayon issue des positions recentrées des particules
         self._r_max = r.max() + eps
         self._z_min = z.min() - eps
         self._z_max = z.max() + eps
 
         if self.radial_mode == "equal_area":
             # aire π(r_{i+1}² - r_i²) = constante → r_i = R√(i/nr)
-            self._r_edges = self._r_max * np.sqrt(np.linspace(0, 1, self.nr + 1))
+            self._r_edges = self._r_max * np.sqrt(np.linspace(0, 1, self.nr + 1)) # construction de la liste des Rayons pour respecter le fait que les surfaces soient identiques
         elif self.radial_mode == "equal_dr":
             self._r_edges = np.linspace(0, self._r_max, self.nr + 1)
         else:
@@ -258,21 +259,25 @@ class CylindricalPartitioner(BasePartitioner):
 
         dx = x - self._x_center
         dy = y - self._y_center
-        r = np.sqrt(dx**2 + dy**2)
+        # convertit la position des particules du système de coordonnées cartésiens vers le système de coordonnées cylindriques
+        r = np.sqrt(dx**2 + dy**2) 
         theta = (np.arctan2(dy, dx) + 2 * np.pi) % (2 * np.pi)  # [0, 2π]
 
         ir = np.clip(
-            np.searchsorted(self._r_edges, r, side="right") - 1, 0, self.nr - 1
+            np.searchsorted(self._r_edges, r, side="right") - 1, # renvoit la liste d'indices  de la liste des partitions(selon le rayon) dans laquelle les rayons des particules ont été insérés 
+            # le vecteur que renvoir la fonction searchsorted est de dimension de r (nombres de particules)
+            0, self.nr - 1  # les particules sont raménées dans l'intervalle des partitions suivant le rayon
         )
         itheta = np.clip(
-            (theta * self.ntheta / (2 * np.pi)).astype(np.int64), 0, self.ntheta - 1
+            (theta * self.ntheta / (2 * np.pi)).astype(np.int64), 0, self.ntheta - 1 # le cylindre est partionné sur toute la circonference de sa base
+            # chaque particule est placée dans une partition en fonction de son angle theta
         )
         dz = (self._z_max - self._z_min) / self.nz
         iz = np.clip(
             ((z - self._z_min) / dz).astype(np.int64), 0, self.nz - 1
         )
 
-        return ir + itheta * self.nr + iz * self.nr * self.ntheta
+        return ir + itheta * self.nr + iz * self.nr * self.ntheta # la numérotation des partitons se fait partant des rayons, puis les angles et enfin les hauteurs z
 
     def _save_data(self, path):
         params = {
