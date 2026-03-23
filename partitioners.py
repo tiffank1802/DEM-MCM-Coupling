@@ -746,4 +746,4 @@ def create_partitioner(method, **kwargs):
     if method not in REGISTRY:
         available = ", ".join(REGISTRY.keys())
         raise ValueError(f"Méthode inconnue: '{method}'. Disponibles: {available}")
-    return REGISTRY[method](**kwargs)
+    return REGISTRY[method](**kwargs) # crée une instance de la classe de partitionnement souhaité

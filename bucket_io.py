@@ -1,12 +1,15 @@
 """
 bucket_io.py — Lecture/écriture directe vers HuggingFace bucket
+    Lors de la lecture des fichiers aucun fichier n'est téléchargé en local, tous sont lus depuis huggingface et seul les variables contenant
+les informations necessaires sont retournées
+    Lors de l'écriture, chaque fichier est tranferé sur huggingface depuis un repertoire temporaire, et détruit une fois le transfert éffectué
 """
 
 import numpy as np
 import json
 import io
 import os
-import tempfile
+import tempfile # pour la sauvegarde temporaire des fichiers en local avant son tranfert vers le bucket
 from pathlib import Path
 from huggingface_hub import HfApi, HfFileSystem
 

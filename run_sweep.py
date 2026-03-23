@@ -44,15 +44,15 @@ SAMPLE_RATE = 50  # pour le fit des partitionneurs
 # =============================================================================
 
 
-@dataclass
+@dataclass # crée et ajoute automatiquement le constructeur de classe
 class ExperimentConfig:
     """Configuration d'une expérience."""
 
     method: str = "cartesian"
-    method_kwargs: dict = field(default_factory=dict)
+    method_kwargs: dict = field(default_factory=dict) # type par defaut de la (dict vide) lors de l'instanciation de la classe ExperimentConfig sans passage explicite de method_kwargs
     nlt: int = 100
-    step_size: int = 1
-    start_index: int = 0
+    step_size: int = 1 # pas de temps d'apprentissage telque le temps d'apprentissage soit T=nlt*step_size
+    start_index: int = 0 # début de l'apprentissage
 
     def output_folder(self, base_dir=BASE_OUTPUT_DIR):
         part = create_partitioner(self.method, **self.method_kwargs)
@@ -184,7 +184,7 @@ def get_configs(method):
     else:
         raise ValueError(f"Méthode inconnue: {method}")
 
-    # ── Sweep NLT (avec discrétisation "par défaut") ─────────────────────
+    # ── Sweep NLT (avec discrétisation spatiales "par défaut") ─────────────────────
 
     default_kwargs = _get_default_kwargs(method)
 
@@ -278,20 +278,23 @@ def sample_coordinates(files, fs, sample_rate=SAMPLE_RATE):
 
 def compute_P_matrix_torch(states_prev, states_curr, n_states, device):
     """Calcule P_n pour un timestep (tout GPU)."""
-    s_prev = states_prev.to(device)
+    # on doit comprendre que states_prev et states_curr sont les états des particules après que leur coordonnées soient passées en argument
+    # à la fonction compute_states() de la clase Partitioner appropriée au type de partitionnement
+    # Autrement dit, ce sont des indices(int) (liste de taille normalement nombre de particules mais dont les valeurs vont de 0 à n_states-1)
+    s_prev = states_prev.to(device) 
     s_curr = states_curr.to(device)
 
-    phi = torch.bincount(s_prev, minlength=n_states).float()
+    phi = torch.bincount(s_prev, minlength=n_states).float() # liste de taille n_states qui compte les éléments dans chaque partition à l'état précedent
 
     n = min(len(s_prev), len(s_curr))
-    indices = s_prev[:n] * n_states + s_curr[:n]
+    indices = s_prev[:n] * n_states + s_curr[:n] # indice globaux de transition entre état précedent et état present
     counts = torch.ones(n, device=device, dtype=torch.float64)
 
     T = torch.zeros(n_states * n_states, device=device, dtype=torch.float64)
-    T.scatter_add_(0, indices, counts)
-    T = T.view(n_states, n_states)
+    T.scatter_add_(0, indices, counts) # ajoute 1 à chaque fois qu'une partition reçoit une transition
+    T = T.view(n_states, n_states) # réarrange la liste la liste precedente en tenseur d'orde 2
 
-    phi_expanded = phi.unsqueeze(1).expand(n_states, n_states)
+    phi_expanded = phi.unsqueeze(1).expand(n_states, n_states) # réarrange la liste des phi en matrice de taille 
     P_n = torch.where(phi_expanded > 0, T / phi_expanded, torch.zeros_like(T))
     return P_n
 
