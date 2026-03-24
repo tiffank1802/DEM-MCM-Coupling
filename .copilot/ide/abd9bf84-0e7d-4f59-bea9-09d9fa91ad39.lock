@@ -1,12 +1,12 @@
 {
-  "socketPath": "/tmp/mcp-JS7gag/mcp.sock",
+  "socketPath": "/tmp/mcp-Efwq0F/mcp.sock",
   "scheme": "unix",
   "headers": {
-    "Authorization": "Nonce 24c0ba99-dac5-49f1-907f-581f76e4d8b8"
+    "Authorization": "Nonce 8ec8ba5c-e4e1-4897-9bef-fd7e284ab7b5"
   },
-  "pid": 82837,
+  "pid": 15216,
   "ideName": "Visual Studio Code",
-  "timestamp": 1774339501698,
+  "timestamp": 1774368796881,
   "workspaceFolders": [
     "/teamspace/studios/this_studio/DEM_MCM"
   ],

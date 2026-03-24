@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html><head>
+<title>Mélangeur DEM — Visualisation CAD</title>
+<style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 1200px;
+         margin: auto; padding: 20px; background: #f8f9fa; }
+  h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+          gap: 15px; margin-top: 20px; }
+  .card { background: white; border-radius: 12px; padding: 20px;
+          box-shadow: 0 4px 6px rgba(0,0,0,0.07); transition: transform 0.2s; }
+  .card:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.12); }
+  .card a { text-decoration: none; color: #2980b9; font-size: 18px; font-weight: 600; }
+  .card a:hover { color: #e67e22; }
+  .card p { color: #7f8c8d; margin: 8px 0 0; font-size: 13px; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px;
+         font-size: 11px; margin-right: 4px; }
+  .tag-cart { background: #dbeafe; color: #1e40af; }
+  .tag-cyl { background: #fef3c7; color: #92400e; }
+  .tag-vor { background: #d1fae5; color: #065f46; }
+  .tag-quan { background: #fce7f3; color: #9d174d; }
+  .tag-oct { background: #ede9fe; color: #5b21b6; }
+</style>
+</head><body>
+<h1>🔬 Mélangeur DEM — Visualisation CAD 3D</h1>
+<p>Cliquez sur une méthode pour l'explorer en 3D interactif</p>
+<div class="grid">
+
+  <div class="card">
+    <a href="cad_cartesian_5x5x5.html" target="_blank">📐 cartesian_5x5x5</a>
+    <p><span class="tag tag-cart">Cartésien</span> Vue 3D interactive</p>
+  </div>
+
+  <div class="card">
+    <a href="cad_cylindrical_equal_area.html" target="_blank">📐 cylindrical_equal_area</a>
+    <p><span class="tag tag-cyl">Cylindrique</span> Vue 3D interactive</p>
+  </div>
+
+  <div class="card">
+    <a href="cad_cylindrical_equal_dr.html" target="_blank">📐 cylindrical_equal_dr</a>
+    <p><span class="tag tag-cyl">Cylindrique</span> Vue 3D interactive</p>
+  </div>
+
+  <div class="card">
+    <a href="cad_voronoi_64.html" target="_blank">📐 voronoi_64</a>
+    <p><span class="tag tag-vor">Voronoï</span> Vue 3D interactive</p>
+  </div>
+
+  <div class="card">
+    <a href="cad_voronoi_125.html" target="_blank">📐 voronoi_125</a>
+    <p><span class="tag tag-vor">Voronoï</span> Vue 3D interactive</p>
+  </div>
+
+  <div class="card">
+    <a href="cad_quantile_5x5x5.html" target="_blank">📐 quantile_5x5x5</a>
+    <p><span class="tag tag-quan">Quantile</span> Vue 3D interactive</p>
+  </div>
+
+  <div class="card">
+    <a href="cad_octree_mp50_d4.html" target="_blank">📐 octree_mp50_d4</a>
+    <p><span class="tag tag-oct">Octree</span> Vue 3D interactive</p>
+  </div>
+</div></body></html>

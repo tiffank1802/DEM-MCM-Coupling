@@ -52,7 +52,7 @@ class ExperimentConfig:
     method_kwargs: dict = field(default_factory=dict) # type par defaut de la (dict vide) lors de l'instanciation de la classe ExperimentConfig sans passage explicite de method_kwargs
     nlt: int = 100
     step_size: int = 1 # pas de temps d'apprentissage telque le temps d'apprentissage soit T=nlt*step_size
-    start_index: int = 0 # début de l'apprentissage
+    start_index: int = 250 # début de l'apprentissage
 
     def output_folder(self, base_dir=BASE_OUTPUT_DIR):
         part = create_partitioner(self.method, **self.method_kwargs)
@@ -210,7 +210,7 @@ def get_configs(method):
 
     # ── Sweep start_index ────────────────────────────────────────────────
 
-    for start in [0, 500, 1000, 2000, 3000, 5000]:
+    for start in [250, 500, 1000, 2000, 3000, 5000]:
         configs.append(
             ExperimentConfig(
                 method=method,
@@ -292,7 +292,7 @@ def compute_P_matrix_torch(states_prev, states_curr, n_states, device):
 
         phi = torch.bincount(s_prev, minlength=n_states)
         print(phi)
-        # tensor([2, 1, 3, 0, 0, 1, 0, 0])
+        # tensor([2, 1, 3, 0, 0, 1, 0, 0]) 
     Autrement dit, phi est de taille len(range(n_states)) # un vecteur de taille n_states
     """
 
@@ -306,41 +306,35 @@ def compute_P_matrix_torch(states_prev, states_curr, n_states, device):
 
     phi_expanded = phi.unsqueeze(1).expand(n_states, n_states) # Duplique la liste des phi en matrice de taille 
     P_n = torch.where(phi_expanded > 0, T / phi_expanded, torch.zeros_like(T)) # remplace chaque case de la matrice P_n par la case de T correspodande divisée par celle de phi_expanded correspondante lorsque phi_expanded est strictement positif et par 0 dans le cas cas contraire
-    return P_n
+    return P_n.T
 
 
 # =============================================================================
 # EXPÉRIENCE
 # =============================================================================
 
-
 def run_experiment(config, partitioner, files, fs, device):
     """
     Exécute une expérience complète.
 
     Logique temporelle:
-        On découpe les fichiers en nlt BLOCS de step_size fichiers chacun.
-        
-        Bloc k: files[start + k*step] → files[start + k*step + 1] → ... → files[start + (k+1)*step]
-        
-        Dans chaque bloc, on calcule P_bloc = moyenne des P_n consécutifs
-        Puis P = (1/nlt) Σ P_bloc
+        Chaque P_n est calculé entre deux snapshots séparés de step_size.
+        On enchaîne nlt évaluations consécutives.
+        P_final = moyenne des nlt matrices P_n.
 
-    Exemple avec step_size=5, nlt=3, start=0:
-    
-        Bloc 0: fichiers [0, 1, 2, 3, 4, 5]
-                paires: (0,1) (1,2) (2,3) (3,4) (4,5)
-                P_bloc_0 = moyenne de 5 matrices P_n
-                
-        Bloc 1: fichiers [5, 6, 7, 8, 9, 10]
-                paires: (5,6) (6,7) (7,8) (8,9) (9,10)
-                P_bloc_1 = moyenne de 5 matrices P_n
-                
-        Bloc 2: fichiers [10, 11, 12, 13, 14, 15]
-                paires: (10,11) (11,12) (12,13) (13,14) (14,15)
-                P_bloc_2 = moyenne de 5 matrices P_n
-                
-        P_final = (P_bloc_0 + P_bloc_1 + P_bloc_2) / 3
+    Exemple: step_size=5, nlt=3, start=0
+
+        Fichiers:  0     5     10     15
+                   │     │      │      │
+        Paire 0:   ●────→●
+        Paire 1:         ●─────→●
+        Paire 2:                ●─────→●
+
+        P_0 = transition(files[0], files[5])
+        P_1 = transition(files[5], files[10])
+        P_2 = transition(files[10], files[15])
+
+        P_final = (P_0 + P_1 + P_2) / 3
 
     Args:
         config: ExperimentConfig
@@ -360,7 +354,7 @@ def run_experiment(config, partitioner, files, fs, device):
     if last_needed >= len(files):
         max_nlt = (len(files) - 1 - config.start_index) // step
         print(
-            f"   ⚠️  Seulement {max_nlt} blocs possibles "
+            f"   ⚠️  Seulement {max_nlt} paires possibles "
             f"(demandé: {config.nlt})"
         )
         actual_nlt = max_nlt
@@ -369,82 +363,52 @@ def run_experiment(config, partitioner, files, fs, device):
 
     if actual_nlt <= 0:
         raise ValueError(
-            f"Aucun bloc possible: start={config.start_index}, "
+            f"Aucune paire possible: start={config.start_index}, "
             f"step={step}, fichiers={len(files)}"
         )
 
-    # ── Construire les blocs ──
-    # Chaque bloc = liste d'indices de fichiers consécutifs
-    blocs = []
+    # ── Construire les paires ──
+    pairs = []
     for k in range(actual_nlt):
-        bloc_start = config.start_index + k * step
-        bloc_end = config.start_index + (k + 1) * step
-        bloc_indices = list(range(bloc_start, bloc_end + 1))  # inclut bloc_end
-        blocs.append(bloc_indices)
-
-    total_pairs = actual_nlt * step  # step paires par bloc × nlt blocs
+        idx_prev = config.start_index + k * step
+        idx_curr = config.start_index + (k + 1) * step
+        pairs.append((idx_prev, idx_curr))
 
     print(
-        f"   📐 {actual_nlt} blocs × {step} paires/bloc = {total_pairs} paires totales"
-    )
-    print(
-        f"   📂 Bloc 0: fichiers [{blocs[0][0]}..{blocs[0][-1]}]"
-        f"  |  Bloc {actual_nlt-1}: fichiers [{blocs[-1][0]}..{blocs[-1][-1]}]"
+        f"   📐 {actual_nlt} paires | Δt={step} fichiers\n"
+        f"   📂 Paire 0: ({pairs[0][0]}, {pairs[0][1]}) | "
+        f"Paire {actual_nlt-1}: ({pairs[-1][0]}, {pairs[-1][1]})"
     )
 
-    # ── Accumulateur global ──
+    # ── Accumulateur GPU ──
     P_acc = torch.zeros((n_states, n_states), dtype=torch.float64, device=device)
 
-    # ── Boucle sur les blocs ──
-    from tqdm import tqdm
-
-    pbar = tqdm(total=total_pairs, desc="   Paires", leave=False)
-
-    for bloc_idx, bloc_files in enumerate(blocs):
-        # Accumulateur pour ce bloc
-        P_bloc = torch.zeros((n_states, n_states), dtype=torch.float64, device=device)
-
-        # Lire le premier fichier du bloc
-        with fs.open(files[bloc_files[0]], "rb") as f:
+    for idx_prev, idx_curr in tqdm(pairs, desc="   Paires", leave=False):
+        # Lecture des deux snapshots séparés de step_size
+        with fs.open(files[idx_prev], "rb") as f:
             df_prev = pl.read_csv(f)
+        with fs.open(files[idx_curr], "rb") as f:
+            df_curr = pl.read_csv(f)
 
+        # Assignation des états
         states_prev = partitioner.compute_states(
             df_prev["coordinates:0"],
             df_prev["coordinates:1"],
             df_prev["coordinates:2"],
         )
+        states_curr = partitioner.compute_states(
+            df_curr["coordinates:0"],
+            df_curr["coordinates:1"],
+            df_curr["coordinates:2"],
+        )
 
-        # Parcourir toutes les paires consécutives dans le bloc
-        for j in range(1, len(bloc_files)):
-            with fs.open(files[bloc_files[j]], "rb") as f:
-                df_curr = pl.read_csv(f)
+        # GPU
+        sp = torch.from_numpy(states_prev).to(device)
+        sc = torch.from_numpy(states_curr).to(device)
 
-            states_curr = partitioner.compute_states(
-                df_curr["coordinates:0"],
-                df_curr["coordinates:1"],
-                df_curr["coordinates:2"],
-            )
+        P_acc += compute_P_matrix_torch(sp, sc, n_states, device)
 
-            # GPU
-            sp = torch.from_numpy(states_prev).to(device)
-            sc = torch.from_numpy(states_curr).to(device)
-
-            P_bloc += compute_P_matrix_torch(sp, sc, n_states, device)
-
-            # Le fichier courant devient le précédent
-            states_prev = states_curr
-
-            pbar.update(1)
-
-        # Moyenne du bloc (step paires par bloc)
-        P_bloc /= step
-
-        # Accumuler dans la moyenne globale
-        P_acc += P_bloc
-
-    pbar.close()
-
-    # ── Moyenne globale sur les nlt blocs ──
+    # ── Moyenne sur les nlt évaluations ──
     P = P_acc / actual_nlt
     P_np = P.cpu().numpy()
 
@@ -455,8 +419,6 @@ def run_experiment(config, partitioner, files, fs, device):
 
     stats = {
         "n_timesteps_used": actual_nlt,
-        "n_pairs_per_bloc": step,
-        "n_pairs_total": total_pairs,
         "n_states": n_states,
         "n_states_visited": int(visited.sum()),
         "n_states_empty": int((~visited).sum()),
@@ -467,14 +429,13 @@ def run_experiment(config, partitioner, files, fs, device):
         "diagonal_mean": float(diag.mean()),
         "diagonal_std": float(diag.std()),
         "method": config.method,
-        "step_size": config.step_size,
+        "step_size": step,
         "start_index": config.start_index,
-        "first_bloc": blocs[0],
-        "last_bloc": blocs[-1],
+        "first_pair": list(pairs[0]),
+        "last_pair": list(pairs[-1]),
     }
 
     return P_np, stats
-
 
 def save_results_local(config, partitioner, P, stats, output_dir):
     """Sauvegarde matrice + stats + params + partitionneur."""

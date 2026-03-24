@@ -26,6 +26,22 @@ import json
 from abc import ABC, abstractmethod
 
 __all__ = [
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     "BasePartitioner",
     "CartesianPartitioner",
     "CylindricalPartitioner",
@@ -160,8 +176,8 @@ class CartesianPartitioner(BasePartitioner):
         eps = 0.001
         coordinates=np.asarray(coordinates) # contient les coordonnées [x,y,z] de toutes les particules
         mins = coordinates.min(axis=0) - eps # contient le minimum de [x,y,z]
-        maxs = coordinates.max(axis=0) + eps
-        self._bounds = (mins[0], maxs[0], mins[1], maxs[1], mins[2], maxs[2])
+        maxs = coordinates.max(axis=0) + eps # contient le maximum de [x,y,z]
+        self._bounds = (mins[0], maxs[0], mins[1], maxs[1], mins[2], maxs[2]) # (min_x,max_x,min_y,max_y,min_z,max_z)
         return self
 
     def compute_states(self, x:np.ndarray, y:np.ndarray, z:np.ndarray)-> int:
@@ -334,6 +350,7 @@ class VoronoiPartitioner(BasePartitioner):
         return f"voronoi_{self._n_cells}cells"
 
     def fit(self, coordinates):
+        coordinates=np.asarray(coordinates)
         from sklearn.cluster import MiniBatchKMeans
         from scipy.spatial import cKDTree
 
@@ -382,6 +399,7 @@ class VoronoiPartitioner(BasePartitioner):
 class QuantileGridPartitioner(BasePartitioner):
     """
     Grille dont les bords sont des quantiles des données.
+    plus il y aura une concentration de points en un endroit et plus la grille sera grande à cet endroit.
 
     Chaque cellule contient approximativement le même nombre de particules
     (équi-population marginale sur chaque axe).
@@ -404,9 +422,10 @@ class QuantileGridPartitioner(BasePartitioner):
         return f"quantile_nx{self.nx}_ny{self.ny}_nz{self.nz}"
 
     def fit(self, coordinates):
+        coordinates=np.asarray(coordinates)
         eps = 0.001
         x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
-
+        # chaque edge est un vecteur de taille self.nx+1 ou self.ny+1 ou self.nz+1 dont chaque indice correspond à la valeur de x correspondant au quantile donné
         self._x_edges = np.quantile(x, np.linspace(0, 1, self.nx + 1))
         self._y_edges = np.quantile(y, np.linspace(0, 1, self.ny + 1))
         self._z_edges = np.quantile(z, np.linspace(0, 1, self.nz + 1))
@@ -414,7 +433,7 @@ class QuantileGridPartitioner(BasePartitioner):
         # Élargir les bords extrêmes
         self._x_edges[0] -= eps
         self._x_edges[-1] += eps
-        self._y_edges[0] -= eps
+        self._y_edges[0] -= eps 
         self._y_edges[-1] += eps
         self._z_edges[0] -= eps
         self._z_edges[-1] += eps
@@ -483,6 +502,7 @@ class OctreePartitioner(BasePartitioner):
         return f"octree_mp{self.max_particles}_md{self.max_depth}"
 
     def fit(self, coordinates):
+        coordinates=np.asarray(coordinates)
         eps = 0.001
         self._bounds = (
             coordinates[:, 0].min() - eps,
@@ -625,6 +645,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
 
     def fit(self, coordinates):
         """Fit sur positions seules (équivalent Voronoï normalisé)."""
+        coordinates=np.asarray(coordinates)
         return self._fit_internal(coordinates)
 
     def fit_with_physics(self, positions, velocities):
