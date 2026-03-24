@@ -1,0 +1,6 @@
+{
+  "api_endpoint": "https://api-v1.zrok.io",
+  "default_frontend": "",
+  "headless": false,
+  "super_network": false
+}
