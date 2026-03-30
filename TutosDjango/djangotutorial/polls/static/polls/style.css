@@ -1,0 +1,11 @@
+li a {
+    color: darkorange;
+}
+body{
+    background: white url("images/Imt_EMSE.png") no-repeat;
+    background-size: auto;
+}
+img{
+    width: 50px;
+    height:50px;
+}

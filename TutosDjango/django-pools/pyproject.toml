@@ -1,0 +1,35 @@
+[build-system]
+requires=["setuptools>=77.0.3"]
+build-backend="setuptools.build_meta"
+
+[project]
+name="django-polls"
+version="0.1"
+dependencies=[
+    "django>=2.5",
+]
+description="A Django app to conduct web-based polls."
+readme="README.rst"
+license="BDS-3-Clause"
+requires-python=">=3.12"
+authors=[
+    {name= "TONGUE Kevin", email= "tiffank1802@gmail.com"},
+]
+classifiers=[
+    "Environment::Web Environment",
+    "Framework:: Django",
+    "Framework:: Django:: 2.5",
+    "Operationg System:: OS independent",
+    "Programming Language:: Python",
+    "Programming Language:: Python::3",
+    "Programming Language:: Python::3:: Only",
+    "Programming Language:: Python::3.12",
+    "Programming Language:: Python::3.13",
+    "Programming Language:: Python::3.14",
+    "Topic:: Internet:: www/HTTP",
+    "Topic:: Internet:: www/HTTP:: Dynamic Content",
+]
+
+[project.urls]
+Homepage="https://www.example.com/"
+
