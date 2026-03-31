@@ -26,22 +26,7 @@ import json
 from abc import ABC, abstractmethod
 
 __all__ = [
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+ 
     "BasePartitioner",
     "CartesianPartitioner",
     "CylindricalPartitioner",
@@ -49,6 +34,9 @@ __all__ = [
     "QuantileGridPartitioner",
     "OctreePartitioner",
     "PhysicsAwarePartitioner",
+    "adaptive",   
+    "multizone", 
+    "single",   
     "create_partitioner",
     "REGISTRY",
 ]
@@ -737,7 +725,424 @@ class PhysicsAwarePartitioner(BasePartitioner):
 
 
 # =============================================================================
-# FACTORY
+# 7. PARTITIONNEMENT ADAPTATIF HAUT/BAS
+# =============================================================================
+
+
+class AdaptiveZPartitioner(BasePartitioner):
+    """
+    Partitionnement adaptatif en z.
+    
+    Divise le domaine en deux zones:
+      - Zone haute (z > z_split): peu de cellules (grossier)
+      - Zone basse (z ≤ z_split): partitionnement fin
+    
+    Utile pour les mélangeurs où la partie haute est moins intéressante
+    (zone de chute libre, espace vide, etc.)
+    
+    Args:
+        z_split: altitude de séparation (ou quantile si z_split_mode="quantile")
+        z_split_mode: "absolute" ou "quantile" (ex: 0.7 = 70% des particules en dessous)
+        n_cells_top: nombre de cellules pour la zone haute (défaut=1)
+        bottom_method: méthode de partitionnement pour la zone basse
+        bottom_kwargs: arguments pour le partitionneur du bas
+    
+    Exemple:
+        # Zone haute = 1 cellule, zone basse = grille cylindrique fine
+        part = AdaptiveZPartitioner(
+            z_split_mode="quantile",
+            z_split=0.8,           # 80% des particules en bas
+            n_cells_top=1,
+            bottom_method="cylindrical",
+            bottom_kwargs={"nr": 5, "ntheta": 8, "nz": 10}
+        )
+    """
+    
+    def __init__(
+        self,
+        z_split: float = None,
+        z_split_mode: str = "quantile",  # "absolute" ou "quantile"
+        n_cells_top: int = 1,
+        top_method: str = "single",      # "single", "cartesian", "cylindrical"
+        top_kwargs: dict = None,
+        bottom_method: str = "cylindrical",
+        bottom_kwargs: dict = None,
+    ):
+        self.z_split_input = z_split
+        self.z_split_mode = z_split_mode
+        self.n_cells_top_target = n_cells_top
+        self.top_method = top_method
+        self.top_kwargs = top_kwargs or {}
+        self.bottom_method = bottom_method
+        self.bottom_kwargs = bottom_kwargs or {}
+        
+        # Calculés au fit
+        self._z_split = None
+        self._z_min = None
+        self._z_max = None
+        self._top_partitioner = None
+        self._bottom_partitioner = None
+        self._n_cells_top = None
+        self._n_cells_bottom = None
+    
+    @property
+    def n_cells(self):
+        if self._n_cells_top is None or self._n_cells_bottom is None:
+            return 0
+        return self._n_cells_top + self._n_cells_bottom
+    
+    @property
+    def n_cells_top(self):
+        return self._n_cells_top
+    
+    @property
+    def n_cells_bottom(self):
+        return self._n_cells_bottom
+    
+    @property
+    def label(self):
+        return (
+            f"adaptive_z_{self.bottom_method}"
+            f"_top{self._n_cells_top}_bot{self._n_cells_bottom}"
+        )
+    
+    def fit(self, coordinates: np.ndarray):
+        coordinates = np.asarray(coordinates)
+        z = coordinates[:, 2]
+        
+        self._z_min = z.min()
+        self._z_max = z.max()
+        
+        # ── Déterminer z_split ──
+        if self.z_split_mode == "quantile":
+            quantile = self.z_split_input if self.z_split_input else 0.7
+            self._z_split = np.quantile(z, quantile)
+        elif self.z_split_mode == "absolute":
+            if self.z_split_input is None:
+                # Par défaut : milieu
+                self._z_split = (self._z_min + self._z_max) / 2
+            else:
+                self._z_split = self.z_split_input
+        else:
+            raise ValueError(f"z_split_mode inconnu: {self.z_split_mode}")
+        
+        # ── Séparer les données ──
+        mask_bottom = z <= self._z_split
+        mask_top = z > self._z_split
+        
+        coords_bottom = coordinates[mask_bottom]
+        coords_top = coordinates[mask_top]
+        
+        n_bottom = len(coords_bottom)
+        n_top = len(coords_top)
+        
+        print(f"   📊 Split z = {self._z_split:.4f}")
+        print(f"      Zone basse: {n_bottom} particules ({100*n_bottom/(n_bottom+n_top):.1f}%)")
+        print(f"      Zone haute: {n_top} particules ({100*n_top/(n_bottom+n_top):.1f}%)")
+        
+        # ── Fit zone basse ──
+        self._bottom_partitioner = create_partitioner(
+            self.bottom_method, **self.bottom_kwargs
+        )
+        if len(coords_bottom) > 0:
+            self._bottom_partitioner.fit(coords_bottom)
+        self._n_cells_bottom = self._bottom_partitioner.n_cells
+        
+        # ── Fit zone haute ──
+        if self.top_method == "single":
+            # Une seule cellule pour toute la zone haute
+            self._top_partitioner = None
+            self._n_cells_top = 1
+        else:
+            self._top_partitioner = create_partitioner(
+                self.top_method, **self.top_kwargs
+            )
+            if len(coords_top) > 0:
+                self._top_partitioner.fit(coords_top)
+            self._n_cells_top = self._top_partitioner.n_cells
+        
+        print(f"      Cellules bas: {self._n_cells_bottom}, haut: {self._n_cells_top}")
+        print(f"      Total: {self.n_cells} cellules")
+        
+        return self
+    
+    def compute_states(self, x, y, z):
+        x = np.asarray(x, dtype=np.float64)
+        y = np.asarray(y, dtype=np.float64)
+        z = np.asarray(z, dtype=np.float64)
+        
+        n = len(x)
+        states = np.zeros(n, dtype=np.int64)
+        
+        mask_bottom = z <= self._z_split
+        mask_top = ~mask_bottom
+        
+        # ── Zone basse : états 0 à n_cells_bottom-1 ──
+        if mask_bottom.any():
+            states[mask_bottom] = self._bottom_partitioner.compute_states(
+                x[mask_bottom], y[mask_bottom], z[mask_bottom]
+            )
+        
+        # ── Zone haute : états n_cells_bottom à n_cells-1 ──
+        if mask_top.any():
+            if self._top_partitioner is None:
+                # Une seule cellule
+                states[mask_top] = self._n_cells_bottom
+            else:
+                top_states = self._top_partitioner.compute_states(
+                    x[mask_top], y[mask_top], z[mask_top]
+                )
+                states[mask_top] = top_states + self._n_cells_bottom
+        
+        return states
+    
+    def _save_data(self, path):
+        params = {
+            "z_split": self._z_split,
+            "z_min": self._z_min,
+            "z_max": self._z_max,
+            "n_cells_top": self._n_cells_top,
+            "n_cells_bottom": self._n_cells_bottom,
+            "top_method": self.top_method,
+            "bottom_method": self.bottom_method,
+            "top_kwargs": self.top_kwargs,
+            "bottom_kwargs": self.bottom_kwargs,
+        }
+        with open(os.path.join(path, "adaptive_params.json"), "w") as f:
+            json.dump(params, f, indent=2)
+        
+        # Sauvegarder les sous-partitionneurs
+        bottom_path = os.path.join(path, "bottom")
+        self._bottom_partitioner.save(bottom_path)
+        
+        if self._top_partitioner is not None:
+            top_path = os.path.join(path, "top")
+            self._top_partitioner.save(top_path)
+    
+    def _load_data(self, path):
+        with open(os.path.join(path, "adaptive_params.json")) as f:
+            params = json.load(f)
+        
+        self._z_split = params["z_split"]
+        self._z_min = params["z_min"]
+        self._z_max = params["z_max"]
+        self._n_cells_top = params["n_cells_top"]
+        self._n_cells_bottom = params["n_cells_bottom"]
+        self.top_method = params["top_method"]
+        self.bottom_method = params["bottom_method"]
+        self.top_kwargs = params.get("top_kwargs", {})
+        self.bottom_kwargs = params.get("bottom_kwargs", {})
+        
+        # Charger le partitionneur du bas
+        bottom_path = os.path.join(path, "bottom")
+        self._bottom_partitioner = create_partitioner(
+            self.bottom_method, **self.bottom_kwargs
+        )
+        self._bottom_partitioner.load(bottom_path)
+        
+        # Charger le partitionneur du haut (si existe)
+        top_path = os.path.join(path, "top")
+        if self.top_method != "single" and os.path.exists(top_path):
+            self._top_partitioner = create_partitioner(
+                self.top_method, **self.top_kwargs
+            )
+            self._top_partitioner.load(top_path)
+        else:
+            self._top_partitioner = None
+    
+    def diagnostics(self, coordinates):
+        """Diagnostics étendus avec stats par zone."""
+        base_diag = super().diagnostics(coordinates)
+        
+        z = coordinates[:, 2]
+        mask_bottom = z <= self._z_split
+        
+        # Stats zone basse
+        if mask_bottom.any():
+            bottom_diag = self._bottom_partitioner.diagnostics(
+                coordinates[mask_bottom]
+            )
+        else:
+            bottom_diag = {}
+        
+        base_diag["bottom_stats"] = bottom_diag
+        base_diag["z_split"] = self._z_split
+        base_diag["fraction_in_bottom"] = float(mask_bottom.mean())
+        
+        return base_diag
+
+
+# =============================================================================
+# 8. PARTITIONNEMENT MULTI-ZONES (généralisation)
+# =============================================================================
+
+
+class MultiZonePartitioner(BasePartitioner):
+    """
+    Partitionnement multi-zones généralisé.
+    
+    Permet de définir plusieurs zones avec des partitionnements différents.
+    Plus flexible que AdaptiveZPartitioner.
+    
+    Args:
+        zones: liste de dicts définissant chaque zone
+            [
+                {"z_min": -inf, "z_max": 0.5, "method": "cylindrical", "kwargs": {...}},
+                {"z_min": 0.5, "z_max": 0.8, "method": "voronoi", "kwargs": {"n_cells": 50}},
+                {"z_min": 0.8, "z_max": inf, "method": "single", "kwargs": {}},
+            ]
+        z_mode: "absolute" ou "quantile"
+    """
+    
+    def __init__(self, zones: list, z_mode: str = "absolute"):
+        self.zones_config = zones
+        self.z_mode = z_mode
+        self._zones = []  # [(z_min, z_max, partitioner), ...]
+        self._cell_offsets = []
+        self._total_cells = 0
+    
+    @property
+    def n_cells(self):
+        return self._total_cells
+    
+    @property
+    def label(self):
+        methods = "_".join(z["method"] for z in self.zones_config)
+        return f"multizone_{len(self.zones_config)}zones_{methods}"
+    
+    def fit(self, coordinates):
+        coordinates = np.asarray(coordinates)
+        z = coordinates[:, 2]
+        
+        self._zones = []
+        self._cell_offsets = [0]
+        
+        for i, zone_cfg in enumerate(self.zones_config):
+            # Convertir les bornes si mode quantile
+            if self.z_mode == "quantile":
+                z_min = np.quantile(z, zone_cfg.get("z_min", 0))
+                z_max = np.quantile(z, zone_cfg.get("z_max", 1))
+            else:
+                z_min = zone_cfg.get("z_min", z.min())
+                z_max = zone_cfg.get("z_max", z.max())
+            
+            # Sélectionner les particules de cette zone
+            mask = (z >= z_min) & (z < z_max)
+            if i == len(self.zones_config) - 1:
+                mask = (z >= z_min) & (z <= z_max)  # inclure le max pour la dernière
+            
+            coords_zone = coordinates[mask]
+            
+            method = zone_cfg.get("method", "single")
+            kwargs = zone_cfg.get("kwargs", {})
+            
+            if method == "single":
+                partitioner = SingleCellPartitioner()
+            else:
+                partitioner = create_partitioner(method, **kwargs)
+            
+            if len(coords_zone) > 0:
+                partitioner.fit(coords_zone)
+            
+            self._zones.append((z_min, z_max, partitioner))
+            self._cell_offsets.append(
+                self._cell_offsets[-1] + partitioner.n_cells
+            )
+            
+            print(f"   Zone {i}: z ∈ [{z_min:.3f}, {z_max:.3f}], "
+                  f"{partitioner.n_cells} cellules, {len(coords_zone)} particules")
+        
+        self._total_cells = self._cell_offsets[-1]
+        print(f"   Total: {self._total_cells} cellules")
+        
+        return self
+    
+    def compute_states(self, x, y, z):
+        x = np.asarray(x, dtype=np.float64)
+        y = np.asarray(y, dtype=np.float64)
+        z = np.asarray(z, dtype=np.float64)
+        
+        n = len(x)
+        states = np.zeros(n, dtype=np.int64)
+        assigned = np.zeros(n, dtype=bool)
+        
+        for i, (z_min, z_max, partitioner) in enumerate(self._zones):
+            if i == len(self._zones) - 1:
+                mask = (z >= z_min) & (z <= z_max) & ~assigned
+            else:
+                mask = (z >= z_min) & (z < z_max) & ~assigned
+            
+            if mask.any():
+                zone_states = partitioner.compute_states(
+                    x[mask], y[mask], z[mask]
+                )
+                states[mask] = zone_states + self._cell_offsets[i]
+                assigned[mask] = True
+        
+        return states
+    
+    def _save_data(self, path):
+        config = {
+            "zones_config": self.zones_config,
+            "z_mode": self.z_mode,
+            "cell_offsets": self._cell_offsets,
+            "zones_bounds": [(z_min, z_max) for z_min, z_max, _ in self._zones],
+        }
+        with open(os.path.join(path, "multizone_config.json"), "w") as f:
+            json.dump(config, f, indent=2)
+        
+        for i, (_, _, partitioner) in enumerate(self._zones):
+            zone_path = os.path.join(path, f"zone_{i}")
+            partitioner.save(zone_path)
+    
+    def _load_data(self, path):
+        with open(os.path.join(path, "multizone_config.json")) as f:
+            config = json.load(f)
+        
+        self.zones_config = config["zones_config"]
+        self.z_mode = config["z_mode"]
+        self._cell_offsets = config["cell_offsets"]
+        self._total_cells = self._cell_offsets[-1]
+        
+        self._zones = []
+        for i, (zone_cfg, bounds) in enumerate(
+            zip(self.zones_config, config["zones_bounds"])
+        ):
+            z_min, z_max = bounds
+            method = zone_cfg.get("method", "single")
+            kwargs = zone_cfg.get("kwargs", {})
+            
+            if method == "single":
+                partitioner = SingleCellPartitioner()
+            else:
+                partitioner = create_partitioner(method, **kwargs)
+            
+            zone_path = os.path.join(path, f"zone_{i}")
+            partitioner.load(zone_path)
+            
+            self._zones.append((z_min, z_max, partitioner))
+
+
+class SingleCellPartitioner(BasePartitioner):
+    """Une seule cellule pour tout le domaine."""
+    
+    @property
+    def n_cells(self):
+        return 1
+    
+    @property
+    def label(self):
+        return "single_cell"
+    
+    def fit(self, coordinates):
+        return self
+    
+    def compute_states(self, x, y, z):
+        return np.zeros(len(np.asarray(x)), dtype=np.int64)
+
+
+# =============================================================================
+# MISE À JOUR DU REGISTRY
 # =============================================================================
 
 REGISTRY = {
@@ -747,7 +1152,24 @@ REGISTRY = {
     "quantile": QuantileGridPartitioner,
     "octree": OctreePartitioner,
     "physics": PhysicsAwarePartitioner,
+    "adaptive": AdaptiveZPartitioner,      # ← nouveau
+    "multizone": MultiZonePartitioner,     # ← nouveau
+    "single": SingleCellPartitioner,       # ← nouveau
 }
+
+
+# =============================================================================
+# FACTORY
+# =============================================================================
+
+# REGISTRY = {
+#     "cartesian": CartesianPartitioner,
+#     "cylindrical": CylindricalPartitioner,
+#     "voronoi": VoronoiPartitioner,
+#     "quantile": QuantileGridPartitioner,
+#     "octree": OctreePartitioner,
+#     "physics": PhysicsAwarePartitioner,
+# }
 
 
 def create_partitioner(method:str, **kwargs)-> BasePartitioner:

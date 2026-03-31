@@ -5,3 +5,7 @@ l'approche actuelle qui consiste à determiner la matrice de transition à parti
 Une stratégie consiste à rafiner la discretisation temporelle pour capturer au mieux les particules qui pourraient se déplacer vers ces partions. on avance pas de temps dt sur un steptime qui permet de capturer au mieux la cinétique des particules
 
 Une autre stratégie consiste à remailler le mélangeur : on attribue à toutes les partitions de la partie haute dont les particules sont peu suceptibles d'y parvenir à une seule grande partiton et on partitionne plus finement la partie basse du mélangeur.
+
+Nous constatons que le raffinage temporel n'a pas beaucoup d'effets sur la validation de la condtionn d'homogénéisation
+
+je comprends que lors du calcul avec torch,le changement torch pour une autre librairie cause des grâves problèmes de performance
