@@ -803,7 +803,7 @@ class AdaptiveZPartitioner(BasePartitioner):
     def label(self):
         return (
             f"adaptive_z_{self.bottom_method}"
-            f"_top{self._n_cells_top}_bot{self._n_cells_bottom}"
+            f"_top{self._n_cells_top}_bot{self._n_cells_bottom}_split{self._z_split}_n_bot{self.n_cells_bottom}_n_top{self.n_cells_top}"
         )
     
     def fit(self, coordinates: np.ndarray):

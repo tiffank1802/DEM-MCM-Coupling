@@ -36,7 +36,8 @@ from bucket_io import save_experiment_to_bucket, BUCKET_BASE
 # CONFIGURATION GÉNÉRALE
 # =============================================================================
 
-BASE_OUTPUT_DIR = "NewResultsMCM"
+# BASE_OUTPUT_DIR = "NewResultsMCM"
+BASE_OUTPUT_DIR = "ResultsDtMCM"
 HF_FOLDER = "hf://buckets/ktongue/DEM_MCM/Output Paraview"
 SAMPLE_RATE = 50  # pour le fit des partitionneurs
 
@@ -62,14 +63,18 @@ class ExperimentConfig:
             self.method_kwargs = {}
         if self.dt is None:
             # Par défaut: 1/10 du step_size, minimum 1
-            self.dt = min(1, self.step_size // 10)     
+            # self.dt = min(1, self.step_size // 10)    
+            self.dt=.1 
             
-    def output_folder(self, base_dir=BASE_OUTPUT_DIR):
+    def output_folder(self, base_dir=BASE_OUTPUT_DIR,sample_coords=None):
         part = create_partitioner(self.method, **self.method_kwargs)
+        if sample_coords is not None:
+            part.fit(sample_coords)
         return os.path.join(
             base_dir,
-            f"{part.label}_NLT{self.nlt}_step{self.step_size}_start{self.start_index}",
+            f"{part.label}_NLT{self.nlt}_step{self.step_size}_start{self.start_index}_dt{self.dt}",
         )
+   
 
 
 # =============================================================================
@@ -524,7 +529,7 @@ def get_configs(method):
         )
 
     # ── Sweep dt ─────────────────────────────────────────────────────────
-    for dt in [.01, .05, 10, .25, .50]:
+    for dt in [.01, .05, .10, .25, .50]:
         configs.append(
             ExperimentConfig(
                 method=method,
@@ -770,7 +775,7 @@ def run_experiment(config, partitioner, files, fs, device):
     last_needed = config.start_index + (config.nlt - 1) * dt + step
 
     if last_needed >= len(files):
-        max_nlt = (len(files) - 1 - config.start_index - 2*step) // dt + 1
+        max_nlt = (len(files) - 1 - config.start_index - 1*step) // dt + 1
         max_nlt = max(max_nlt, 0)
         print(
             f"   ⚠️  Seulement {max_nlt} paires possibles "
@@ -795,7 +800,7 @@ def run_experiment(config, partitioner, files, fs, device):
     #
     pairs: list[tuple[int, int]] = []
     for k in range(actual_nlt):
-        idx_prev = config.start_index + k * dt
+        idx_prev = config.start_index + k 
         idx_curr = idx_prev + step
         pairs.append((idx_prev, idx_curr))
 
@@ -803,7 +808,7 @@ def run_experiment(config, partitioner, files, fs, device):
     ratio = dt / step
     if ratio < 1:
         overlap_pct = round((1 - ratio) * 100, 1)
-        n_paires_par_step = step // dt
+        n_paires_par_step = int(step / dt)
         print(f"   🔄 Recouvrement: {overlap_pct}% "
               f"({n_paires_par_step} paires par intervalle de step_size)")
     elif ratio == 1:
@@ -815,8 +820,8 @@ def run_experiment(config, partitioner, files, fs, device):
     plage_temporelle = pairs[-1][1] - pairs[0][0]
     print(
         f"   📐 {actual_nlt} paires | step={step} | dt={dt}\n"
-        f"   📂 Paire 0:   files[{pairs[0][0]:5d}] → files[{pairs[0][1]:5d}]\n"
-        f"   📂 Paire {actual_nlt-1}:  files[{pairs[-1][0]:5d}] → files[{pairs[-1][1]:5d}]\n"
+        f"   📂 Paire 0:   files[{int(pairs[0][0]):5d}] → files[{int(pairs[0][1]):5d}]\n"
+        f"   📂 Paire {actual_nlt-1}:  files[{int(pairs[-1][0]):5d}] → files[{int(pairs[-1][1]):5d}]\n"
         f"   📏 Plage temporelle couverte: {plage_temporelle} fichiers"
     )
 
@@ -923,7 +928,7 @@ def save_results(config, partitioner, P, stats, output_dir):
 # =============================================================================
 
 
-def run_markov_sweep(method:str, configs:list[ExperimentConfig]=None, base_dir=BASE_OUTPUT_DIR)-> list:
+def run_markov_sweep(method:str, configs:list[ExperimentConfig]=None, base_dir=BASE_OUTPUT_DIR)-> list[dict]:
     """
     Lance le sweep Markovien pour une méthode de partitionnement.
 
@@ -976,6 +981,7 @@ def run_markov_sweep(method:str, configs:list[ExperimentConfig]=None, base_dir=B
     print("-" * 70)
     for i, c in enumerate(all_configs):
         part = create_partitioner(c.method, **c.method_kwargs)
+        part.fit(sample_coords)
         print(
             f"  {i + 1:3d}. [{c.method:12s}] {part.label:40s} "
             f"NLT={c.nlt:4d} step={c.step_size:2d} start={c.start_index}"
@@ -988,7 +994,10 @@ def run_markov_sweep(method:str, configs:list[ExperimentConfig]=None, base_dir=B
     # ── Boucle principale ──
     results = []
     for i, config in enumerate(all_configs):
-        output_dir = config.output_folder(base_dir)
+        if config.method=="adaptive" or config.method=="multizone":
+            output_dir=config.output_folder(base_dir=base_dir,sample_coords=sample_coords)
+        else :
+            output_dir = config.output_folder(base_dir)
         print(f"\n[{i + 1}/{len(all_configs)}] {os.path.basename(output_dir)}")
 
         try:
