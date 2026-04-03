@@ -101,7 +101,7 @@ def get_configs(method):
     # ══════════════════════════════════════════════════════════════════════
 
     if method == "cartesian":
-        for n in [2, 3, 5, 7, 10, 12, 15, 18, 20]:
+        for n in [2, 3, 4, 5]:
             configs.append(
                 ExperimentConfig(
                     method="cartesian",
@@ -111,34 +111,34 @@ def get_configs(method):
 
     elif method == "cylindrical":
         # nr variable (axisymétrique pur)
-        for nr in [3, 5, 8, 10, 15, 20]:
+        for nr in [3, 4, 5, 6]:
             configs.append(
                 ExperimentConfig(
                     method="cylindrical",
                     method_kwargs={
-                        "nr": nr, "ntheta": 1, "nz": 5,
+                        "nr": nr, "ntheta": 1, "nz": 1,
                         "radial_mode": "equal_area",
                     },
                 )
             )
         # ntheta variable
-        for nth in [1, 4, 8, 12, 16]:
+        for nth in [1, 2, 3, 4]:
             configs.append(
                 ExperimentConfig(
                     method="cylindrical",
                     method_kwargs={
-                        "nr": 5, "ntheta": nth, "nz": 5,
+                        "nr": 2, "ntheta": nth, "nz": 1,
                         "radial_mode": "equal_area",
                     },
                 )
             )
         # nz variable
-        for nz in [3, 5, 8, 10, 15]:
+        for nz in [1,2]:
             configs.append(
                 ExperimentConfig(
                     method="cylindrical",
                     method_kwargs={
-                        "nr": 5, "ntheta": 8, "nz": nz,
+                        "nr": 2, "ntheta": 2, "nz": nz,
                         "radial_mode": "equal_area",
                     },
                 )
@@ -149,14 +149,14 @@ def get_configs(method):
                 ExperimentConfig(
                     method="cylindrical",
                     method_kwargs={
-                        "nr": 10, "ntheta": 8, "nz": 10,
+                        "nr": 2, "ntheta": 2, "nz": 1,
                         "radial_mode": mode,
                     },
                 )
             )
 
     elif method == "voronoi":
-        for nc in [8, 27, 64, 125, 216, 343, 512, 1000, 2000, 4000]:
+        for nc in [8,10,12,14,16,18,20,24, 27,30, 64, 100]:
             configs.append(
                 ExperimentConfig(
                     method="voronoi",
@@ -165,17 +165,17 @@ def get_configs(method):
             )
 
     elif method == "quantile":
-        for n in [2, 3, 5, 7, 10, 12, 15, 18, 20]:
+        for n in [2, 3, 4, 5, 6, 7, 8, 9, 10]:
             configs.append(
                 ExperimentConfig(
                     method="quantile",
-                    method_kwargs={"nx": n, "ny": n, "nz": n},
+                    method_kwargs={"nx": n, "ny": n, "nz": 1},
                 )
             )
 
     elif method == "octree":
         # max_particles variable
-        for mp in [20, 50, 100, 200, 500, 1000]:
+        for mp in [2, 4, 8, 16, 32, 64, 100]:
             configs.append(
                 ExperimentConfig(
                     method="octree",
@@ -192,7 +192,7 @@ def get_configs(method):
             )
 
     elif method == "physics":
-        for nc in [27, 64, 125, 216, 512]:
+        for nc in [2, 4, 8, 16, 32, 64, 100]:
             configs.append(
                 ExperimentConfig(
                     method="physics",
@@ -214,7 +214,7 @@ def get_configs(method):
                         "top_kwargs": {},
                         "bottom_method": "cylindrical",
                         "bottom_kwargs": {
-                            "nr": 5, "ntheta": 8, "nz": 1,
+                            "nr": 2, "ntheta": 2, "nz": 1,
                             "radial_mode": "equal_area",
                         },
                     },
@@ -234,7 +234,7 @@ def get_configs(method):
                         "top_kwargs": {},
                         "bottom_method": "cylindrical",
                         "bottom_kwargs": {
-                            "nr": nr, "ntheta": 8, "nz": 8,
+                            "nr": nr, "ntheta": 2, "nz": 1,
                             "radial_mode": "equal_area",
                         },
                     },
@@ -254,7 +254,7 @@ def get_configs(method):
                         "top_kwargs": {},
                         "bottom_method": "cylindrical",
                         "bottom_kwargs": {
-                            "nr": 5, "ntheta": 8, "nz": nz,
+                            "nr": 2, "ntheta": 2, "nz": nz,
                             "radial_mode": "equal_area",
                         },
                     },
@@ -274,7 +274,7 @@ def get_configs(method):
                         "top_kwargs": {},
                         "bottom_method": "cylindrical",
                         "bottom_kwargs": {
-                            "nr": 5, "ntheta": nth, "nz": 8,
+                            "nr": 2, "ntheta": nth, "nz": 1,
                             "radial_mode": "equal_area",
                         },
                     },
@@ -299,7 +299,7 @@ def get_configs(method):
                         "top_kwargs": top_kwargs,
                         "bottom_method": "cylindrical",
                         "bottom_kwargs": {
-                            "nr": 5, "ntheta": 8, "nz": 8,
+                            "nr": 2, "ntheta": 2, "nz": 1,
                             "radial_mode": "equal_area",
                         },
                     },
@@ -335,7 +335,7 @@ def get_configs(method):
                             "z_min": 0.0, "z_max": 0.8,
                             "method": "cylindrical",
                             "kwargs": {
-                                "nr": 5, "ntheta": 8, "nz": 10,
+                                "nr": 2, "ntheta": 2, "nz": 1,
                                 "radial_mode": "equal_area",
                             },
                         },
@@ -361,7 +361,7 @@ def get_configs(method):
                                 "z_min": 0.0, "z_max": split1,
                                 "method": "cylindrical",
                                 "kwargs": {
-                                    "nr": 6, "ntheta": 12, "nz": 8,
+                                    "nr": 2, "ntheta": 2, "nz": 1,
                                     "radial_mode": "equal_area",
                                 },
                             },
@@ -369,7 +369,7 @@ def get_configs(method):
                                 "z_min": split1, "z_max": split2,
                                 "method": "cylindrical",
                                 "kwargs": {
-                                    "nr": 3, "ntheta": 6, "nz": 4,
+                                    "nr": 2, "ntheta": 2, "nz": 1,
                                     "radial_mode": "equal_area",
                                 },
                             },
@@ -384,7 +384,7 @@ def get_configs(method):
             )
 
         # ── 3 zones avec Voronoï en bas ──────────────────────────────
-        for nc_bottom in [125, 250, 500]:
+        for nc_bottom in [2, 4, 8, 16, 32, 64]:
             configs.append(
                 ExperimentConfig(
                     method="multizone",
@@ -400,7 +400,7 @@ def get_configs(method):
                                 "z_min": 0.6, "z_max": 0.85,
                                 "method": "cylindrical",
                                 "kwargs": {
-                                    "nr": 3, "ntheta": 6, "nz": 4,
+                                    "nr": 2, "ntheta": 2, "nz": 1,
                                     "radial_mode": "equal_area",
                                 },
                             },
@@ -570,7 +570,7 @@ def _get_default_kwargs(method):
             "top_kwargs": {},
             "bottom_method": "cylindrical",
             "bottom_kwargs": {
-                "nr": 5, "ntheta": 8, "nz": 8,
+                "nr": 2, "ntheta": 2, "nz": 1,
                 "radial_mode": "equal_area",
             },
         },
@@ -581,7 +581,7 @@ def _get_default_kwargs(method):
                     "z_min": 0.0, "z_max": 0.75,
                     "method": "cylindrical",
                     "kwargs": {
-                        "nr": 5, "ntheta": 8, "nz": 8,
+                        "nr": 2, "ntheta": 2, "nz": 1,
                         "radial_mode": "equal_area",
                     },
                 },

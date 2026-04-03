@@ -1,0 +1,22 @@
+# DEM_MCM Project Requirements
+# Markovian transition matrix computation and visualization
+
+# Core numerical computing
+numpy>=1.21.0
+scipy>=1.7.0
+
+# Data processing
+polars>=0.14.0
+
+# Machine learning
+torch>=1.9.0
+scikit-learn>=1.0.0
+
+# Visualization
+matplotlib>=3.4.0
+
+# Data management and bucket operations
+huggingface-hub>=0.4.0
+
+# Progress bars
+tqdm>=4.60.0
