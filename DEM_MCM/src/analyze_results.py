@@ -31,11 +31,13 @@ from huggingface_hub import HfFileSystem
 # =============================================================================
 
 BUCKET_ID = "ktongue/DEM_MCM"
-BUCKET_PREFIX = "markov_results"
+# BUCKET_PREFIX = "markov_results"
+BUCKET_PREFIX = "ResultsDtMCM"
 BUCKET_BASE = f"hf://buckets/{BUCKET_ID}/{BUCKET_PREFIX}"
 
 # Anciennes données cartésiennes (dossier séparé)
-OLD_BUCKET_PREFIX = "markov_sweep_results"
+# OLD_BUCKET_PREFIX = "markov_sweep_results"
+OLD_BUCKET_PREFIX = "NewResultsMCM"
 OLD_BUCKET_BASE = f"hf://buckets/{BUCKET_ID}/{OLD_BUCKET_PREFIX}"
 
 # Méthodes connues et leurs préfixes
