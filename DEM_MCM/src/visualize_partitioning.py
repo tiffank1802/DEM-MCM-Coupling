@@ -27,7 +27,7 @@ import polars as pl
 from huggingface_hub import HfFileSystem
 
 # Import des partitionneurs
-from partitioners import (
+from .partitioners import (
     create_partitioner,
     CartesianPartitioner,
     CylindricalPartitioner,

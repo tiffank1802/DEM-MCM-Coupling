@@ -1,0 +1,44 @@
+[
+  {
+    "config": {
+      "method": "cylindrical",
+      "method_kwargs": {
+        "nr": 3,
+        "ntheta": 3,
+        "nz": 1
+      },
+      "nlt": 250,
+      "dt": 0.01,
+      "step_size": 1,
+      "start_index": 250
+    },
+    "stats": {
+      "n_timesteps_used": 250,
+      "n_states": 9,
+      "n_states_visited": 9,
+      "n_states_empty": 0,
+      "fraction_visited": 1.0,
+      "column_sum_min": 0.9999999995920806,
+      "column_sum_max": 1.0000000075846909,
+      "column_sum_mean": 1.0000000025667248,
+      "diagonal_mean": 0.7575214598973591,
+      "diagonal_std": 0.062086519188006915,
+      "method": "cylindrical",
+      "step_size": 1,
+      "dt": 0.01,
+      "overlap_ratio": 0.99,
+      "n_paires_par_step": 99.0,
+      "plage_temporelle": 250,
+      "start_index": 250,
+      "first_pair": [
+        250,
+        251
+      ],
+      "last_pair": [
+        499,
+        500
+      ]
+    },
+    "success": true
+  }
+]
