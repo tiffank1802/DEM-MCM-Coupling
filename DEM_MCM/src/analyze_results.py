@@ -25,7 +25,7 @@ import json
 import io
 from collections import defaultdict
 from huggingface_hub import HfFileSystem
-
+import src.bucket_io as b_io
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -37,9 +37,14 @@ BUCKET_BASE = f"hf://buckets/{BUCKET_ID}/{BUCKET_PREFIX}"
 
 # Anciennes données cartésiennes (dossier séparé)
 # OLD_BUCKET_PREFIX = "markov_sweep_results"
-OLD_BUCKET_PREFIX = "NewResultsMCM"
+# OLD_BUCKET_PREFIX = "NewResultsMCM"
+OLD_BUCKET_PREFIX = BUCKET_PREFIX
 OLD_BUCKET_BASE = f"hf://buckets/{BUCKET_ID}/{OLD_BUCKET_PREFIX}"
 
+
+BUCKET_ID=b_io.BUCKET_ID
+BUCKET_PREFIX=b_io.BUCKET_PREFIX
+BUCKET_BASE=b_io.BUCKET_BASE
 # Méthodes connues et leurs préfixes
 METHOD_PREFIXES = {
     "cartesian": ["cartesian_", "NLT_"],   # NLT_ = ancien format cartésien
@@ -344,7 +349,7 @@ class MarkovAnalyzer:
         for name, data in self.results.items():
             M = data["matrix"]
             diag = np.diag(M)
-            row_sums = M.sum(axis=1)
+            row_sums = M.sum(axis=0)
             visited = row_sums > 0
             
             rows.append({
@@ -376,10 +381,10 @@ class MarkovAnalyzer:
         for r in rows:
             if r["method"] != current_method:
                 current_method = r["method"]
-                print(f"{'─'*12}─┼{'─'*42}┼{'─'*8}┼{'─'*7}┼{'─'*6}┼{'─'*10}┼{'─'*14}")
+                print(f"{'─'*12}─┼{'─'*52}┼{'─'*8}┼{'─'*7}┼{'─'*6}┼{'─'*10}┼{'─'*14}")
             
             nlt_str = str(r["nlt"]) if r["nlt"] else "?"
-            print(f"{r['method']:>12s} | {r['name'][:40]:40s} | {r['n_states']:6d} | "
+            print(f"{r['method']:>12s} | {r['name'][:50]:50s} | {r['n_states']:6d} | "
                   f"{r['n_visited']:5d} | {nlt_str:>4s} | {r['diag_mean']:8.4f} | "
                   f"[{r['row_sum_min']:.3f}, {r['row_sum_max']:.3f}]")
     

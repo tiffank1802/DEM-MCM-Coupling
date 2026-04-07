@@ -27,8 +27,8 @@ from huggingface_hub import HfFileSystem
 
 # from partitioners import create_partitioner, REGISTRY
 # from bucket_io import save_experiment_to_bucket, BUCKET_BASE
-from partitioners import create_partitioner, REGISTRY
-from bucket_io import save_experiment_to_bucket, BUCKET_BASE
+from .partitioners import create_partitioner, REGISTRY
+from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
 
 
 
@@ -54,7 +54,7 @@ class ExperimentConfig:
     method: str = "cartesian"
     method_kwargs: dict = field(default_factory=dict) # type par defaut de la (dict vide) lors de l'instanciation de la classe ExperimentConfig sans passage explicite de method_kwargs
     nlt: int = 100
-    dt:int=None
+    dt:float=None
     step_size: int = 1 # pas de temps d'apprentissage telque le temps d'apprentissage soit T=nlt*step_size
     start_index: int = 250 # début de l'apprentissage
 

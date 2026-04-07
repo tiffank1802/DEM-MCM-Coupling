@@ -1,0 +1,44 @@
+[
+  {
+    "config": {
+      "method": "cartesian",
+      "method_kwargs": {
+        "nx": 2,
+        "ny": 2,
+        "nz": 1
+      },
+      "nlt": 100,
+      "dt": 0.01,
+      "step_size": 1,
+      "start_index": 250
+    },
+    "stats": {
+      "n_timesteps_used": 100,
+      "n_states": 4,
+      "n_states_visited": 3,
+      "n_states_empty": 1,
+      "fraction_visited": 0.75,
+      "column_sum_min": 0.9989348850492388,
+      "column_sum_max": 0.9999999971059151,
+      "column_sum_mean": 0.9996236539756259,
+      "diagonal_mean": 0.7508704834897072,
+      "diagonal_std": 0.1724928214275264,
+      "method": "cartesian",
+      "step_size": 1,
+      "dt": 0.01,
+      "overlap_ratio": 0.99,
+      "n_paires_par_step": 99.0,
+      "plage_temporelle": 100,
+      "start_index": 250,
+      "first_pair": [
+        250,
+        251
+      ],
+      "last_pair": [
+        349,
+        350
+      ]
+    },
+    "success": true
+  }
+]
