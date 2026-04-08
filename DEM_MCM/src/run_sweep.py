@@ -214,7 +214,7 @@ def get_configs(method):
                         "top_kwargs": {},
                         "bottom_method": "cylindrical",
                         "bottom_kwargs": {
-                            "nr": 2, "ntheta": 2, "nz": 1,
+                            "nr": 3, "ntheta": 3, "nz": 1,
                             "radial_mode": "equal_area",
                         },
                     },
