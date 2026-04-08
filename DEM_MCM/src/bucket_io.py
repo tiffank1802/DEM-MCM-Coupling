@@ -15,8 +15,8 @@ from huggingface_hub import HfApi, HfFileSystem
 
 # Configuration
 BUCKET_ID = "ktongue/DEM_MCM"
-BUCKET_PREFIX = "ResultsDtMCM"
-# BUCKET_PREFIX = "NewResultsMCM"
+# BUCKET_PREFIX = "ResultsDtMCM"
+BUCKET_PREFIX = "NewResultsMCM"
 BUCKET_BASE = f"hf://buckets/{BUCKET_ID}/{BUCKET_PREFIX}"
 
 _fs = None

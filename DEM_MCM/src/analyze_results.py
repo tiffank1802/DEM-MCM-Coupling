@@ -30,10 +30,13 @@ import src.bucket_io as b_io
 # CONFIGURATION
 # =============================================================================
 
-BUCKET_ID = "ktongue/DEM_MCM"
+# BUCKET_ID = "ktongue/DEM_MCM"
 # BUCKET_PREFIX = "markov_results"
-BUCKET_PREFIX = "ResultsDtMCM"
-BUCKET_BASE = f"hf://buckets/{BUCKET_ID}/{BUCKET_PREFIX}"
+# BUCKET_PREFIX = "ResultsDtMCM"
+# BUCKET_PREFIX = "ResultsDtMCM"
+BUCKET_ID = b_io.BUCKET_ID
+BUCKET_PREFIX = b_io.BUCKET_PREFIX
+BUCKET_BASE = b_io.BUCKET_BASE
 
 # Anciennes données cartésiennes (dossier séparé)
 # OLD_BUCKET_PREFIX = "markov_sweep_results"
@@ -53,6 +56,9 @@ METHOD_PREFIXES = {
     "quantile": ["quantile_"],
     "octree": ["octree_"],
     "physics": ["physics_"],
+    "adaptive":["adaptive_"],
+    "mutlizone":["multizone_"],
+    "single":["single_"],
 }
 
 # Couleurs par méthode
@@ -63,6 +69,9 @@ METHOD_COLORS = {
     "quantile": "#d62728",
     "octree": "#9467bd",
     "physics": "#8c564b",
+    "adaptive":"#af6c3c",
+    "multizone":"#4b5d4c",
+    "single":"#2b3e4ba8",
     "unknown": "#7f7f7f",
 }
 
@@ -2056,6 +2065,258 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
             ctx.strokeStyle = "#000";
             ctx.lineWidth = 1.5;
             ctx.stroke();
+        }})();
+        </script>
+        """
+        return HTML(html)
+    
+    
+    def show_adaptive_z_cylindrical_profile(
+        self,
+        nr=4,
+        ntheta=6,
+        zsplit=0.7,
+        radial_mode="equal_area",
+        n_cells_top=1,
+        size=620,
+    ):
+        """
+        Vue de profil du mélangeur (disque) avec découpage adaptatif :
+        - zone basse : découpage cylindrique (r, theta) visible en projection
+        - zone haute : 1 ou plusieurs cellules grossières
+
+        Numérotation :
+        - bas  : state = ir + itheta * nr
+        - haut : à partir de nr * ntheta
+
+        Args:
+            nr: nombre de couronnes radiales pour la zone basse
+            ntheta: nombre de secteurs angulaires pour la zone basse
+            zsplit: hauteur normalisée de séparation (0 < zsplit < 1)
+            radial_mode: "equal_area" ou "equal_dr"
+            n_cells_top: nombre de cellules grossières en haut
+            size: taille du canvas
+        """
+        import uuid
+        from IPython.display import HTML
+
+        if not (0 < zsplit < 1):
+            raise ValueError("zsplit doit être dans ]0,1[.")
+
+        cid = f"adaptive_cyl_profile_{uuid.uuid4().hex}"
+
+        html = f"""
+        <div style="font-family: sans-serif;">
+        <h3>Vue de profil — découpage adaptatif avec base cylindrique</h3>
+        <p style="margin:4px 0 10px 0; color:#555;">
+            Zone basse : cylindrique <code>(nr={nr}, ntheta={ntheta})</code>,
+            zone haute : <code>{n_cells_top}</code> cellule(s),
+            <code>zsplit={zsplit:.3f}</code>, mode=<code>{radial_mode}</code>
+        </p>
+        <canvas id="{cid}" width="{size}" height="{size}"
+                style="border:1px solid #ccc; border-radius:8px;"></canvas>
+        </div>
+
+        <script>
+        (function() {{
+            const canvas = document.getElementById("{cid}");
+            const ctx = canvas.getContext("2d");
+
+            const W = canvas.width, H = canvas.height;
+            const cx = W / 2, cy = H / 2, R = W * 0.40;
+
+            const nr = {nr};
+            const ntheta = {ntheta};
+            const zsplit = {zsplit};
+            const radialMode = "{radial_mode}";
+            const nCellsTop = {int(n_cells_top)};
+
+            function getEdges(nr, R, mode) {{
+                if (mode === "equal_area") {{
+                    return Array.from({{length: nr+1}}, (_, i) => R * Math.sqrt(i / nr));
+                }}
+                return Array.from({{length: nr+1}}, (_, i) => R * i / nr);
+            }}
+
+            function yCanvasFromZNorm(z) {{
+                return cy + R - 2 * R * z;
+            }}
+
+            function colorForState(state, total, alpha=0.75) {{
+                const hue = (state * 300) / Math.max(total, 1);
+                return `hsla(${{hue}}, 65%, 68%, ${{alpha}})`;
+            }}
+
+            function clipCircle() {{
+                ctx.beginPath();
+                ctx.arc(cx, cy, R, 0, 2*Math.PI);
+                ctx.clip();
+            }}
+
+            const edges = getEdges(nr, R, radialMode);
+            const bottomStates = nr * ntheta;
+            const totalStates = bottomStates + nCellsTop;
+            const ySplit = yCanvasFromZNorm(zsplit);
+
+            ctx.clearRect(0, 0, W, H);
+
+            // Fond du mélangeur
+            ctx.beginPath();
+            ctx.arc(cx, cy, R, 0, 2*Math.PI);
+            ctx.fillStyle = "#fafafa";
+            ctx.fill();
+            ctx.strokeStyle = "#000";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // =========================
+            // Zone basse : projection cylindrique (r, theta)
+            // =========================
+            ctx.save();
+            clipCircle();
+
+            for (let itheta = 0; itheta < ntheta; itheta++) {{
+                const t0 = itheta * 2*Math.PI / ntheta - Math.PI/2;
+                const t1 = (itheta + 1) * 2*Math.PI / ntheta - Math.PI/2;
+                const tm = 0.5 * (t0 + t1);
+
+                for (let ir = 0; ir < nr; ir++) {{
+                    const state = ir + itheta * nr;
+                    const r0 = edges[ir];
+                    const r1 = edges[ir + 1];
+
+                    const a = Math.abs(Math.cos(tm));
+                    const xOuterL = cx - r1 * a;
+                    const xOuterR = cx + r1 * a;
+                    const xInnerL = cx - r0 * a;
+                    const xInnerR = cx + r0 * a;
+
+                    const yOuterTop = cy - r1;
+                    const yOuterBottom = cy + r1;
+                    const yInnerTop = cy - r0;
+                    const yInnerBottom = cy + r0;
+
+                    const yTop = Math.max(yOuterTop, ySplit);
+                    const yBottom = yOuterBottom;
+
+                    if (yBottom <= yTop) continue;
+
+                    // Couronne externe
+                    ctx.fillStyle = colorForState(state, totalStates, 0.82);
+                    ctx.fillRect(xOuterL, yTop, xOuterR - xOuterL, yBottom - yTop);
+
+                    // Trou interne pour matérialiser le découpage radial
+                    if (r0 > 0) {{
+                        const innerTop = Math.max(yInnerTop, ySplit);
+                        const innerBottom = yInnerBottom;
+                        if (innerBottom > innerTop) {{
+                            ctx.fillStyle = "#fafafa";
+                            ctx.fillRect(xInnerL, innerTop, xInnerR - xInnerL, innerBottom - innerTop);
+                        }}
+                    }}
+
+                    // Contours externe/interne
+                    ctx.strokeStyle = "#222";
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(xOuterL, yTop, xOuterR - xOuterL, yBottom - yTop);
+
+                    if (r0 > 0) {{
+                        const innerTop = Math.max(yInnerTop, ySplit);
+                        const innerBottom = yInnerBottom;
+                        if (innerBottom > innerTop) {{
+                            ctx.strokeRect(xInnerL, innerTop, xInnerR - xInnerL, innerBottom - innerTop);
+                        }}
+                    }}
+
+                    // Label centré selon la projection
+                    const rm = 0.5 * (r0 + r1);
+                    let xLabel = cx + 0.60 * rm * Math.cos(tm);
+                    let yLabel = cy + 0.60 * rm * Math.sin(tm);
+
+                    if (yLabel < ySplit + 10) yLabel = ySplit + 10;
+                    if (yLabel > cy + R - 10) yLabel = cy + R - 10;
+
+                    ctx.fillStyle = "#111";
+                    ctx.font = "11px sans-serif";
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "middle";
+                    ctx.fillText(String(state), xLabel, yLabel);
+                }}
+            }}
+
+            ctx.restore();
+
+            // =========================
+            // Zone haute : cellules grossières
+            // =========================
+            ctx.save();
+            clipCircle();
+
+            for (let i = 0; i < nCellsTop; i++) {{
+                const state = bottomStates + i;
+                const x1 = cx - R + (2 * R) * (i / nCellsTop);
+                const x2 = cx - R + (2 * R) * ((i + 1) / nCellsTop);
+                const y1 = cy - R;
+                const y2 = ySplit;
+
+                if (y2 <= y1) continue;
+
+                ctx.fillStyle = colorForState(state, totalStates, 0.42);
+                ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
+
+                ctx.strokeStyle = "#222";
+                ctx.lineWidth = 1.2;
+                ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+
+                const xLabel = 0.5 * (x1 + x2);
+                const yLabel = 0.5 * (y1 + y2);
+
+                ctx.fillStyle = "#111";
+                ctx.font = "bold 13px sans-serif";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(String(state), xLabel, yLabel);
+            }}
+
+            ctx.restore();
+
+            // Ligne de séparation zsplit
+            ctx.beginPath();
+            ctx.moveTo(cx - R, ySplit);
+            ctx.lineTo(cx + R, ySplit);
+            ctx.setLineDash([6, 4]);
+            ctx.strokeStyle = "#cc3333";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = "#cc3333";
+            ctx.font = "12px sans-serif";
+            ctx.textAlign = "left";
+            ctx.fillText(`zsplit = ${{zsplit.toFixed(3)}}`, cx - R + 10, ySplit - 8);
+
+            // Contour final du mélangeur
+            ctx.beginPath();
+            ctx.arc(cx, cy, R, 0, 2*Math.PI);
+            ctx.strokeStyle = "#000";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Annotation des zones
+            ctx.fillStyle = "#333";
+            ctx.font = "12px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("zone haute", cx, cy - 0.56 * R);
+            ctx.fillText("zone basse : projection du découpage cylindrique (r, θ)", cx, cy + 0.52 * R);
+
+            // Légende basse
+            ctx.fillStyle = "#444";
+            ctx.font = "12px sans-serif";
+            ctx.fillText(
+                `états bas = 0..${{bottomStates - 1}}, états haut = ${{bottomStates}}..${{totalStates - 1}}`,
+                cx,
+                H - 24
+            );
         }})();
         </script>
         """
