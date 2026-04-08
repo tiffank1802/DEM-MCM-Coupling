@@ -1967,6 +1967,99 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         plt.tight_layout()
         plt.savefig("eigenvalues_comparison.png", dpi=150, bbox_inches="tight")
         plt.show()
+    def show_cylindrical_partition(self, nr=4, ntheta=6, radial_mode="equal_area", size=520):
+        """
+        Affiche dans un notebook Jupyter une vue de dessus du partitionnement
+        cylindrique (nz=1) avec les numéros de cellules.
+
+        Numérotation:
+            state = ir + itheta * nr
+
+        Args:
+            nr: nombre de partitions radiales
+            ntheta: nombre de partitions angulaires
+            radial_mode: "equal_area" ou "equal_dr"
+            size: taille du canvas en pixels
+
+        Returns:
+            IPython.display.HTML
+        """
+        import uuid
+        from IPython.display import HTML
+
+        cid = f"cyl_{uuid.uuid4().hex}"
+
+        html = f"""
+        <div style="font-family: sans-serif;">
+        <h3>Vue de dessus — nr={nr}, ntheta={ntheta}, nz=1, mode={radial_mode}</h3>
+        <p style="margin:4px 0 10px 0; color:#555;">
+            Numérotation : <code>state = ir + itheta × nr</code>
+        </p>
+        <canvas id="{cid}" width="{size}" height="{size}"
+                style="border:1px solid #ccc; border-radius:8px;"></canvas>
+        </div>
+
+        <script>
+        (function() {{
+            const canvas = document.getElementById("{cid}");
+            const ctx = canvas.getContext("2d");
+            const W = canvas.width, H = canvas.height;
+            const cx = W/2, cy = H/2, R = W*0.42;
+            const nr = {nr};
+            const ntheta = {ntheta};
+            const radialMode = "{radial_mode}";
+
+            function getEdges(nr, R, mode) {{
+                if (mode === "equal_area") {{
+                    return Array.from({{length: nr+1}}, (_, i) => R * Math.sqrt(i/nr));
+                }}
+                return Array.from({{length: nr+1}}, (_, i) => R * i/nr);
+            }}
+
+            const edges = getEdges(nr, R, radialMode);
+            ctx.clearRect(0, 0, W, H);
+
+            for (let itheta = 0; itheta < ntheta; itheta++) {{
+                for (let ir = 0; ir < nr; ir++) {{
+                    const state = ir + itheta * nr;
+                    const t0 = itheta * 2*Math.PI / ntheta - Math.PI/2;
+                    const t1 = (itheta + 1) * 2*Math.PI / ntheta - Math.PI/2;
+                    const r0 = edges[ir];
+                    const r1 = edges[ir+1];
+
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r1, t0, t1);
+                    ctx.arc(cx, cy, r0, t1, t0, true);
+                    ctx.closePath();
+
+                    ctx.fillStyle = `hsl(${{(state*300)/(nr*ntheta)}}, 65%, 68%)`;
+                    ctx.fill();
+                    ctx.strokeStyle = "#222";
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+
+                    const rm = (r0 + r1)/2;
+                    const tm = (t0 + t1)/2;
+                    const x = cx + rm * Math.cos(tm);
+                    const y = cy + rm * Math.sin(tm);
+
+                    ctx.fillStyle = "#111";
+                    ctx.font = "12px sans-serif";
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "middle";
+                    ctx.fillText(String(state), x, y);
+                }}
+            }}
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, R, 0, 2*Math.PI);
+            ctx.strokeStyle = "#000";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }})();
+        </script>
+        """
+        return HTML(html)
 
 
 # =============================================================================
