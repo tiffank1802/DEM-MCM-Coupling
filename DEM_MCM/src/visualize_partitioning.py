@@ -48,12 +48,13 @@ HF_FOLDER = "hf://buckets/ktongue/DEM_MCM/Output Paraview"
 # CLASSE PRINCIPALE
 # =============================================================================
 
+
 class PartitionVisualizer:
     """Visualise le mélangeur avec les différents découpages."""
 
     def __init__(self):
         self.fs = HfFileSystem()
-        self.coords = None       # (N, 3) array des positions
+        self.coords = None  # (N, 3) array des positions
         self.files = None
 
     # ─────────────────────────────────────────────────────────────────
@@ -77,16 +78,18 @@ class PartitionVisualizer:
         with self.fs.open(fname, "rb") as f:
             df = pl.read_csv(f)
 
-        self.coords = np.column_stack([
-            df["coordinates:0"].to_numpy(),
-            df["coordinates:1"].to_numpy(),
-            df["coordinates:2"].to_numpy(),
-        ])[::sample_every]
+        self.coords = np.column_stack(
+            [
+                df["coordinates:0"].to_numpy(),
+                df["coordinates:1"].to_numpy(),
+                df["coordinates:2"].to_numpy(),
+            ]
+        )[::sample_every]
 
         print(f"   {len(self.coords)} particules chargées")
-        print(f"   X: [{self.coords[:,0].min():.4f}, {self.coords[:,0].max():.4f}]")
-        print(f"   Y: [{self.coords[:,1].min():.4f}, {self.coords[:,1].max():.4f}]")
-        print(f"   Z: [{self.coords[:,2].min():.4f}, {self.coords[:,2].max():.4f}]")
+        print(f"   X: [{self.coords[:, 0].min():.4f}, {self.coords[:, 0].max():.4f}]")
+        print(f"   Y: [{self.coords[:, 1].min():.4f}, {self.coords[:, 1].max():.4f}]")
+        print(f"   Z: [{self.coords[:, 2].min():.4f}, {self.coords[:, 2].max():.4f}]")
 
     def load_multiple_snapshots(self, indices=None, sample_every=5):
         """Charge plusieurs snapshots pour un fit plus représentatif."""
@@ -97,11 +100,13 @@ class PartitionVisualizer:
         for idx in indices:
             with self.fs.open(self.files[idx], "rb") as f:
                 df = pl.read_csv(f)
-            coords = np.column_stack([
-                df["coordinates:0"].to_numpy(),
-                df["coordinates:1"].to_numpy(),
-                df["coordinates:2"].to_numpy(),
-            ])
+            coords = np.column_stack(
+                [
+                    df["coordinates:0"].to_numpy(),
+                    df["coordinates:1"].to_numpy(),
+                    df["coordinates:2"].to_numpy(),
+                ]
+            )
             all_coords.append(coords[::sample_every])
 
         return np.vstack(all_coords)
@@ -136,6 +141,22 @@ class PartitionVisualizer:
             "Octree adaptatif\n(max_part=50, depth=4)": {
                 "method": "octree",
                 "kwargs": {"max_particles": 50, "max_depth": 4},
+            },
+            "Adaptatif Z\n70% bas (cylindrique)": {
+                "method": "adaptive",
+                "kwargs": {
+                    "z_split_mode": "quantile",
+                    "z_split": 0.7,  # 70% des particules en bas
+                    "n_cells_top": 1,
+                    "top_method": "single",
+                    "bottom_method": "cylindrical",
+                    "bottom_kwargs": {
+                        "nr": 5,
+                        "ntheta": 5,
+                        "nz": 10,
+                        "radial_mode": "equal_area",
+                    },
+                },
             },
         }
 
@@ -199,15 +220,15 @@ class PartitionVisualizer:
         # Lignes selon X
         for yi in y_edges:
             for zi in z_edges:
-                ax.plot([xmin, xmax], [yi, yi], [zi, zi], 'k-', alpha=alpha, lw=0.3)
+                ax.plot([xmin, xmax], [yi, yi], [zi, zi], "k-", alpha=alpha, lw=0.3)
         # Lignes selon Y
         for xi in x_edges:
             for zi in z_edges:
-                ax.plot([xi, xi], [ymin, ymax], [zi, zi], 'k-', alpha=alpha, lw=0.3)
+                ax.plot([xi, xi], [ymin, ymax], [zi, zi], "k-", alpha=alpha, lw=0.3)
         # Lignes selon Z
         for xi in x_edges:
             for yi in y_edges:
-                ax.plot([xi, xi], [yi, yi], [zmin, zmax], 'k-', alpha=alpha, lw=0.3)
+                ax.plot([xi, xi], [yi, yi], [zmin, zmax], "k-", alpha=alpha, lw=0.3)
 
     def _draw_cylindrical_grid(self, ax, partitioner, alpha=0.2):
         """Dessine les anneaux et secteurs du cylindrique."""
@@ -229,7 +250,9 @@ class PartitionVisualizer:
                     xc + r * np.cos(theta),
                     yc + r * np.sin(theta),
                     np.full_like(theta, z),
-                    'k-', alpha=alpha, lw=0.4,
+                    "k-",
+                    alpha=alpha,
+                    lw=0.4,
                 )
 
         # Secteurs angulaires
@@ -241,7 +264,9 @@ class PartitionVisualizer:
                     [xc, xc + r_max * np.cos(t)],
                     [yc, yc + r_max * np.sin(t)],
                     [z, z],
-                    'k-', alpha=alpha, lw=0.4,
+                    "k-",
+                    alpha=alpha,
+                    lw=0.4,
                 )
 
         # Lignes verticales sur le cercle extérieur
@@ -250,7 +275,9 @@ class PartitionVisualizer:
                 [xc + r_max * np.cos(t)] * 2,
                 [yc + r_max * np.sin(t)] * 2,
                 [zmin, zmax],
-                'k-', alpha=alpha, lw=0.4,
+                "k-",
+                alpha=alpha,
+                lw=0.4,
             )
 
     def _draw_voronoi_centroids(self, ax, partitioner, alpha=0.8):
@@ -260,44 +287,115 @@ class PartitionVisualizer:
                 partitioner.centroids[:, 0],
                 partitioner.centroids[:, 1],
                 partitioner.centroids[:, 2],
-                c="red", s=30, marker="*", alpha=alpha,
-                edgecolors="black", linewidths=0.5,
-                zorder=10, label="Centroïdes",
+                c="red",
+                s=30,
+                marker="*",
+                alpha=alpha,
+                edgecolors="black",
+                linewidths=0.5,
+                zorder=10,
+                label="Centroïdes",
             )
 
     def _draw_octree_boxes(self, ax, partitioner, alpha=0.08):
         """Dessine les boîtes de l'octree."""
         for leaf in partitioner._leaves:
-            xmin, xmax, ymin, ymax, zmin, zmax = leaf
+                xmin, xmax, ymin, ymax, zmin, zmax = leaf
 
-            # 8 coins
-            corners = np.array([
-                [xmin, ymin, zmin], [xmax, ymin, zmin],
-                [xmax, ymax, zmin], [xmin, ymax, zmin],
-                [xmin, ymin, zmax], [xmax, ymin, zmax],
-                [xmax, ymax, zmax], [xmin, ymax, zmax],
-            ])
+                # 8 coins
+                corners = np.array(
+                    [
+                        [xmin, ymin, zmin],
+                        [xmax, ymin, zmin],
+                        [xmax, ymax, zmin],
+                        [xmin, ymax, zmin],
+                        [xmin, ymin, zmax],
+                        [xmax, ymin, zmax],
+                        [xmax, ymax, zmax],
+                        [xmin, ymax, zmax],
+                    ]
+                )
 
-            # 6 faces
-            faces = [
-                [corners[0], corners[1], corners[2], corners[3]],
-                [corners[4], corners[5], corners[6], corners[7]],
-                [corners[0], corners[1], corners[5], corners[4]],
-                [corners[2], corners[3], corners[7], corners[6]],
-                [corners[0], corners[3], corners[7], corners[4]],
-                [corners[1], corners[2], corners[6], corners[5]],
-            ]
+                # 6 faces
+                faces = [
+                    [corners[0], corners[1], corners[2], corners[3]],
+                    [corners[4], corners[5], corners[6], corners[7]],
+                    [corners[0], corners[1], corners[5], corners[4]],
+                    [corners[2], corners[3], corners[7], corners[6]],
+                    [corners[0], corners[3], corners[7], corners[4]],
+                    [corners[1], corners[2], corners[6], corners[5]],
+                ]
 
-            poly = Poly3DCollection(faces, alpha=alpha, edgecolors='k', linewidths=0.3)
+     poly = Poly3DCollection(faces, alpha=alpha, edgecolors="k", linewidths=0.3)
             poly.set_facecolor((0.5, 0.5, 0.5, alpha))
             ax.add_collection3d(poly)
+
+    def _draw_adaptive_split(self, ax, partitioner, alpha=0.3):
+        """Dessine le plan de séparation adaptative en z."""
+        xmin, xmax, ymin, ymax, zmin, zmax = partitioner._bounds
+        z_split = partitioner._z_split
+        
+        # Dessiner le plan de séparation comme un rectangle rouge semi-transparent
+        xx = np.linspace(xmin, xmax, 20)
+        yy = np.linspace(ymin, ymax, 20)
+        X, Y = np.meshgrid(xx, yy)
+        Z = np.full_like(X, z_split)
+        
+        ax.plot_surface(
+            X, Y, Z, color='red', alpha=alpha, edgecolor='none', zorder=5
+        )
+        
+        # Annoter les zones
+        mid_z = (zmin + z_split) / 2
+        ax.text(
+            xmax, ymax, mid_z,
+            f'Zone basse\n{partitioner._n_cells_bottom} cellules',
+            color='blue', fontsize=7
+        )
+        
+        mid_z_top = (z_split + zmax) / 2
+        ax.text(
+            xmax, ymax, mid_z_top,
+            f'Zone haute\n{partitioner._n_cells_top} cellules',
+            color='red', fontsize=7
+        )
+
+        # Annoter les zones
+        mid_z = (zmin + z_split) / 2
+        ax.text(
+            xmax,
+            ymax,
+            mid_z,
+            f"Zone basse\n{partitioner._n_cells_bottom} cellules",
+            color="blue",
+            fontsize=7,
+        )
+
+        mid_z_top = (z_split + zmax) / 2
+        ax.text(
+            xmax,
+            ymax,
+            mid_z_top,
+            f"Zone haute\n{partitioner._n_cells_top} cellules",
+            color="red",
+            fontsize=7,
+        )
 
     # ─────────────────────────────────────────────────────────────────
     # VUES 2D (COUPES)
     # ─────────────────────────────────────────────────────────────────
 
-    def plot_2d_slice(self, ax, states, n_states, axis="z", slice_frac=0.5,
-                      title="", point_size=5, thickness_frac=0.1):
+    def plot_2d_slice(
+        self,
+        ax,
+        states,
+        n_states,
+        axis="z",
+        slice_frac=0.5,
+        title="",
+        point_size=5,
+        thickness_frac=0.1,
+    ):
         """
         Coupe 2D du mélangeur à une position donnée.
 
@@ -360,7 +458,9 @@ class PartitionVisualizer:
         fig.suptitle(
             "COMPARAISON DES MÉTHODES DE PARTITIONNEMENT\n"
             f"({len(self.coords)} particules)",
-            fontsize=16, fontweight="bold", y=0.98,
+            fontsize=16,
+            fontweight="bold",
+            y=0.98,
         )
 
         for i, (label, config) in enumerate(partitioners_config.items()):
@@ -386,23 +486,39 @@ class PartitionVisualizer:
 
             # Plot 3D
             ax = fig.add_subplot(2, 3, i + 1, projection="3d")
-            self.plot_3d_particles(ax, states, n_states,
-                                   f"{label}\n{subtitle}", point_size=1.5)
+            self.plot_3d_particles(
+                ax, states, n_states, f"{label}\n{subtitle}", point_size=1.5
+            )
             ax.view_init(elev=elev, azim=azim)
 
-            # Dessiner les grilles/frontières
-            method = config["method"]
-            if method == "cartesian":
-                self._draw_cartesian_grid(ax, part)
-            elif method == "cylindrical":
-                self._draw_cylindrical_grid(ax, part)
-            elif method == "voronoi":
-                self._draw_voronoi_centroids(ax, part)
-            elif method == "octree":
-                self._draw_octree_boxes(ax, part)
+ # Dessiner les grilles/frontières
+        method = config["method"]
+        if method == "cartesian":
+            self._draw_cartesian_grid(ax, part)
+        elif method == "cylindrical":
+            self._draw_cylindrical_grid(ax, part)
+        elif method == "voronoi":
+            self._draw_voronoi_centroids(ax, part)
+        elif method == "octree":
+            self._draw_octree_boxes(ax, part)
+        elif method == "adaptive":
+            self._draw_adaptive_split(ax, part)
+            # Dessiner aussi les grilles du partitionneur de la zone basse si possible
+            if hasattr(part, "_bottom_partitioner") and hasattr(part._bottom_partitioner, "method"):
+                bottom_method = part._bottom_partitioner.__class__.__name__.replace("Partitioner", "").lower()
+                if bottom_method == "cartesian":
+                    self._draw_cartesian_grid(ax, part._bottom_partitioner)
+                elif bottom_method == "cylindrical":
+                    self._draw_cylindrical_grid(ax, part._bottom_partitioner)
+                elif bottom_method == "voronoi":
+                    self._draw_voronoi_centroids(ax, part._bottom_partitioner)
+                elif bottom_method == "octree":
+                    self._draw_octree_boxes(ax, part._bottom_partitioner)
 
         plt.tight_layout(rect=[0, 0, 1, 0.94])
-        plt.savefig("images/partitioning_3d_comparison.png", dpi=200, bbox_inches="tight")
+        plt.savefig(
+            "images/partitioning_3d_comparison.png", dpi=200, bbox_inches="tight"
+        )
         plt.show()
         print("✅ Sauvegardé: images/partitioning_3d_comparison.png")
 
@@ -419,7 +535,8 @@ class PartitionVisualizer:
         fig.suptitle(
             f"COUPES 2D — axe {slice_axis} (position {slice_frac:.0%})\n"
             f"({len(self.coords)} particules)",
-            fontsize=16, fontweight="bold",
+            fontsize=16,
+            fontweight="bold",
         )
 
         for i, (label, config) in enumerate(partitioners_config.items()):
@@ -443,18 +560,25 @@ class PartitionVisualizer:
             )
 
             self.plot_2d_slice(
-                ax, states, n_states,
-                axis=slice_axis, slice_frac=slice_frac,
-                title=full_label, point_size=8,
+                ax,
+                states,
+                n_states,
+                axis=slice_axis,
+                slice_frac=slice_frac,
+                title=full_label,
+                point_size=8,
             )
 
         plt.tight_layout()
-        plt.savefig("images/partitioning_2d_comparison.png", dpi=200, bbox_inches="tight")
+        plt.savefig(
+            "images/partitioning_2d_comparison.png", dpi=200, bbox_inches="tight"
+        )
         plt.show()
         print("✅ Sauvegardé: images/partitioning_2d_comparison.png")
 
-    def show_single_method_detailed(self, method, method_kwargs,
-                                     figsize=(20, 15), elev=25, azim=45):
+    def show_single_method_detailed(
+        self, method, method_kwargs, figsize=(20, 15), elev=25, azim=45
+    ):
         """
         Vue détaillée d'une seule méthode: 3D + 3 coupes + histogramme.
         """
@@ -475,7 +599,8 @@ class PartitionVisualizer:
             f"{n_states} cellules | {diag['n_visited']} visitées | "
             f"pop: [{diag['pop_min']}, {diag['pop_max']}] "
             f"μ={diag['pop_mean']:.0f} σ={diag['pop_std']:.0f}",
-            fontsize=14, fontweight="bold",
+            fontsize=14,
+            fontweight="bold",
         )
 
         # ── 3D principal ──
@@ -491,13 +616,35 @@ class PartitionVisualizer:
             self._draw_voronoi_centroids(ax1, part)
         elif method == "octree":
             self._draw_octree_boxes(ax1, part)
+        elif method == "adaptive":
+            self._draw_adaptive_split(ax1, part)
+            # Dessiner aussi les grilles du sous-partitionneur de la zone basse si possible
+            if hasattr(part, "_bottom_partitioner") and hasattr(
+                part._bottom_partitioner, "__class__"
+            ):
+                bottom_method = (
+                    part._bottom_partitioner.__class__.__name__
+                    .replace("Partitioner", "")
+                    .lower()
+                )
+                if bottom_method == "cartesian":
+                    self._draw_cartesian_grid(ax1, part._bottom_partitioner)
+                elif bottom_method == "cylindrical":
+                    self._draw_cylindrical_grid(ax1, part._bottom_partitioner)
+                elif bottom_method == "voronoi":
+                    self._draw_voronoi_centroids(ax1, part._bottom_partitioner)
+                elif bottom_method == "octree":
+                    self._draw_octree_boxes(ax1, part._bottom_partitioner)
 
         # ── Coupes 2D ──
         for j, (axis, frac) in enumerate([("z", 0.3), ("z", 0.5), ("z", 0.7)]):
             ax = fig.add_subplot(2, 3, j + 2)
             self.plot_2d_slice(
-                ax, states, n_states,
-                axis=axis, slice_frac=frac,
+                ax,
+                states,
+                n_states,
+                axis=axis,
+                slice_frac=frac,
                 title=f"Coupe {axis}={frac:.0%}",
                 point_size=10,
             )
@@ -506,8 +653,12 @@ class PartitionVisualizer:
         ax5 = fig.add_subplot(2, 3, 5)
         counts = np.bincount(states, minlength=n_states)
         ax5.bar(range(n_states), counts, color="steelblue", alpha=0.8, width=1.0)
-        ax5.axhline(counts[counts > 0].mean(), color="red", ls="--",
-                    label=f"μ={counts[counts > 0].mean():.0f}")
+        ax5.axhline(
+            counts[counts > 0].mean(),
+            color="red",
+            ls="--",
+            label=f"μ={counts[counts > 0].mean():.0f}",
+        )
         ax5.set_xlabel("Index de cellule")
         ax5.set_ylabel("Nombre de particules")
         ax5.set_title("Population par cellule")
@@ -516,11 +667,21 @@ class PartitionVisualizer:
         # ── Histogramme taille ──
         ax6 = fig.add_subplot(2, 3, 6)
         counts_nonzero = counts[counts > 0]
-        ax6.hist(counts_nonzero, bins=30, color="steelblue", alpha=0.8, edgecolor="white")
-        ax6.axvline(counts_nonzero.mean(), color="red", ls="--",
-                    label=f"μ={counts_nonzero.mean():.0f}")
-        ax6.axvline(counts_nonzero.median(), color="orange", ls="--",
-                    label=f"med={np.median(counts_nonzero):.0f}")
+        ax6.hist(
+            counts_nonzero, bins=30, color="steelblue", alpha=0.8, edgecolor="white"
+        )
+        ax6.axvline(
+            counts_nonzero.mean(),
+            color="red",
+            ls="--",
+            label=f"μ={counts_nonzero.mean():.0f}",
+        )
+        ax6.axvline(
+            counts_nonzero.median(),
+            color="orange",
+            ls="--",
+            label=f"med={np.median(counts_nonzero):.0f}",
+        )
         ax6.set_xlabel("Particules par cellule")
         ax6.set_ylabel("Nombre de cellules")
         ax6.set_title("Distribution de population")
@@ -536,7 +697,9 @@ class PartitionVisualizer:
             raise ValueError("Appelez load_particles() d'abord")
 
         fig, axes_grid = plt.subplots(2, 4, figsize=figsize)
-        fig.suptitle("CYLINDRIQUE: equal_dr vs equal_area", fontsize=14, fontweight="bold")
+        fig.suptitle(
+            "CYLINDRIQUE: equal_dr vs equal_area", fontsize=14, fontweight="bold"
+        )
 
         for row, mode in enumerate(["equal_dr", "equal_area"]):
             part = create_partitioner(
@@ -551,8 +714,9 @@ class PartitionVisualizer:
 
             # 3D
             ax3d = fig.add_subplot(2, 4, row * 4 + 1, projection="3d")
-            self.plot_3d_particles(ax3d, states, n_states,
-                                   f"{mode}\nσ={diag['pop_std']:.0f}")
+            self.plot_3d_particles(
+                ax3d, states, n_states, f"{mode}\nσ={diag['pop_std']:.0f}"
+            )
             self._draw_cylindrical_grid(ax3d, part)
             ax3d.view_init(elev=20, azim=45)
 
@@ -560,8 +724,11 @@ class PartitionVisualizer:
             for j, frac in enumerate([0.3, 0.5, 0.7]):
                 ax = axes_grid[row, j + 1]
                 self.plot_2d_slice(
-                    ax, states, n_states,
-                    axis="z", slice_frac=frac,
+                    ax,
+                    states,
+                    n_states,
+                    axis="z",
+                    slice_frac=frac,
                     title=f"{mode} z={frac:.0%}",
                     point_size=6,
                 )
@@ -627,15 +794,15 @@ class PartitionVisualizer:
         n_configs = len(configs)
         fig = plt.figure(figsize=figsize)
         fig.suptitle(
-            f"SWEEP DE RÉSOLUTION — {method.upper()}\n"
-            f"({len(self.coords)} particules)",
-            fontsize=14, fontweight="bold",
+            f"SWEEP DE RÉSOLUTION — {method.upper()}\n({len(self.coords)} particules)",
+            fontsize=14,
+            fontweight="bold",
         )
 
         # Ligne 1 : vues 3D
         # Ligne 2 : coupes 2D
         for i, kwargs in enumerate(configs):
-            print(f"   [{i+1}/{n_configs}] {kwargs}")
+            print(f"   [{i + 1}/{n_configs}] {kwargs}")
 
             part = create_partitioner(method, **kwargs)
             part.fit(self.coords)
@@ -648,8 +815,10 @@ class PartitionVisualizer:
             # 3D
             ax3d = fig.add_subplot(2, n_configs, i + 1, projection="3d")
             self.plot_3d_particles(
-                ax3d, states, n_states,
-                f"{n_states} cellules\nσ/μ={diag['pop_std']/max(diag['pop_mean'],1):.2f}",
+                ax3d,
+                states,
+                n_states,
+                f"{n_states} cellules\nσ/μ={diag['pop_std'] / max(diag['pop_mean'], 1):.2f}",
                 point_size=1,
             )
             ax3d.view_init(elev=25, azim=45)
@@ -657,14 +826,19 @@ class PartitionVisualizer:
             # Coupe 2D
             ax2d = fig.add_subplot(2, n_configs, n_configs + i + 1)
             self.plot_2d_slice(
-                ax2d, states, n_states,
-                axis="z", slice_frac=0.5,
+                ax2d,
+                states,
+                n_states,
+                axis="z",
+                slice_frac=0.5,
                 title=f"{n_states} cellules",
                 point_size=5,
             )
 
         plt.tight_layout(rect=[0, 0, 1, 0.92])
-        plt.savefig(f"/images/resolution_sweep_{method}.png", dpi=200, bbox_inches="tight")
+        plt.savefig(
+            f"/images/resolution_sweep_{method}.png", dpi=200, bbox_inches="tight"
+        )
         plt.show()
 
     def show_population_comparison(self, figsize=(18, 10)):
@@ -676,9 +850,9 @@ class PartitionVisualizer:
 
         fig, axes = plt.subplots(2, 3, figsize=figsize)
         fig.suptitle(
-            "DISTRIBUTION DE POPULATION PAR CELLULE\n"
-            "(la méthode idéale a σ/μ → 0)",
-            fontsize=14, fontweight="bold",
+            "DISTRIBUTION DE POPULATION PAR CELLULE\n(la méthode idéale a σ/μ → 0)",
+            fontsize=14,
+            fontweight="bold",
         )
 
         summary = []
@@ -699,30 +873,47 @@ class PartitionVisualizer:
 
             cv = counts_nz.std() / counts_nz.mean() if counts_nz.mean() > 0 else 0
 
-            ax.hist(counts_nz, bins=30, color="steelblue", alpha=0.8,
-                    edgecolor="white", density=True)
-            ax.axvline(counts_nz.mean(), color="red", ls="--", lw=2,
-                       label=f"μ={counts_nz.mean():.0f}")
-            ax.axvline(np.median(counts_nz), color="orange", ls="--", lw=2,
-                       label=f"med={np.median(counts_nz):.0f}")
+            ax.hist(
+                counts_nz,
+                bins=30,
+                color="steelblue",
+                alpha=0.8,
+                edgecolor="white",
+                density=True,
+            )
+            ax.axvline(
+                counts_nz.mean(),
+                color="red",
+                ls="--",
+                lw=2,
+                label=f"μ={counts_nz.mean():.0f}",
+            )
+            ax.axvline(
+                np.median(counts_nz),
+                color="orange",
+                ls="--",
+                lw=2,
+                label=f"med={np.median(counts_nz):.0f}",
+            )
 
             short_label = label.split("\n")[0]
             ax.set_title(
-                f"{short_label}\n"
-                f"CV={cv:.2f} | {(counts==0).sum()} vides/{n_states}",
+                f"{short_label}\nCV={cv:.2f} | {(counts == 0).sum()} vides/{n_states}",
                 fontsize=10,
             )
             ax.set_xlabel("Particules/cellule")
             ax.set_ylabel("Densité")
             ax.legend(fontsize=8)
 
-            summary.append({
-                "method": short_label,
-                "n_cells": n_states,
-                "n_empty": int((counts == 0).sum()),
-                "cv": cv,
-                "mean": counts_nz.mean(),
-            })
+            summary.append(
+                {
+                    "method": short_label,
+                    "n_cells": n_states,
+                    "n_empty": int((counts == 0).sum()),
+                    "cv": cv,
+                    "mean": counts_nz.mean(),
+                }
+            )
 
         plt.tight_layout(rect=[0, 0, 1, 0.92])
         plt.savefig("population_comparison.png", dpi=200, bbox_inches="tight")
@@ -730,11 +921,15 @@ class PartitionVisualizer:
 
         # Résumé
         print("\n📊 Résumé (CV = coefficient de variation, plus petit = mieux):")
-        print(f"{'Méthode':30s} {'Cellules':>8s} {'Vides':>6s} {'CV':>6s} {'μ pop':>8s}")
+        print(
+            f"{'Méthode':30s} {'Cellules':>8s} {'Vides':>6s} {'CV':>6s} {'μ pop':>8s}"
+        )
         print("-" * 65)
         for s in sorted(summary, key=lambda x: x["cv"]):
-            print(f"{s['method']:30s} {s['n_cells']:8d} {s['n_empty']:6d} "
-                  f"{s['cv']:6.3f} {s['mean']:8.1f}")
+            print(
+                f"{s['method']:30s} {s['n_cells']:8d} {s['n_empty']:6d} "
+                f"{s['cv']:6.3f} {s['mean']:8.1f}"
+            )
 
 
 # =============================================================================
@@ -742,46 +937,45 @@ class PartitionVisualizer:
 # =============================================================================
 
 if __name__ == "__main__":
-
     viz = PartitionVisualizer()
 
     # Charger les particules
     viz.load_particles(file_index=100)
 
     # ── Vue d'ensemble : toutes les méthodes ──
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("1. COMPARAISON 3D DE TOUTES LES MÉTHODES")
-    print("="*60)
+    print("=" * 60)
     viz.show_all_methods()
 
     # ── Coupes 2D ──
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("2. COUPES 2D")
-    print("="*60)
+    print("=" * 60)
     viz.show_all_methods_2d(slice_axis="z", slice_frac=0.5)
 
     # ── Comparaison des populations ──
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("3. DISTRIBUTION DE POPULATION")
-    print("="*60)
+    print("=" * 60)
     viz.show_population_comparison()
 
     # ── Détail cylindrique ──
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("4. CYLINDRIQUE: equal_dr vs equal_area")
-    print("="*60)
+    print("=" * 60)
     viz.show_cylindrical_comparison()
 
     # ── Sweep résolution Voronoï ──
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("5. SWEEP RÉSOLUTION VORONOÏ")
-    print("="*60)
+    print("=" * 60)
     viz.show_resolution_sweep(method="voronoi")
 
     # ── Vue détaillée Voronoï ──
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("6. VUE DÉTAILLÉE VORONOÏ")
-    print("="*60)
+    print("=" * 60)
     viz.show_single_method_detailed("voronoi", {"n_cells": 125})
 
     print("\n✨ Toutes les visualisations générées!")
