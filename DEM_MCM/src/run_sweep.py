@@ -242,7 +242,7 @@ def get_configs(method):
             )
 
         # ── Sweep finesse zone basse (nz) ────────────────────────────
-        for nz in [4, 6, 8, 10, 12, 15]:
+        for nz in [1,4, 2, 3]:
             configs.append(
                 ExperimentConfig(
                     method="adaptive",
@@ -282,7 +282,7 @@ def get_configs(method):
             )
 
         # ── Zone haute avec quelques cellules ────────────────────────
-        for n_top in [1, 2, 4, 8]:
+        for n_top in [1, 2, 4,3]:
             top_method = "single" if n_top == 1 else "cylindrical"
             top_kwargs = {} if n_top == 1 else {
                 "nr": 1, "ntheta": n_top, "nz": 1,

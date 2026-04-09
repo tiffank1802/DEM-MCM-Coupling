@@ -803,7 +803,7 @@ class AdaptiveZPartitioner(BasePartitioner):
     def label(self):
         return (
             f"adaptive_z_{self.bottom_method}"
-            f"_top{self._n_cells_top}_bot{self._n_cells_bottom}_split{self._z_split}_n_bot{self.n_cells_bottom}_n_top{self.n_cells_top}"
+            f"_top{self._n_cells_top}_bot{self._n_cells_bottom}_split{self.z_split_input}_mode_split{self.z_split_mode}_m_bot{self.bottom_method}_n_top{self.n_cells_top}"
         )
     
     def fit(self, coordinates: np.ndarray):
@@ -970,6 +970,487 @@ class AdaptiveZPartitioner(BasePartitioner):
         base_diag["fraction_in_bottom"] = float(mask_bottom.mean())
         
         return base_diag
+    # À ajouter dans la classe AdaptiveZPartitioner
+
+    def visualize_profile(self, size=700):
+        """
+        Visualise le partitionnement adaptatif en vue de profil (cylindre vu de côté).
+        
+        Détecte automatiquement les méthodes utilisées dans les zones haute/basse
+        et adapte le rendu en conséquence.
+        
+        Args:
+            size: taille du canvas en pixels
+        
+        Returns:
+            HTML object pour affichage Jupyter
+        """
+        import uuid
+        from IPython.display import HTML
+        
+        if self._z_split is None:
+            raise ValueError("❌ Le partitionneur doit être fitté avant visualisation (appeler .fit())")
+        
+        cid = f"adaptive_viz_{uuid.uuid4().hex}"
+        
+        # Normaliser z_split entre 0 et 1
+        z_range = self._z_max - self._z_min
+        z_split_norm = (self._z_split - self._z_min) / z_range if z_range > 0 else 0.5
+        
+        # Préparer les données de visualisation
+        viz_data = self._prepare_visualization_data()
+        
+        html = f"""
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        
+        <h3 style="margin-bottom:12px; color:#2c3e50;">
+            🔍 Vue de profil — Partitionnement adaptatif
+        </h3>
+        
+        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    border-radius:8px; color:white; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div>
+                    <div style="font-size:13px; opacity:0.9; margin-bottom:4px;">Zone basse (z ≤ {self._z_split:.4f})</div>
+                    <div style="font-size:18px; font-weight:bold;">{self.bottom_method}</div>
+                    <div style="font-size:14px; margin-top:4px;">{self._n_cells_bottom} cellules</div>
+                </div>
+                <div>
+                    <div style="font-size:13px; opacity:0.9; margin-bottom:4px;">Zone haute (z > {self._z_split:.4f})</div>
+                    <div style="font-size:18px; font-weight:bold;">{self.top_method}</div>
+                    <div style="font-size:14px; margin-top:4px;">{self._n_cells_top} cellule(s)</div>
+                </div>
+            </div>
+            <div style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.3); 
+                        text-align:center; font-size:16px; font-weight:bold;">
+                Total : {self.n_cells} cellules
+            </div>
+        </div>
+        
+        <canvas id="{cid}" width="{size}" height="{size}"
+                style="border:2px solid #bdc3c7; border-radius:10px; 
+                    box-shadow:0 8px 16px rgba(0,0,0,0.15); display:block; margin:20px auto;
+                    background:white;"></canvas>
+        
+        <div style="margin-top:12px; padding:12px; background:#ecf0f1; border-radius:6px; font-size:13px; color:#34495e;">
+            <strong>💡 Légende :</strong>
+            <ul style="margin:8px 0; padding-left:20px;">
+                <li>Les couleurs représentent les différents états (cellules)</li>
+                <li>La ligne rouge en pointillés marque la séparation z_split</li>
+                <li>Les numéros indiquent l'identifiant de chaque état (0 à {self.n_cells-1})</li>
+            </ul>
+        </div>
+        
+        </div>
+        
+        <script>
+        (function() {{
+            const canvas = document.getElementById("{cid}");
+            const ctx = canvas.getContext("2d");
+            
+            const W = canvas.width;
+            const H = canvas.height;
+            const cx = W / 2;
+            const cy = H / 2;
+            const R = Math.min(W, H) * 0.38;
+            
+            const zMin = {self._z_min};
+            const zMax = {self._z_max};
+            const zSplit = {self._z_split};
+            const zSplitNorm = {z_split_norm};
+            
+            const vizData = {json.dumps(viz_data)};
+            
+            // ═══════════════════════════════════════════════════════════
+            // UTILITAIRES
+            // ═══════════════════════════════════════════════════════════
+            
+            function zToCanvas(z) {{
+                const zNorm = (z - zMin) / (zMax - zMin);
+                return cy + R * (1 - 2 * zNorm);
+            }}
+            
+            function colorForState(state, total) {{
+                const hue = (state * 360) / Math.max(total, 1);
+                return `hsla(${{hue}}, 75%, 62%, 0.88)`;
+            }}
+            
+            function darkenColor(state, total) {{
+                const hue = (state * 360) / Math.max(total, 1);
+                return `hsla(${{hue}}, 75%, 40%, 1)`;
+            }}
+            
+            // ═══════════════════════════════════════════════════════════
+            // DESSIN
+            // ═══════════════════════════════════════════════════════════
+            
+            ctx.clearRect(0, 0, W, H);
+            
+            // Fond du cylindre
+            ctx.beginPath();
+            ctx.arc(cx, cy, R, 0, 2*Math.PI);
+            ctx.fillStyle = "#f8f9fa";
+            ctx.fill();
+            
+            // Clip en forme de cercle
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, R, 0, 2*Math.PI);
+            ctx.clip();
+            
+            // Dessiner toutes les cellules
+            vizData.cells.forEach(cell => {{
+                const x = cx + cell.x * R;
+                const y = cy - cell.y * R;
+                const w = cell.w * R;
+                const h = cell.h * R;
+                
+                // Remplissage
+                ctx.fillStyle = colorForState(cell.state, vizData.total_cells);
+                ctx.fillRect(x - w/2, y - h/2, w, h);
+                
+                // Bordure
+                ctx.strokeStyle = darkenColor(cell.state, vizData.total_cells);
+                ctx.lineWidth = 1.2;
+                ctx.strokeRect(x - w/2, y - h/2, w, h);
+                
+                // Label (numéro d'état)
+                if (w > 15 && h > 15) {{
+                    ctx.fillStyle = "#000";
+                    ctx.font = "bold 11px monospace";
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "middle";
+                    ctx.fillText(String(cell.state), x, y);
+                }}
+            }});
+            
+            ctx.restore();
+            
+            // Ligne de séparation z_split
+            const ySplit = zToCanvas(zSplit);
+            ctx.beginPath();
+            ctx.moveTo(cx - R, ySplit);
+            ctx.lineTo(cx + R, ySplit);
+            ctx.setLineDash([8, 5]);
+            ctx.strokeStyle = "#e74c3c";
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // Label z_split
+            ctx.fillStyle = "#e74c3c";
+            ctx.font = "bold 13px sans-serif";
+            ctx.textAlign = "left";
+            ctx.fillText(`z_split = ${{zSplit.toFixed(4)}}`, cx - R + 15, ySplit - 12);
+            
+            // Contour du cylindre
+            ctx.beginPath();
+            ctx.arc(cx, cy, R, 0, 2*Math.PI);
+            ctx.strokeStyle = "#2c3e50";
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            
+            // Annotations zones
+            ctx.fillStyle = "#34495e";
+            ctx.font = "14px sans-serif";
+            ctx.textAlign = "center";
+            
+            const yTopLabel = cy - R * 0.72;
+            const yBotLabel = cy + R * 0.72;
+            
+            ctx.fillText(`Zone haute : ${{vizData.top_method}}`, cx, yTopLabel);
+            ctx.fillText(`(${{vizData.n_cells_top}} cellule(s))`, cx, yTopLabel + 16);
+            
+            ctx.fillText(`Zone basse : ${{vizData.bottom_method}}`, cx, yBotLabel);
+            ctx.fillText(`(${{vizData.n_cells_bottom}} cellules)`, cx, yBotLabel + 16);
+            
+            // Flèche z
+            ctx.strokeStyle = "#7f8c8d";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cx + R + 30, cy + R);
+            ctx.lineTo(cx + R + 30, cy - R);
+            ctx.stroke();
+            
+            // Pointe de flèche
+            ctx.beginPath();
+            ctx.moveTo(cx + R + 30, cy - R);
+            ctx.lineTo(cx + R + 25, cy - R + 8);
+            ctx.lineTo(cx + R + 35, cy - R + 8);
+            ctx.closePath();
+            ctx.fillStyle = "#7f8c8d";
+            ctx.fill();
+            
+            ctx.fillStyle = "#7f8c8d";
+            ctx.font = "italic 13px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("z", cx + R + 30, cy - R - 12);
+            
+        }})();
+        </script>
+        """
+        
+        return HTML(html)
+
+
+    def _prepare_visualization_data(self):
+        """
+        Prépare les données de visualisation adaptées à chaque méthode.
+        
+        Returns:
+            dict: données pour le rendu JavaScript
+        """
+        z_range = self._z_max - self._z_min
+        z_split_norm = (self._z_split - self._z_min) / z_range if z_range > 0 else 0.5
+        
+        data = {
+            "total_cells": self.n_cells,
+            "n_cells_top": self._n_cells_top,
+            "n_cells_bottom": self._n_cells_bottom,
+            "top_method": self.top_method,
+            "bottom_method": self.bottom_method,
+            "cells": []
+        }
+        
+        # ══════════════════════════════════════════════════════════════
+        # ZONE BASSE
+        # ══════════════════════════════════════════════════════════════
+        
+        if self.bottom_method == "cylindrical":
+            data["cells"].extend(
+                self._render_cylindrical(
+                    self._bottom_partitioner,
+                    z_min=0,
+                    z_max=z_split_norm,
+                    state_offset=0
+                )
+            )
+        elif self.bottom_method == "cartesian":
+            data["cells"].extend(
+                self._render_cartesian(
+                    self._bottom_partitioner,
+                    z_min=0,
+                    z_max=z_split_norm,
+                    state_offset=0
+                )
+            )
+        elif self.bottom_method == "voronoi":
+            data["cells"].extend(
+                self._render_voronoi(
+                    self._bottom_partitioner,
+                    z_min=0,
+                    z_max=z_split_norm,
+                    state_offset=0
+                )
+            )
+        elif self.bottom_method == "quantile":
+            data["cells"].extend(
+                self._render_quantile(
+                    self._bottom_partitioner,
+                    z_min=0,
+                    z_max=z_split_norm,
+                    state_offset=0
+                )
+            )
+        elif self.bottom_method == "single":
+            data["cells"].append({
+                "state": 0,
+                "x": 0,
+                "y": z_split_norm / 2,
+                "w": 2,
+                "h": z_split_norm
+            })
+        else:
+            # Rendu générique
+            data["cells"].extend(
+                self._render_generic(
+                    self._bottom_partitioner,
+                    z_min=0,
+                    z_max=z_split_norm,
+                    state_offset=0
+                )
+            )
+        
+        # ══════════════════════════════════════════════════════════════
+        # ZONE HAUTE
+        # ══════════════════════════════════════════════════════════════
+        
+        if self.top_method == "single" or self._top_partitioner is None:
+            data["cells"].append({
+                "state": self._n_cells_bottom,
+                "x": 0,
+                "y": (z_split_norm + 1) / 2,
+                "w": 2,
+                "h": (1 - z_split_norm)
+            })
+        elif self.top_method == "cylindrical":
+            data["cells"].extend(
+                self._render_cylindrical(
+                    self._top_partitioner,
+                    z_min=z_split_norm,
+                    z_max=1,
+                    state_offset=self._n_cells_bottom
+                )
+            )
+        elif self.top_method == "cartesian":
+            data["cells"].extend(
+                self._render_cartesian(
+                    self._top_partitioner,
+                    z_min=z_split_norm,
+                    z_max=1,
+                    state_offset=self._n_cells_bottom
+                )
+            )
+        else:
+            data["cells"].extend(
+                self._render_generic(
+                    self._top_partitioner,
+                    z_min=z_split_norm,
+                    z_max=1,
+                    state_offset=self._n_cells_bottom
+                )
+            )
+        
+        return data
+
+
+    # ═══════════════════════════════════════════════════════════════════
+    # MÉTHODES DE RENDU PAR TYPE DE PARTITIONNEUR
+    # ═══════════════════════════════════════════════════════════════════
+
+    def _render_cylindrical(self, part, z_min, z_max, state_offset):
+        """Rendu d'un partitionneur cylindrique en vue de profil."""
+        cells = []
+        
+        nr, ntheta, nz = part.nr, part.ntheta, part.nz
+        z_edges = np.linspace(z_min, z_max, nz + 1)
+        
+        for iz in range(nz):
+            z_mid = (z_edges[iz] + z_edges[iz + 1]) / 2
+            z_h = z_edges[iz + 1] - z_edges[iz]
+            
+            for itheta in range(ntheta):
+                theta_mid = (itheta + 0.5) * 2 * np.pi / ntheta
+                
+                for ir in range(nr):
+                    # Rayons
+                    if part.radial_mode == "equal_area":
+                        r_inner = np.sqrt(ir / nr)
+                        r_outer = np.sqrt((ir + 1) / nr)
+                    else:
+                        r_inner = ir / nr
+                        r_outer = (ir + 1) / nr
+                    
+                    r_mid = (r_inner + r_outer) / 2
+                    
+                    # Projection : vue de profil du cylindre
+                    x = r_mid * np.cos(theta_mid)
+                    
+                    # Largeur radiale projetée
+                    w = (r_outer - r_inner) * 2
+                    
+                    state = ir + itheta * nr + iz * nr * ntheta
+                    
+                    cells.append({
+                        "state": state + state_offset,
+                        "x": x,
+                        "y": z_mid,
+                        "w": w,
+                        "h": z_h
+                    })
+        
+        return cells
+
+
+    def _render_cartesian(self, part, z_min, z_max, state_offset):
+        """Rendu d'un partitionneur cartésien en vue de profil."""
+        cells = []
+        
+        nx, ny, nz = part.nx, part.ny, part.nz
+        
+        x_edges = np.linspace(-1, 1, nx + 1)
+        z_edges = np.linspace(z_min, z_max, nz + 1)
+        
+        # En vue de profil, on prend une "tranche" en y=0
+        for iz in range(nz):
+            z_mid = (z_edges[iz] + z_edges[iz + 1]) / 2
+            z_h = z_edges[iz + 1] - z_edges[iz]
+            
+            for ix in range(nx):
+                x_mid = (x_edges[ix] + x_edges[ix + 1]) / 2
+                x_w = x_edges[ix + 1] - x_edges[ix]
+                
+                # On prend la tranche centrale en y
+                iy = ny // 2
+                state = ix + iy * nx + iz * nx * ny
+                
+                cells.append({
+                    "state": state + state_offset,
+                    "x": x_mid,
+                    "y": z_mid,
+                    "w": x_w,
+                    "h": z_h
+                })
+        
+        return cells
+
+
+    def _render_voronoi(self, part, z_min, z_max, state_offset):
+        """Rendu d'un partitionneur Voronoi en vue de profil."""
+        cells = []
+        
+        centers = part.centers
+        avg_size = 2.0 / np.sqrt(len(centers))
+        
+        for i, (x, y, z) in enumerate(centers):
+            # Normaliser z
+            z_norm = (z - self._z_min) / (self._z_max - self._z_min) if self._z_max > self._z_min else 0.5
+            
+            # Vérifier si dans la zone
+            if z_min <= z_norm <= z_max:
+                # Projection radiale pour vue de profil
+                r = np.sqrt(x**2 + y**2)
+                theta = np.arctan2(y, x)
+                x_proj = r * np.cos(theta)
+                
+                cells.append({
+                    "state": i + state_offset,
+                    "x": x_proj,
+                    "y": z_norm,
+                    "w": avg_size,
+                    "h": avg_size
+                })
+        
+        return cells
+
+
+    def _render_quantile(self, part, z_min, z_max, state_offset):
+        """Rendu d'un partitionneur par quantiles (similaire au cartésien)."""
+        return self._render_cartesian(part, z_min, z_max, state_offset)
+
+
+    def _render_generic(self, part, z_min, z_max, state_offset):
+        """Rendu générique pour méthodes inconnues."""
+        cells = []
+        n = part.n_cells
+        n_cols = int(np.ceil(np.sqrt(n)))
+        
+        cell_w = 2.0 / n_cols
+        cell_h = (z_max - z_min) / n_cols
+        
+        for i in range(n):
+            ix = i % n_cols
+            iy = i // n_cols
+            
+            cells.append({
+                "state": i + state_offset,
+                "x": -1 + cell_w * (ix + 0.5),
+                "y": z_min + cell_h * (iy + 0.5),
+                "w": cell_w,
+                "h": cell_h
+            })
+        
+        return cells
 
 
 # =============================================================================

@@ -184,6 +184,60 @@ class MarkovAnalyzer:
         with self.fs.open(full_path, "r") as f:
             return json.load(f)
     
+    def _load_partitioner_data(self, partitioner_path):
+        """
+        Charge les données du partitionnement depuis le bucket.
+        
+        Args:
+            partitioner_path: chemin du dossier /partitioner
+        
+        Returns:
+            dict avec métadonnées et données spécifiques (e.g., r_edges pour cylindrique)
+        """
+        # Charger les métadonnées
+        meta_file = f"{partitioner_path}/partitioner_meta.json"
+        meta = self._load_json(meta_file)
+        
+        partitioner_data = {
+            "type": meta.get("type"),
+            "label": meta.get("label"),
+            "n_cells": meta.get("n_cells"),
+        }
+        
+        # Charger les données spécifiques selon le type
+        partitioner_type = meta.get("type")
+        
+        if partitioner_type == "CylindricalPartitioner":
+            try:
+                # Charger les paramètres cylindriques
+                cyl_params = self._load_json(f"{partitioner_path}/cylindrical_params.json")
+                partitioner_data.update(cyl_params)
+                
+                # Charger les edges des rayons
+                r_edges = self._load_npy(f"{partitioner_path}/r_edges.npy")
+                partitioner_data["r_edges"] = r_edges
+            except Exception as e:
+                print(f"⚠️  Impossible de charger les données cylindriques: {e}")
+        
+        elif partitioner_type == "CartesianPartitioner":
+            try:
+                cart_params = self._load_json(f"{partitioner_path}/cartesian_params.json")
+                partitioner_data.update(cart_params)
+            except Exception as e:
+                print(f"⚠️  Impossible de charger les données cartésiennes: {e}")
+        
+        elif partitioner_type == "VoronoiPartitioner":
+            try:
+                vor_params = self._load_json(f"{partitioner_path}/voronoi_params.json")
+                partitioner_data.update(vor_params)
+                
+                centroids = self._load_npy(f"{partitioner_path}/centroids.npy")
+                partitioner_data["centroids"] = centroids
+            except Exception as e:
+                print(f"⚠️  Impossible de charger les données Voronoï: {e}")
+        
+        return partitioner_data
+    
     def _list_folders(self, base_path=BUCKET_BASE):
         """Liste les sous-dossiers d'un chemin."""
         try:
@@ -203,6 +257,8 @@ class MarkovAnalyzer:
         Gère les deux formats:
         - Ancien: params.json + stats.json + transition_matrix.npy
         - Nouveau: config.json + stats.json + transition_matrix.npy
+        
+        Essaie aussi de charger les données du partitionnement si disponibles.
         """
         prefix = f"{base_path}/{folder_name}"
         
@@ -232,6 +288,13 @@ class MarkovAnalyzer:
         except:
             pass
         
+        # Données de partitionnement
+        partitioner_data = None
+        try:
+            partitioner_data = self._load_partitioner_data(f"{prefix}/partitioner")
+        except:
+            pass
+        
         # Méthode
         method = self._detect_method(folder_name, params)
         
@@ -247,6 +310,7 @@ class MarkovAnalyzer:
             "method": method,
             "info": info,
             "centroids": centroids,
+            "partitioner_data": partitioner_data,
         }
     
     def load_all(self, include_old=True):
@@ -918,7 +982,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         Returns:
             partitioner fitté
         """
-        from partitioners import create_partitioner
+        from src.partitioners import create_partitioner
 
         # Agréger les données pour le fit
         all_coords = np.vstack([s["coords"] for s in self.dem_snapshots])
@@ -1189,7 +1253,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         Returns:
             dict avec dem_rsd, markov_rsd
         """
-        from partitioners import create_partitioner
+        from src.partitioners import create_partitioner
 
         # ── 1. Charger les snapshots DEM ──
         if not hasattr(self, 'dem_snapshots') or not self.dem_snapshots:
@@ -1406,7 +1470,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
             species_criterion: critère de labeling
             file_indices: indices des fichiers DEM
         """
-        from partitioners import create_partitioner
+        from src.partitioners import create_partitioner
 
         # Charger les données
         if not hasattr(self, 'dem_snapshots') or not self.dem_snapshots:
@@ -1976,353 +2040,1076 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         plt.tight_layout()
         plt.savefig("eigenvalues_comparison.png", dpi=150, bbox_inches="tight")
         plt.show()
-    def show_cylindrical_partition(self, nr=4, ntheta=6, radial_mode="equal_area", size=520):
+        
+    def visualize_partitioner(self, experiment_name=None, size=700):
         """
-        Affiche dans un notebook Jupyter une vue de dessus du partitionnement
-        cylindrique (nz=1) avec les numéros de cellules.
-
-        Numérotation:
-            state = ir + itheta * nr
-
+        Visualise le partitionnement d'une expérience chargée.
+        
+        1. Essaie d'utiliser les données du partitionneur chargées depuis HF
+        2. Si absent, le recrée depuis les paramètres de l'expérience
+        
         Args:
-            nr: nombre de partitions radiales
-            ntheta: nombre de partitions angulaires
-            radial_mode: "equal_area" ou "equal_dr"
-            size: taille du canvas en pixels
-
-        Returns:
-            IPython.display.HTML
-        """
-        import uuid
-        from IPython.display import HTML
-
-        cid = f"cyl_{uuid.uuid4().hex}"
-
-        html = f"""
-        <div style="font-family: sans-serif;">
-        <h3>Vue de dessus — nr={nr}, ntheta={ntheta}, nz=1, mode={radial_mode}</h3>
-        <p style="margin:4px 0 10px 0; color:#555;">
-            Numérotation : <code>state = ir + itheta × nr</code>
-        </p>
-        <canvas id="{cid}" width="{size}" height="{size}"
-                style="border:1px solid #ccc; border-radius:8px;"></canvas>
-        </div>
-
-        <script>
-        (function() {{
-            const canvas = document.getElementById("{cid}");
-            const ctx = canvas.getContext("2d");
-            const W = canvas.width, H = canvas.height;
-            const cx = W/2, cy = H/2, R = W*0.42;
-            const nr = {nr};
-            const ntheta = {ntheta};
-            const radialMode = "{radial_mode}";
-
-            function getEdges(nr, R, mode) {{
-                if (mode === "equal_area") {{
-                    return Array.from({{length: nr+1}}, (_, i) => R * Math.sqrt(i/nr));
-                }}
-                return Array.from({{length: nr+1}}, (_, i) => R * i/nr);
-            }}
-
-            const edges = getEdges(nr, R, radialMode);
-            ctx.clearRect(0, 0, W, H);
-
-            for (let itheta = 0; itheta < ntheta; itheta++) {{
-                for (let ir = 0; ir < nr; ir++) {{
-                    const state = ir + itheta * nr;
-                    const t0 = itheta * 2*Math.PI / ntheta - Math.PI/2;
-                    const t1 = (itheta + 1) * 2*Math.PI / ntheta - Math.PI/2;
-                    const r0 = edges[ir];
-                    const r1 = edges[ir+1];
-
-                    ctx.beginPath();
-                    ctx.arc(cx, cy, r1, t0, t1);
-                    ctx.arc(cx, cy, r0, t1, t0, true);
-                    ctx.closePath();
-
-                    ctx.fillStyle = `hsl(${{(state*300)/(nr*ntheta)}}, 65%, 68%)`;
-                    ctx.fill();
-                    ctx.strokeStyle = "#222";
-                    ctx.lineWidth = 1;
-                    ctx.stroke();
-
-                    const rm = (r0 + r1)/2;
-                    const tm = (t0 + t1)/2;
-                    const x = cx + rm * Math.cos(tm);
-                    const y = cy + rm * Math.sin(tm);
-
-                    ctx.fillStyle = "#111";
-                    ctx.font = "12px sans-serif";
-                    ctx.textAlign = "center";
-                    ctx.textBaseline = "middle";
-                    ctx.fillText(String(state), x, y);
-                }}
-            }}
-
-            ctx.beginPath();
-            ctx.arc(cx, cy, R, 0, 2*Math.PI);
-            ctx.strokeStyle = "#000";
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-        }})();
-        </script>
-        """
-        return HTML(html)
-    
-    
-    def show_adaptive_z_cylindrical_profile(
-        self,
-        nr=4,
-        ntheta=6,
-        zsplit=0.7,
-        radial_mode="equal_area",
-        n_cells_top=1,
-        size=620,
-    ):
-        """
-        Vue de profil du mélangeur (disque) avec découpage adaptatif :
-        - zone basse : découpage cylindrique (r, theta) visible en projection
-        - zone haute : 1 ou plusieurs cellules grossières
-
-        Numérotation :
-        - bas  : state = ir + itheta * nr
-        - haut : à partir de nr * ntheta
-
-        Args:
-            nr: nombre de couronnes radiales pour la zone basse
-            ntheta: nombre de secteurs angulaires pour la zone basse
-            zsplit: hauteur normalisée de séparation (0 < zsplit < 1)
-            radial_mode: "equal_area" ou "equal_dr"
-            n_cells_top: nombre de cellules grossières en haut
+            experiment_name: nom du dossier d'expérience (None = le premier chargé)
             size: taille du canvas
+        
+        Returns:
+            HTML object pour affichage Jupyter
+        """
+        # Sélectionner l'expérience
+        if experiment_name is None:
+            if not self.results:
+                raise ValueError("❌ Aucune expérience chargée. Utilisez load_all() d'abord.")
+            experiment_name = list(self.results.keys())[0]
+        
+        if experiment_name not in self.results:
+            raise ValueError(f"❌ Expérience '{experiment_name}' non trouvée. "
+                            f"Disponibles : {list(self.results.keys())[:5]}...")
+        
+        exp_data = self.results[experiment_name]
+        method = exp_data.get("method", "unknown")
+        params = exp_data.get("params", {})
+        partitioner_data = exp_data.get("partitioner_data")
+        
+        print(f"🔍 Visualisation du partitionnement pour '{experiment_name}'...")
+        print(f"   Méthode: {method}")
+        
+        # ══════════════════════════════════════════════════════════════
+        # ÉTAPE 1 : Utiliser les données du partitionneur si disponibles
+        # ══════════════════════════════════════════════════════════════
+        
+        if partitioner_data is not None:
+            print(f"   ✅ Données du partitionneur chargées: {partitioner_data.get('type')}")
+            partitioner_type = partitioner_data.get("type")
+            n_cells = partitioner_data.get("n_cells")
+            print(f"      Type : {partitioner_type} | Cellules : {n_cells}")
+            
+            # Visualiser directement avec les données chargées
+            if partitioner_type == "AdaptiveZPartitioner":
+                # Récréer l'objet pour la visualisation
+                partitioner = self._recreate_partitioner_from_params(exp_data)
+                return partitioner.visualize_profile(size=size)
+            elif partitioner_type == "CylindricalPartitioner":
+                return self._visualize_cylindrical_with_data(partitioner_data, size=size)
+            elif partitioner_type == "CartesianPartitioner":
+                return self._visualize_cartesian_with_data(partitioner_data, size=size)
+            elif partitioner_type == "MultiZonePartitioner":
+                partitioner = self._recreate_partitioner_from_params(exp_data)
+                return self._visualize_multizone(partitioner, size=size)
+            elif partitioner_type == "VoronoiPartitioner":
+                return self._visualize_voronoi_with_data(partitioner_data, size=size)
+        
+        # ══════════════════════════════════════════════════════════════
+        # ÉTAPE 2 : Recréer depuis les paramètres
+        # ══════════════════════════════════════════════════════════════
+        
+        print(f"   🔧 Recréation depuis les paramètres...")
+        partitioner = self._recreate_partitioner_from_params(exp_data)
+        
+        # ══════════════════════════════════════════════════════════════
+        # VISUALISATION
+        # ══════════════════════════════════════════════════════════════
+        
+        partitioner_type = type(partitioner).__name__
+        
+        if partitioner_type == "AdaptiveZPartitioner":
+            return partitioner.visualize_profile(size=size)
+        elif partitioner_type == "MultiZonePartitioner":
+            return self._visualize_multizone(partitioner, size=size)
+        elif partitioner_type == "CylindricalPartitioner":
+            return self._visualize_cylindrical(partitioner, size=size)
+        elif partitioner_type == "CartesianPartitioner":
+            return self._visualize_cartesian(partitioner, size=size)
+        elif partitioner_type == "VoronoiPartitioner":
+            return self._visualize_voronoi(partitioner, size=size)
+        else:
+            return self._visualize_generic(partitioner, size=size)
+
+
+    def _recreate_partitioner_from_params(self, exp_data):
+        """
+        Recrée un partitionneur depuis les paramètres de l'expérience.
+        
+        Args:
+            exp_data: données de l'expérience depuis self.results
+        
+        Returns:
+            partitioner configuré avec les bons paramètres
+        """
+        from src.partitioners import create_partitioner
+        
+        method = exp_data["method"]
+        params = exp_data.get("params", {})
+        matrix = exp_data["matrix"]
+        n_states = matrix.shape[0]
+        
+        print(f"   🔧 Recréation du partitionneur {method}:")
+        
+        # ── Extraire les paramètres selon le format ──
+        if "method_kwargs" in params:
+            # Nouveau format
+            method_kwargs = params["method_kwargs"]
+            print(f"      Paramètres (nouveau format): {method_kwargs}")
+        else:
+            # Ancien format : déduire les paramètres
+            method_kwargs = self._deduce_old_format_params(method, params, n_states)
+            print(f"      Paramètres (déduits): {method_kwargs}")
+        
+        # ── Créer le partitionneur ──
+        partitioner = create_partitioner(method, **method_kwargs)
+        
+        # ── Simuler un fit basique pour adaptive/multizone ──
+        if method in ["adaptive", "multizone"]:
+            # Ces méthodes ont besoin de z_min, z_max pour la visualisation
+            # On utilise des valeurs par défaut raisonnables
+            partitioner = self._simulate_basic_fit(partitioner, method_kwargs)
+        
+        print(f"      ✅ Partitionneur recréé: {partitioner.n_cells} cellules")
+        
+        return partitioner
+
+
+    def _deduce_old_format_params(self, method, params, n_states):
+        """
+        Déduit les paramètres depuis l'ancien format ou les infos disponibles.
+        
+        Args:
+            method: nom de la méthode
+            params: paramètres de l'expérience
+            n_states: nombre d'états depuis la matrice
+        
+        Returns:
+            dict de paramètres pour create_partitioner
+        """
+        if method == "cartesian":
+            # Ancien format : nx, ny, nz directement dans params
+            nx = params.get("nx", 5)
+            ny = params.get("ny", 5) 
+            nz = params.get("nz", 5)
+            
+            # Vérifier cohérence avec n_states
+            if nx * ny * nz != n_states:
+                # Essayer de déduire depuis n_states (supposer cube)
+                cube_root = round(n_states ** (1/3))
+                if cube_root ** 3 == n_states:
+                    nx = ny = nz = cube_root
+                    print(f"      ⚠️  Paramètres incohérents, déduit cube {cube_root}³")
+            
+            return {"nx": nx, "ny": ny, "nz": nz}
+        
+        elif method == "cylindrical":
+            # Essayer de déduire nr, ntheta, nz depuis n_states
+            # Supposer nz=1 par défaut (cas fréquent)
+            nz = 1
+            remaining = n_states // nz
+            
+            # Essayer quelques combinaisons courantes
+            for nr in [3, 4, 5, 6, 8, 10]:
+                if remaining % nr == 0:
+                    ntheta = remaining // nr
+                    if ntheta >= 1 and ntheta <= 16:  # valeurs raisonnables
+                        return {"nr": nr, "ntheta": ntheta, "nz": nz, "radial_mode": "equal_area"}
+            
+            # Fallback
+            return {"nr": 5, "ntheta": 8, "nz": 1, "radial_mode": "equal_area"}
+        
+        elif method == "voronoi":
+            return {"n_cells": n_states}
+        
+        elif method == "quantile":
+            # Supposer cube
+            cube_root = round(n_states ** (1/3))
+            if cube_root ** 3 == n_states:
+                return {"nx": cube_root, "ny": cube_root, "nz": cube_root}
+            else:
+                return {"nx": 5, "ny": 5, "nz": 5}
+        
+        elif method == "octree":
+            return {"max_particles": 100, "max_depth": 5}
+        
+        elif method == "physics":
+            return {"n_cells": n_states}
+        
+        elif method == "adaptive":
+            # Paramètres par défaut
+            return {
+                "z_split": 0.75,
+                "z_split_mode": "quantile",
+                "n_cells_top": 1,
+                "top_method": "single",
+                "top_kwargs": {},
+                "bottom_method": "cylindrical", 
+                "bottom_kwargs": {"nr": 3, "ntheta": 4, "nz": 1, "radial_mode": "equal_area"}
+            }
+        
+        elif method == "single":
+            return {}
+        
+        else:
+            print(f"      ⚠️  Méthode {method} inconnue, paramètres par défaut")
+            return {}
+
+
+    def _simulate_basic_fit(self, partitioner, method_kwargs):
+        """
+        Simule un fit basique pour les partitionneurs qui en ont besoin.
+        
+        Args:
+            partitioner: instance du partitionneur
+            method_kwargs: paramètres utilisés
+        
+        Returns:
+            partitioner avec attributs basiques remplis
+        """
+        if type(partitioner).__name__ == "AdaptiveZPartitioner":
+            # Remplir les attributs nécessaires pour la visualisation
+            partitioner._z_min = 0.0
+            partitioner._z_max = 1.0
+            
+            if partitioner.z_split_mode == "quantile":
+                partitioner._z_split = partitioner.z_split_input or 0.75
+            else:
+                partitioner._z_split = partitioner.z_split_input or 0.5
+            
+            # Créer les sous-partitionneurs
+            from src.partitioners import create_partitioner
+            
+            partitioner._bottom_partitioner = create_partitioner(
+                partitioner.bottom_method, 
+                **partitioner.bottom_kwargs
+            )
+            partitioner._n_cells_bottom = partitioner._bottom_partitioner.n_cells
+            
+            if partitioner.top_method == "single":
+                partitioner._top_partitioner = None
+                partitioner._n_cells_top = 1
+            else:
+                partitioner._top_partitioner = create_partitioner(
+                    partitioner.top_method,
+                    **partitioner.top_kwargs
+                )
+                partitioner._n_cells_top = partitioner._top_partitioner.n_cells
+            
+            print(f"      Zone basse: {partitioner._n_cells_bottom} cellules")
+            print(f"      Zone haute: {partitioner._n_cells_top} cellules")
+            print(f"      Z-split: {partitioner._z_split}")
+        
+        return partitioner
+
+
+    def _visualize_cylindrical_with_data(self, partitioner_data, size=700):
+        """
+        Visualise un partitionnement cylindrique : le mélangeur vu de dessus.
+        Le cercle représente le mélangeur qui est complètement partitionné.
+        
+        Args:
+            partitioner_data: dict avec type, n_cells, r_max, r_edges, etc.
+            size: taille du canvas
+        
+        Returns:
+            HTML object pour Jupyter
         """
         import uuid
         from IPython.display import HTML
-
-        if not (0 < zsplit < 1):
-            raise ValueError("zsplit doit être dans ]0,1[.")
-
-        cid = f"adaptive_cyl_profile_{uuid.uuid4().hex}"
-
+        
+        cid = f"cyl_data_viz_{uuid.uuid4().hex}"
+        
+        # Extraire les données
+        n_cells = partitioner_data.get("n_cells", 0)
+        r_max = partitioner_data.get("r_max", 1.0)
+        r_edges = partitioner_data.get("r_edges")
+        
+        if r_edges is None:
+            print("⚠️  r_edges non disponibles")
+            return self._visualize_generic(None, size=size)
+        
+        # Convertir en liste
+        r_edges_list = r_edges.tolist() if hasattr(r_edges, 'tolist') else list(r_edges)
+        nr = len(r_edges_list) - 1
+        nz = 1
+        ntheta = max(1, n_cells // nr)
+        
+        # Palette de couleurs
+        colors = [f"hsl({360 * i / max(1, n_cells)}, 75%, 50%)" for i in range(n_cells)]
+        
         html = f"""
-        <div style="font-family: sans-serif;">
-        <h3>Vue de profil — découpage adaptatif avec base cylindrique</h3>
-        <p style="margin:4px 0 10px 0; color:#555;">
-            Zone basse : cylindrique <code>(nr={nr}, ntheta={ntheta})</code>,
-            zone haute : <code>{n_cells_top}</code> cellule(s),
-            <code>zsplit={zsplit:.3f}</code>, mode=<code>{radial_mode}</code>
-        </p>
-        <canvas id="{cid}" width="{size}" height="{size}"
-                style="border:1px solid #ccc; border-radius:8px;"></canvas>
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        
+        <h3 style="margin-bottom:12px; color:#2c3e50;">
+            🔍 Partitionnement Cylindrique — Vue de dessus du mélangeur
+        </h3>
+        
+        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    border-radius:8px; color:white; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
+                <div>
+                    <div style="font-size:13px; opacity:0.9;">Rayons (nr)</div>
+                    <div style="font-size:18px; font-weight:bold;">{nr}</div>
+                </div>
+                <div>
+                    <div style="font-size:13px; opacity:0.9;">Angles (nθ)</div>
+                    <div style="font-size:18px; font-weight:bold;">{ntheta}</div>
+                </div>
+                <div>
+                    <div style="font-size:13px; opacity:0.9;">Hauteurs (nz)</div>
+                    <div style="font-size:18px; font-weight:bold;">{nz}</div>
+                </div>
+            </div>
+            <div style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.3); 
+                        text-align:center; font-size:16px; font-weight:bold;">
+                Total : {n_cells} cellules | Rayon : {r_max:.4f}
+            </div>
         </div>
-
+        
+        <canvas id="{cid}" width="{size}" height="{size}"
+                style="border:2px solid #555; border-radius:10px; 
+                    box-shadow:0 8px 16px rgba(0,0,0,0.15); display:block; margin:20px auto;
+                    background:#f5f5f5;"></canvas>
+        
         <script>
         (function() {{
             const canvas = document.getElementById("{cid}");
             const ctx = canvas.getContext("2d");
-
-            const W = canvas.width, H = canvas.height;
-            const cx = W / 2, cy = H / 2, R = W * 0.40;
-
+            
+            const W = canvas.width;
+            const H = canvas.height;
+            const cx = W / 2;
+            const cy = H / 2;
+            const R_display = Math.min(W, H) * 0.35;
+            
             const nr = {nr};
             const ntheta = {ntheta};
-            const zsplit = {zsplit};
-            const radialMode = "{radial_mode}";
-            const nCellsTop = {int(n_cells_top)};
-
-            function getEdges(nr, R, mode) {{
-                if (mode === "equal_area") {{
-                    return Array.from({{length: nr+1}}, (_, i) => R * Math.sqrt(i / nr));
-                }}
-                return Array.from({{length: nr+1}}, (_, i) => R * i / nr);
-            }}
-
-            function yCanvasFromZNorm(z) {{
-                return cy + R - 2 * R * z;
-            }}
-
-            function colorForState(state, total, alpha=0.75) {{
-                const hue = (state * 300) / Math.max(total, 1);
-                return `hsla(${{hue}}, 65%, 68%, ${{alpha}})`;
-            }}
-
-            function clipCircle() {{
+            const r_max_real = {r_max};
+            const r_edges = {json.dumps(r_edges_list)};
+            const colors = {json.dumps(colors)};
+            
+            // Normaliser les rayons pour l'affichage
+            const r_edges_norm = r_edges.map(r => (r / r_max_real) * R_display);
+            
+            // ═════════════════════════════════════════════════════════
+            // FONCTION POUR DESSINER UN SECTEUR ANNULAIRE
+            // ═════════════════════════════════════════════════════════
+            function drawAnnularSector(r_inner, r_outer, theta_start, theta_end, fillColor, strokeColor, lineWidth = 1) {{
                 ctx.beginPath();
-                ctx.arc(cx, cy, R, 0, 2*Math.PI);
-                ctx.clip();
+                
+                // Arc intérieur
+                ctx.arc(cx, cy, r_inner, theta_start, theta_end);
+                
+                // Ligne radiale de fin
+                ctx.lineTo(cx + r_outer * Math.cos(theta_end), cy + r_outer * Math.sin(theta_end));
+                
+                // Arc extérieur (inverse)
+                ctx.arc(cx, cy, r_outer, theta_end, theta_start, true);
+                
+                // Fermer le chemin
+                ctx.closePath();
+                
+                // Remplir et tracer
+                ctx.fillStyle = fillColor;
+                ctx.fill();
+                ctx.strokeStyle = strokeColor;
+                ctx.lineWidth = lineWidth;
+                ctx.stroke();
             }}
-
-            const edges = getEdges(nr, R, radialMode);
-            const bottomStates = nr * ntheta;
-            const totalStates = bottomStates + nCellsTop;
-            const ySplit = yCanvasFromZNorm(zsplit);
-
-            ctx.clearRect(0, 0, W, H);
-
-            // Fond du mélangeur
-            ctx.beginPath();
-            ctx.arc(cx, cy, R, 0, 2*Math.PI);
-            ctx.fillStyle = "#fafafa";
-            ctx.fill();
-            ctx.strokeStyle = "#000";
-            ctx.lineWidth = 2;
-            ctx.stroke();
-
-            // =========================
-            // Zone basse : projection cylindrique (r, theta)
-            // =========================
-            ctx.save();
-            clipCircle();
-
-            for (let itheta = 0; itheta < ntheta; itheta++) {{
-                const t0 = itheta * 2*Math.PI / ntheta - Math.PI/2;
-                const t1 = (itheta + 1) * 2*Math.PI / ntheta - Math.PI/2;
-                const tm = 0.5 * (t0 + t1);
-
-                for (let ir = 0; ir < nr; ir++) {{
-                    const state = ir + itheta * nr;
-                    const r0 = edges[ir];
-                    const r1 = edges[ir + 1];
-
-                    const a = Math.abs(Math.cos(tm));
-                    const xOuterL = cx - r1 * a;
-                    const xOuterR = cx + r1 * a;
-                    const xInnerL = cx - r0 * a;
-                    const xInnerR = cx + r0 * a;
-
-                    const yOuterTop = cy - r1;
-                    const yOuterBottom = cy + r1;
-                    const yInnerTop = cy - r0;
-                    const yInnerBottom = cy + r0;
-
-                    const yTop = Math.max(yOuterTop, ySplit);
-                    const yBottom = yOuterBottom;
-
-                    if (yBottom <= yTop) continue;
-
-                    // Couronne externe
-                    ctx.fillStyle = colorForState(state, totalStates, 0.82);
-                    ctx.fillRect(xOuterL, yTop, xOuterR - xOuterL, yBottom - yTop);
-
-                    // Trou interne pour matérialiser le découpage radial
-                    if (r0 > 0) {{
-                        const innerTop = Math.max(yInnerTop, ySplit);
-                        const innerBottom = yInnerBottom;
-                        if (innerBottom > innerTop) {{
-                            ctx.fillStyle = "#fafafa";
-                            ctx.fillRect(xInnerL, innerTop, xInnerR - xInnerL, innerBottom - innerTop);
-                        }}
-                    }}
-
-                    // Contours externe/interne
-                    ctx.strokeStyle = "#222";
-                    ctx.lineWidth = 1;
-                    ctx.strokeRect(xOuterL, yTop, xOuterR - xOuterL, yBottom - yTop);
-
-                    if (r0 > 0) {{
-                        const innerTop = Math.max(yInnerTop, ySplit);
-                        const innerBottom = yInnerBottom;
-                        if (innerBottom > innerTop) {{
-                            ctx.strokeRect(xInnerL, innerTop, xInnerR - xInnerL, innerBottom - innerTop);
-                        }}
-                    }}
-
-                    // Label centré selon la projection
-                    const rm = 0.5 * (r0 + r1);
-                    let xLabel = cx + 0.60 * rm * Math.cos(tm);
-                    let yLabel = cy + 0.60 * rm * Math.sin(tm);
-
-                    if (yLabel < ySplit + 10) yLabel = ySplit + 10;
-                    if (yLabel > cy + R - 10) yLabel = cy + R - 10;
-
-                    ctx.fillStyle = "#111";
-                    ctx.font = "11px sans-serif";
-                    ctx.textAlign = "center";
-                    ctx.textBaseline = "middle";
-                    ctx.fillText(String(state), xLabel, yLabel);
+            
+            // ═════════════════════════════════════════════════════════
+            // DESSINER TOUTES LES PARTITIONS
+            // ═════════════════════════════════════════════════════════
+            for (let ir = 0; ir < nr; ir++) {{
+                for (let itheta = 0; itheta < ntheta; itheta++) {{
+                    const cell_id = ir + itheta * nr;
+                    
+                    const r_inner = r_edges_norm[ir];
+                    const r_outer = r_edges_norm[ir + 1];
+                    
+                    // IMPORTANT: Couvrir 360° complètement
+                    const theta_start = (2 * Math.PI * itheta) / ntheta;
+                    const theta_end = (2 * Math.PI * (itheta + 1)) / ntheta;
+                    
+                    // Dessiner le secteur
+                    drawAnnularSector(
+                        r_inner, 
+                        r_outer, 
+                        theta_start, 
+                        theta_end,
+                        colors[cell_id],    // Couleur de remplissage
+                        "#333",              // Couleur de bordure
+                        0.5                  // Épaisseur bordure
+                    );
                 }}
             }}
-
-            ctx.restore();
-
-            // =========================
-            // Zone haute : cellules grossières
-            // =========================
-            ctx.save();
-            clipCircle();
-
-            for (let i = 0; i < nCellsTop; i++) {{
-                const state = bottomStates + i;
-                const x1 = cx - R + (2 * R) * (i / nCellsTop);
-                const x2 = cx - R + (2 * R) * ((i + 1) / nCellsTop);
-                const y1 = cy - R;
-                const y2 = ySplit;
-
-                if (y2 <= y1) continue;
-
-                ctx.fillStyle = colorForState(state, totalStates, 0.42);
-                ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
-
-                ctx.strokeStyle = "#222";
-                ctx.lineWidth = 1.2;
-                ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-
-                const xLabel = 0.5 * (x1 + x2);
-                const yLabel = 0.5 * (y1 + y2);
-
-                ctx.fillStyle = "#111";
-                ctx.font = "bold 13px sans-serif";
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-                ctx.fillText(String(state), xLabel, yLabel);
-            }}
-
-            ctx.restore();
-
-            // Ligne de séparation zsplit
-            ctx.beginPath();
-            ctx.moveTo(cx - R, ySplit);
-            ctx.lineTo(cx + R, ySplit);
-            ctx.setLineDash([6, 4]);
-            ctx.strokeStyle = "#cc3333";
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            ctx.fillStyle = "#cc3333";
-            ctx.font = "12px sans-serif";
-            ctx.textAlign = "left";
-            ctx.fillText(`zsplit = ${{zsplit.toFixed(3)}}`, cx - R + 10, ySplit - 8);
-
-            // Contour final du mélangeur
-            ctx.beginPath();
-            ctx.arc(cx, cy, R, 0, 2*Math.PI);
+            
+            // ═════════════════════════════════════════════════════════
+            // CONTOUR CIRCULAIRE DU MÉLANGEUR
+            // ═════════════════════════════════════════════════════════
             ctx.strokeStyle = "#000";
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r_edges_norm[nr], 0, 2 * Math.PI);
             ctx.stroke();
-
-            // Annotation des zones
-            ctx.fillStyle = "#333";
-            ctx.font = "12px sans-serif";
+            
+            // ═════════════════════════════════════════════════════════
+            // CERCLES RADIAUX (séparateurs de rayons)
+            // ═════════════════════════════════════════════════════════
+            ctx.strokeStyle = "rgba(0, 0, 0, 0.4)";
+            ctx.lineWidth = 1;
+            for (let ir = 1; ir < nr; ir++) {{
+                ctx.beginPath();
+                ctx.arc(cx, cy, r_edges_norm[ir], 0, 2 * Math.PI);
+                ctx.stroke();
+            }}
+            
+            // ═════════════════════════════════════════════════════════
+            // LIGNES ANGULAIRES (séparateurs d'angles)
+            // ═════════════════════════════════════════════════════════
+            ctx.strokeStyle = "rgba(0, 0, 0, 0.4)";
+            ctx.lineWidth = 1;
+            for (let itheta = 0; itheta < ntheta; itheta++) {{
+                const theta = (2 * Math.PI * itheta) / ntheta;
+                const x_start = cx + r_edges_norm[0] * Math.cos(theta);
+                const y_start = cy + r_edges_norm[0] * Math.sin(theta);
+                const x_end = cx + r_edges_norm[nr] * Math.cos(theta);
+                const y_end = cy + r_edges_norm[nr] * Math.sin(theta);
+                
+                ctx.beginPath();
+                ctx.moveTo(x_start, y_start);
+                ctx.lineTo(x_end, y_end);
+                ctx.stroke();
+            }}
+            
+            // ═════════════════════════════════════════════════════════
+            // LABELS DES CELLULES
+            // ═════════════════════════════════════════════════════════
+            ctx.fillStyle = "#000";
+            ctx.font = "bold 11px Arial";
             ctx.textAlign = "center";
-            ctx.fillText("zone haute", cx, cy - 0.56 * R);
-            ctx.fillText("zone basse : projection du découpage cylindrique (r, θ)", cx, cy + 0.52 * R);
-
-            // Légende basse
-            ctx.fillStyle = "#444";
-            ctx.font = "12px sans-serif";
-            ctx.fillText(
-                `états bas = 0..${{bottomStates - 1}}, états haut = ${{bottomStates}}..${{totalStates - 1}}`,
-                cx,
-                H - 24
-            );
+            ctx.textBaseline = "middle";
+            
+            for (let ir = 0; ir < nr; ir++) {{
+                for (let itheta = 0; itheta < ntheta; itheta++) {{
+                    const cell_id = ir + itheta * nr;
+                    
+                    // Position au centre du secteur
+                    const r_mid = (r_edges_norm[ir] + r_edges_norm[ir + 1]) / 2;
+                    const theta_mid = (2 * Math.PI * (itheta + 0.5)) / ntheta;
+                    
+                    const x = cx + r_mid * Math.cos(theta_mid);
+                    const y = cy + r_mid * Math.sin(theta_mid);
+                    
+                    // Ombre de texte pour lisibilité
+                    ctx.shadowColor = "rgba(255,255,255,0.8)";
+                    ctx.shadowBlur = 3;
+                    ctx.fillText(cell_id, x, y);
+                    ctx.shadowColor = "transparent";
+                }}
+            }}
+            
+            // ═════════════════════════════════════════════════════════
+            // CENTRE DU MÉLANGEUR
+            // ═════════════════════════════════════════════════════════
+            ctx.fillStyle = "#666";
+            ctx.beginPath();
+            ctx.arc(cx, cy, 4, 0, 2 * Math.PI);
+            ctx.fill();
         }})();
         </script>
+        
+        <div style="margin-top:16px; padding:12px; background:#ecf0f1; border-radius:6px; font-size:13px; color:#34495e;">
+            <strong>💡 Interprétation :</strong>
+            <ul style="margin:8px 0; padding-left:20px;">
+                <li><strong>Cercle extérieur</strong> : limite du mélangeur (rayon = {r_max:.4f})</li>
+                <li><strong>Anneaux</strong> : {nr} couches radiales (nr = {nr})</li>
+                <li><strong>Secteurs</strong> : {ntheta} divisions angulaires (ntheta = {ntheta})</li>
+                <li><strong>Chaque couleur</strong> = une partition (cellule d'état)</li>
+                <li><strong>Le mélangeur est ENTIÈREMENT partitionné</strong> (pas d'espace vide)</li>
+            </ul>
+        </div>
+        
+        </div>
         """
         return HTML(html)
 
 
+    def _visualize_cartesian_with_data(self, partitioner_data, size=700):
+        """
+        Visualise un partitionnement cartésien avec données réelles.
+        
+        Args:
+            partitioner_data: dict avec type, n_cells, nx, ny, nz
+            size: taille du canvas
+        
+        Returns:
+            HTML object pour Jupyter
+        """
+        import uuid
+        from IPython.display import HTML
+        
+        cid = f"cart_data_viz_{uuid.uuid4().hex}"
+        n_cells = partitioner_data.get("n_cells", 0)
+        
+        # Déduire grille
+        nx = partitioner_data.get("nx")
+        ny = partitioner_data.get("ny")
+        nz = partitioner_data.get("nz")
+        
+        if nx is None or ny is None or nz is None:
+            cube_root = round(n_cells ** (1/3))
+            if cube_root ** 3 == n_cells:
+                nx = ny = nz = cube_root
+            else:
+                nx = ny = round(np.sqrt(n_cells))
+                nz = max(1, n_cells // (nx * ny))
+        
+        colors = [f"hsl({360 * i / max(1, n_cells)}, 70%, 50%)" for i in range(n_cells)]
+        display_z = 0
+        
+        html = f"""
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        <h3 style="margin-bottom:12px; color:#2c3e50;">
+            🔍 Partitionnement Cartésien (Données réelles)
+        </h3>
+        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    border-radius:8px; color:white; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
+                <div><div style="font-size:13px; opacity:0.9;">X (nx)</div><div style="font-size:18px; font-weight:bold;">{nx}</div></div>
+                <div><div style="font-size:13px; opacity:0.9;">Y (ny)</div><div style="font-size:18px; font-weight:bold;">{ny}</div></div>
+                <div><div style="font-size:13px; opacity:0.9;">Z (nz)</div><div style="font-size:18px; font-weight:bold;">{nz}</div></div>
+            </div>
+            <div style="margin-top:12px; text-align:center; font-weight:bold;">
+                Total : {n_cells} cellules
+            </div>
+        </div>
+        <canvas id="{cid}" width="{size}" height="{size}" style="border:2px solid #bdc3c7; border-radius:10px; 
+                    box-shadow:0 8px 16px rgba(0,0,0,0.15); display:block; margin:20px auto; background:white;"></canvas>
+        <script>
+        (function() {{
+            const canvas = document.getElementById("{cid}");
+            const ctx = canvas.getContext("2d");
+            const W = canvas.width, H = canvas.height, nx = {nx}, ny = {ny};
+            const cell_w = (W - 40) / nx, cell_h = (H - 40) / ny, margin = 20;
+            const colors = {json.dumps(colors)};
+            for (let ix = 0; ix < nx; ix++) {{
+                for (let iy = 0; iy < ny; iy++) {{
+                    const cell_id = ix + iy * nx;
+                    const x = margin + ix * cell_w, y = margin + iy * cell_h;
+                    ctx.fillStyle = colors[cell_id];
+                    ctx.fillRect(x, y, cell_w, cell_h);
+                    ctx.strokeStyle = "#333";
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(x, y, cell_w, cell_h);
+                    ctx.fillStyle = "#000";
+                    ctx.font = "12px Arial";
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "middle";
+                    ctx.fillText(cell_id, x + cell_w/2, y + cell_h/2);
+                }}
+            }}
+        }})();
+        </script>
+        </div>
+        """
+        return HTML(html)
+
+
+    def _visualize_voronoi_with_data(self, partitioner_data, size=700):
+        """
+        Visualise un partitionnement Voronoï avec centroids.
+        
+        Args:
+            partitioner_data: dict avec type, n_cells, centroids
+            size: taille du canvas
+        
+        Returns:
+            HTML object pour Jupyter
+        """
+        import uuid
+        from IPython.display import HTML
+        
+        cid = f"vor_data_viz_{uuid.uuid4().hex}"
+        n_cells = partitioner_data.get("n_cells", 0)
+        centroids = partitioner_data.get("centroids")
+        
+        if centroids is None:
+            return self._visualize_generic(None, size=size)
+        
+        # Extraire coordonnées 2D (projection X-Y)
+        if len(centroids.shape) > 1 and centroids.shape[1] >= 2:
+            cents_2d = centroids[:, :2]
+        else:
+            cents_2d = np.array([[i % 10, i // 10] for i in range(n_cells)])
+        
+        colors = [f"hsl({360 * i / max(1, n_cells)}, 70%, 50%)" for i in range(n_cells)]
+        cents_2d_list = cents_2d.tolist()
+        
+        html = f"""
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        <h3 style="margin-bottom:12px; color:#2c3e50;">
+            🔍 Partitionnement Voronoï (Données réelles)
+        </h3>
+        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    border-radius:8px; color:white; text-align:center; font-weight:bold;">
+            {n_cells} cellules (K-means)
+        </div>
+        <canvas id="{cid}" width="{size}" height="{size}" style="border:2px solid #bdc3c7; border-radius:10px; 
+                    box-shadow:0 8px 16px rgba(0,0,0,0.15); display:block; margin:20px auto; background:white;"></canvas>
+        <script>
+        (function() {{
+            const canvas = document.getElementById("{cid}");
+            const ctx = canvas.getContext("2d");
+            const W = canvas.width, H = canvas.height, margin = 20;
+            const centroids = {json.dumps(cents_2d_list)};
+            const colors = {json.dumps(colors)};
+            
+            let x_min = Math.min(...centroids.map(c => c[0])),
+                x_max = Math.max(...centroids.map(c => c[0])),
+                y_min = Math.min(...centroids.map(c => c[1])),
+                y_max = Math.max(...centroids.map(c => c[1]));
+            
+            const x_range = x_max - x_min || 1, y_range = y_max - y_min || 1;
+            
+            centroids.forEach((c, i) => {{
+                const cx = margin + (c[0] - x_min) / x_range * (W - 2*margin);
+                const cy = margin + (c[1] - y_min) / y_range * (H - 2*margin);
+                ctx.fillStyle = colors[i];
+                ctx.beginPath();
+                ctx.arc(cx, cy, 6, 0, 2*Math.PI);
+                ctx.fill();
+                ctx.strokeStyle = "#333";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }});
+        }})();
+        </script>
+        </div>
+        """
+        return HTML(html)
+
+
+    def _visualize_cylindrical(self, partitioner, size=700):
+        """
+        Visualise un partitionnement cylindrique en coordonnées polaires (r, θ).
+        
+        Args:
+            partitioner: CylindricalPartitioner instance
+            size: taille du canvas
+        
+        Returns:
+            HTML object pour Jupyter
+        """
+        import uuid
+        from IPython.display import HTML
+        
+        cid = f"cyl_viz_{uuid.uuid4().hex}"
+        
+        # Paramètres cylindriques
+        nr = partitioner.nr
+        ntheta = partitioner.ntheta
+        nz = partitioner.nz
+        r_max = partitioner._r_max if partitioner._r_max else 1.0
+        r_edges = partitioner._r_edges if partitioner._r_edges is not None else np.linspace(0, r_max, nr + 1)
+        radial_mode = partitioner.radial_mode
+        
+        # Palette de couleurs
+        n_cells = partitioner.n_cells
+        colors = [f"hsl({360 * i / n_cells}, 70%, 50%)" for i in range(n_cells)]
+        
+        html = f"""
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        
+        <h3 style="margin-bottom:12px; color:#2c3e50;">
+            🔍 Partitionnement Cylindrique (Vue de dessus)
+        </h3>
+        
+        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    border-radius:8px; color:white; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
+                <div>
+                    <div style="font-size:13px; opacity:0.9;">Rayons (nr)</div>
+                    <div style="font-size:18px; font-weight:bold;">{nr}</div>
+                </div>
+                <div>
+                    <div style="font-size:13px; opacity:0.9;">Angles (nθ)</div>
+                    <div style="font-size:18px; font-weight:bold;">{ntheta}</div>
+                </div>
+                <div>
+                    <div style="font-size:13px; opacity:0.9;">Hauteurs (nz)</div>
+                    <div style="font-size:18px; font-weight:bold;">{nz}</div>
+                </div>
+            </div>
+            <div style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.3); 
+                        text-align:center; font-size:16px; font-weight:bold;">
+                Total : {n_cells} cellules | Mode radial : {radial_mode}
+            </div>
+        </div>
+        
+        <canvas id="{cid}" width="{size}" height="{size}"
+                style="border:2px solid #bdc3c7; border-radius:10px; 
+                    box-shadow:0 8px 16px rgba(0,0,0,0.15); display:block; margin:20px auto;
+                    background:white;"></canvas>
+        
+        <script>
+        (function() {{
+            const canvas = document.getElementById("{cid}");
+            const ctx = canvas.getContext("2d");
+            
+            const W = canvas.width;
+            const H = canvas.height;
+            const cx = W / 2;
+            const cy = H / 2;
+            const R_display = Math.min(W, H) * 0.4;
+            
+            const nr = {nr};
+            const ntheta = {ntheta};
+            const nz = {nz};
+            const r_max = {r_max};
+            const radial_mode = "{radial_mode}";
+            const r_edges = {json.dumps(r_edges.tolist())};
+            const colors = {json.dumps(colors)};
+            
+            // Dessiner les partitions
+            for (let iz = 0; iz < nz; iz++) {{
+                for (let ir = 0; ir < nr; ir++) {{
+                    for (let itheta = 0; itheta < ntheta; itheta++) {{
+                        const cell_id = ir + itheta * nr + iz * nr * ntheta;
+                        
+                        const r_inner = r_edges[ir] / r_max * R_display;
+                        const r_outer = r_edges[ir + 1] / r_max * R_display;
+                        
+                        const theta_start = (2 * Math.PI * itheta) / ntheta;
+                        const theta_end = (2 * Math.PI * (itheta + 1)) / ntheta;
+                        
+                        // Dessiner le secteur annulaire
+                        ctx.fillStyle = colors[cell_id];
+                        ctx.strokeStyle = "#333";
+                        ctx.lineWidth = 1;
+                        
+                        ctx.beginPath();
+                        for (let r = r_inner; r <= r_outer; r += (r_outer - r_inner) / 20) {{
+                            const x = cx + r * Math.cos(theta_start);
+                            const y = cy + r * Math.sin(theta_start);
+                            if (r === r_inner) ctx.moveTo(x, y);
+                            else ctx.lineTo(x, y);
+                        }}
+                        
+                        ctx.arc(cx, cy, r_outer, theta_start, theta_end);
+                        
+                        for (let r = r_outer; r >= r_inner; r -= (r_outer - r_inner) / 20) {{
+                            const x = cx + r * Math.cos(theta_end);
+                            const y = cy + r * Math.sin(theta_end);
+                            ctx.lineTo(x, y);
+                        }}
+                        
+                        ctx.arc(cx, cy, r_inner, theta_end, theta_start, true);
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.stroke();
+                    }}
+                }}
+            }}
+            
+            // Dessiner les cercles de rayon
+            ctx.strokeStyle = "rgba(0,0,0,0.3)";
+            ctx.lineWidth = 1;
+            for (let ir = 1; ir < nr; ir++) {{
+                const r = r_edges[ir] / r_max * R_display;
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+                ctx.stroke();
+            }}
+            
+            // Labels de cellule
+            ctx.fillStyle = "#000";
+            ctx.font = "12px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            
+            for (let itheta = 0; itheta < ntheta; itheta++) {{
+                for (let ir = 0; ir < nr; ir++) {{
+                    const cell_id = ir + itheta * nr;
+                    const r_mid = (r_edges[ir] + r_edges[ir + 1]) / 2 / r_max * R_display;
+                    const theta_mid = (2 * Math.PI * (itheta + 0.5)) / ntheta;
+                    const x = cx + r_mid * Math.cos(theta_mid);
+                    const y = cy + r_mid * Math.sin(theta_mid);
+                    ctx.fillText(cell_id, x, y);
+                }}
+            }}
+        }})();
+        </script>
+        
+        </div>
+        """
+        return HTML(html)
+
+
+    def _visualize_cartesian(self, partitioner, size=700):
+        """
+        Visualise un partitionnement cartésien en grille 3D (projection 2D).
+        
+        Args:
+            partitioner: CartesianPartitioner instance
+            size: taille du canvas
+        
+        Returns:
+            HTML object pour Jupyter
+        """
+        import uuid
+        from IPython.display import HTML
+        
+        cid = f"cart_viz_{uuid.uuid4().hex}"
+        
+        nx = partitioner.nx
+        ny = partitioner.ny
+        nz = partitioner.nz
+        n_cells = partitioner.n_cells
+        
+        # Palette de couleurs
+        colors = [f"hsl({360 * i / n_cells}, 70%, 50%)" for i in range(n_cells)]
+        
+        # On affiche une tranche (z=0) en 2D
+        display_z = 0
+        
+        html = f"""
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        
+        <h3 style="margin-bottom:12px; color:#2c3e50;">
+            🔍 Partitionnement Cartésien (Grille régulière)
+        </h3>
+        
+        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    border-radius:8px; color:white; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
+                <div>
+                    <div style="font-size:13px; opacity:0.9;">X (nx)</div>
+                    <div style="font-size:18px; font-weight:bold;">{nx}</div>
+                </div>
+                <div>
+                    <div style="font-size:13px; opacity:0.9;">Y (ny)</div>
+                    <div style="font-size:18px; font-weight:bold;">{ny}</div>
+                </div>
+                <div>
+                    <div style="font-size:13px; opacity:0.9;">Z (nz)</div>
+                    <div style="font-size:18px; font-weight:bold;">{nz}</div>
+                </div>
+            </div>
+            <div style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.3); 
+                        text-align:center; font-size:16px; font-weight:bold;">
+                Total : {n_cells} cellules
+            </div>
+        </div>
+        
+        <canvas id="{cid}" width="{size}" height="{size}"
+                style="border:2px solid #bdc3c7; border-radius:10px; 
+                    box-shadow:0 8px 16px rgba(0,0,0,0.15); display:block; margin:20px auto;
+                    background:white;"></canvas>
+        
+        <script>
+        (function() {{
+            const canvas = document.getElementById("{cid}");
+            const ctx = canvas.getContext("2d");
+            
+            const W = canvas.width;
+            const H = canvas.height;
+            const nx = {nx};
+            const ny = {ny};
+            const nz = {nz};
+            const iz_display = {display_z};
+            
+            const cell_w = (W - 40) / nx;
+            const cell_h = (H - 40) / ny;
+            const margin = 20;
+            
+            const colors = {json.dumps(colors)};
+            
+            // Dessiner la grille
+            for (let ix = 0; ix < nx; ix++) {{
+                for (let iy = 0; iy < ny; iy++) {{
+                    const cell_id = ix + iy * nx + iz_display * nx * ny;
+                    const x = margin + ix * cell_w;
+                    const y = margin + iy * cell_h;
+                    
+                    // Rectangle de la cellule
+                    ctx.fillStyle = colors[cell_id];
+                    ctx.fillRect(x, y, cell_w, cell_h);
+                    
+                    // Bordure
+                    ctx.strokeStyle = "#333";
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(x, y, cell_w, cell_h);
+                    
+                    // Numéro de cellule
+                    ctx.fillStyle = "#000";
+                    ctx.font = "12px Arial";
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "middle";
+                    ctx.fillText(cell_id, x + cell_w/2, y + cell_h/2);
+                }}
+            }}
+        }})();
+        </script>
+        
+        </div>
+        """
+        return HTML(html)
+
+
+    def _visualize_multizone(self, partitioner, size=700):
+        """
+        Visualise un partitionnement MultiZone.
+        
+        Args:
+            partitioner: MultiZonePartitioner instance
+            size: taille du canvas
+        
+        Returns:
+            HTML object pour Jupyter
+        """
+        import uuid
+        from IPython.display import HTML
+        
+        cid = f"mz_viz_{uuid.uuid4().hex}"
+        n_cells = partitioner.n_cells
+        
+        html = f"""
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        
+        <h3 style="margin-bottom:12px; color:#2c3e50;">
+            🔍 Partitionnement MultiZone
+        </h3>
+        
+        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    border-radius:8px; color:white; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
+            <div style="text-align:center; font-size:16px; font-weight:bold;">
+                Total : {n_cells} cellules
+            </div>
+        </div>
+        
+        <p>Visualisation MultiZone non encore implémentée.</p>
+        
+        </div>
+        """
+        return HTML(html)
+
+
+    def _visualize_voronoi(self, partitioner, size=700):
+        """
+        Visualise un partitionnement Voronoï.
+        
+        Args:
+            partitioner: VoronoiPartitioner instance
+            size: taille du canvas
+        
+        Returns:
+            HTML object pour Jupyter
+        """
+        import uuid
+        from IPython.display import HTML
+        
+        cid = f"vor_viz_{uuid.uuid4().hex}"
+        n_cells = partitioner.n_cells
+        
+        html = f"""
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        
+        <h3 style="margin-bottom:12px; color:#2c3e50;">
+            🔍 Partitionnement Voronoï
+        </h3>
+        
+        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    border-radius:8px; color:white; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
+            <div style="text-align:center; font-size:16px; font-weight:bold;">
+                Total : {n_cells} cellules (Clustering K-means)
+            </div>
+        </div>
+        
+        <p>Visualisation Voronoï non encore implémentée.</p>
+        
+        </div>
+        """
+        return HTML(html)
+
+
+    def _visualize_generic(self, partitioner, size=700):
+        """
+        Visualise un partitionneur générique.
+        
+        Args:
+            partitioner: BasePartitioner instance
+            size: taille du canvas
+        
+        Returns:
+            HTML object pour Jupyter
+        """
+        import uuid
+        from IPython.display import HTML
+        
+        partitioner_type = type(partitioner).__name__
+        n_cells = partitioner.n_cells
+        label = partitioner.label if hasattr(partitioner, 'label') else "Unknown"
+        
+        html = f"""
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        
+        <h3 style="margin-bottom:12px; color:#2c3e50;">
+            🔍 Partitionnement générique
+        </h3>
+        
+        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    border-radius:8px; color:white; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
+            <div style="text-align:center;">
+                <div style="font-size:16px; font-weight:bold; margin-bottom:8px;">
+                    {partitioner_type}
+                </div>
+                <div style="font-size:14px;">
+                    Type : {label}
+                </div>
+                <div style="font-size:16px; font-weight:bold; margin-top:8px;">
+                    Total : {n_cells} cellules
+                </div>
+            </div>
+        </div>
+        
+        </div>
+        """
+        return HTML(html)
+
+
+    def list_available_visualizations(self):
+        """
+        Liste les expériences pour lesquelles on peut faire une visualisation.
+        
+        Returns:
+            dict: {experiment_name: {"method": str, "can_visualize": bool, "reason": str}}
+        """
+        result = {}
+        
+        print("🔍 Vérification des visualisations possibles...")
+        
+        for name, exp_data in self.results.items():
+            method = exp_data.get("method", "unknown")
+            can_viz = True
+            reason = "OK"
+            
+            # Vérifier si la méthode est supportée
+            if method in ["unknown"]:
+                can_viz = False
+                reason = "Méthode inconnue"
+            
+            result[name] = {
+                "method": method,
+                "can_visualize": can_viz, 
+                "reason": reason
+            }
+        
+        # Résumé par méthode
+        by_method = defaultdict(list)
+        for name, info in result.items():
+            by_method[info["method"]].append(name)
+        
+        print(f"\n📊 Résumé par méthode:")
+        for method, names in sorted(by_method.items()):
+            can_viz_count = sum(1 for name in names if result[name]["can_visualize"])
+            print(f"   {method:15s}: {can_viz_count}/{len(names)} visualisables")
+        
+        return result
 # =============================================================================
 # SCRIPT PRINCIPAL
 # =============================================================================
