@@ -25,10 +25,10 @@ from tqdm import tqdm
 from dataclasses import dataclass, field, asdict
 from huggingface_hub import HfFileSystem
 
-# from partitioners import create_partitioner, REGISTRY
-# from bucket_io import save_experiment_to_bucket, BUCKET_BASE
-from .partitioners import create_partitioner, REGISTRY
-from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
+from partitioners import create_partitioner, REGISTRY
+from bucket_io import save_experiment_to_bucket, BUCKET_BASE
+# from .partitioners import create_partitioner, REGISTRY
+# from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
 
 
 
@@ -69,10 +69,17 @@ class ExperimentConfig:
         part = create_partitioner(self.method, **self.method_kwargs)
         if sample_coords is not None:
             part.fit(sample_coords)
-        return os.path.join(
+            
+        # ✅ Create directory if it doesn't exist
+        output_path = os.path.join(
             base_dir,
-            f"{part.label}_NLT{self.nlt}_step{self.step}_dt{self.dt}_tau{self.tau}_start{self.start_index}",  # ✅ Ordre logique
+            f"{part.label}_NLT{self.nlt}_step{self.step}_dt{self.dt}_tau{self.tau}_start{self.start_index}"
         )
+        
+        if not os.path.exists(output_path):
+            os.makedirs(output_path, exist_ok=True)
+            
+        return output_path
 
 # =============================================================================
 # CONFIGURATIONS PAR MÉTHODE
@@ -197,14 +204,14 @@ def get_configs(method):
             )
 
     elif method == "adaptive":
-        # ── Sweep z_split (quantile) ─────────────────────────────────
-        for z_q in [0.5, 0.6, 0.7, 0.8, 0.9]:
+        # ── Sweep y_split (quantile) ─────────────────────────────────
+        for y_q in [0.5, 0.6, 0.7, 0.8, 0.9]:
             configs.append(
                 ExperimentConfig(
                     method="adaptive",
                     method_kwargs={
-                        "z_split": z_q,
-                        "z_split_mode": "quantile",
+                        "y_split": y_q,  # Changed from z_split
+                        "y_split_mode": "quantile",  # Changed from z_split_mode
                         "n_cells_top": 1,
                         "top_method": "single",
                         "top_kwargs": {},
@@ -217,14 +224,15 @@ def get_configs(method):
                 )
             )
 
+
         # ── Sweep finesse zone basse (nr) ────────────────────────────
         for nr in [3, 5, 8, 10, 15]:
             configs.append(
                 ExperimentConfig(
                     method="adaptive",
                     method_kwargs={
-                        "z_split": 0.75,
-                        "z_split_mode": "quantile",
+                        "y_split": 0.75,
+                        "y_split_mode": "quantile",
                         "n_cells_top": 1,
                         "top_method": "single",
                         "top_kwargs": {},
@@ -243,8 +251,8 @@ def get_configs(method):
                 ExperimentConfig(
                     method="adaptive",
                     method_kwargs={
-                        "z_split": 0.75,
-                        "z_split_mode": "quantile",
+                        "y_split": 0.75,
+                        "y_split_mode": "quantile",
                         "n_cells_top": 1,
                         "top_method": "single",
                         "top_kwargs": {},
@@ -263,8 +271,8 @@ def get_configs(method):
                 ExperimentConfig(
                     method="adaptive",
                     method_kwargs={
-                        "z_split": 0.75,
-                        "z_split_mode": "quantile",
+                        "y_split": 0.75,
+                        "y_split_mode": "quantile",
                         "n_cells_top": 1,
                         "top_method": "single",
                         "top_kwargs": {},
@@ -288,8 +296,8 @@ def get_configs(method):
                 ExperimentConfig(
                     method="adaptive",
                     method_kwargs={
-                        "z_split": 0.75,
-                        "z_split_mode": "quantile",
+                        "y_split": 0.75,
+                        "y_split_mode": "quantile",
                         "n_cells_top": n_top,
                         "top_method": top_method,
                         "top_kwargs": top_kwargs,
@@ -308,8 +316,8 @@ def get_configs(method):
                 ExperimentConfig(
                     method="adaptive",
                     method_kwargs={
-                        "z_split": 0.75,
-                        "z_split_mode": "quantile",
+                        "y_split": 0.75,
+                        "y_split_mode": "quantile",
                         "n_cells_top": 1,
                         "top_method": "single",
                         "top_kwargs": {},
@@ -320,15 +328,15 @@ def get_configs(method):
             )
 
     elif method == "multizone":
-        # ── 2 zones: fin en bas, grossier en haut ────────────────────
+        # 2 zones: fin en bas, grossier en haut ────────────────────
         configs.append(
             ExperimentConfig(
                 method="multizone",
                 method_kwargs={
-                    "z_mode": "quantile",
+                    "y_mode": "quantile",  # Changed from z_mode
                     "zones": [
                         {
-                            "z_min": 0.0, "z_max": 0.8,
+                            "y_min": 0.0, "y_max": 0.8,  # Changed from z_min/z_max
                             "method": "cylindrical",
                             "kwargs": {
                                 "nr": 2, "ntheta": 2, "nz": 1,
@@ -336,7 +344,7 @@ def get_configs(method):
                             },
                         },
                         {
-                            "z_min": 0.8, "z_max": 1.0,
+                            "y_min": 0.8, "y_max": 1.0,  # Changed from z_min/z_max
                             "method": "single",
                             "kwargs": {},
                         },
@@ -351,10 +359,10 @@ def get_configs(method):
                 ExperimentConfig(
                     method="multizone",
                     method_kwargs={
-                        "z_mode": "quantile",
+                        "y_mode": "quantile",
                         "zones": [
                             {
-                                "z_min": 0.0, "z_max": split1,
+                                "y_min": 0.0, "y_max": split1,
                                 "method": "cylindrical",
                                 "kwargs": {
                                     "nr": 2, "ntheta": 2, "nz": 1,
@@ -362,7 +370,7 @@ def get_configs(method):
                                 },
                             },
                             {
-                                "z_min": split1, "z_max": split2,
+                                "y_min": split1, "y_max": split2,
                                 "method": "cylindrical",
                                 "kwargs": {
                                     "nr": 2, "ntheta": 2, "nz": 1,
@@ -370,7 +378,7 @@ def get_configs(method):
                                 },
                             },
                             {
-                                "z_min": split2, "z_max": 1.0,
+                                "y_min": split2, "y_max": 1.0,
                                 "method": "single",
                                 "kwargs": {},
                             },
@@ -385,15 +393,15 @@ def get_configs(method):
                 ExperimentConfig(
                     method="multizone",
                     method_kwargs={
-                        "z_mode": "quantile",
+                        "y_mode": "quantile",
                         "zones": [
                             {
-                                "z_min": 0.0, "z_max": 0.6,
+                                "y_min": 0.0, "y_max": 0.6,
                                 "method": "voronoi",
                                 "kwargs": {"n_cells": nc_bottom},
                             },
                             {
-                                "z_min": 0.6, "z_max": 0.85,
+                                "y_min": 0.6, "y_max": 0.85,
                                 "method": "cylindrical",
                                 "kwargs": {
                                     "nr": 2, "ntheta": 2, "nz": 1,
@@ -401,7 +409,7 @@ def get_configs(method):
                                 },
                             },
                             {
-                                "z_min": 0.85, "z_max": 1.0,
+                                "y_min": 0.85, "y_max": 1.0,
                                 "method": "single",
                                 "kwargs": {},
                             },
@@ -415,10 +423,10 @@ def get_configs(method):
             ExperimentConfig(
                 method="multizone",
                 method_kwargs={
-                    "z_mode": "quantile",
+                    "y_mode": "quantile",
                     "zones": [
                         {
-                            "z_min": 0.0, "z_max": 0.4,
+                            "y_min": 0.0, "y_max": 0.4,
                             "method": "cylindrical",
                             "kwargs": {
                                 "nr": 8, "ntheta": 16, "nz": 10,
@@ -426,7 +434,7 @@ def get_configs(method):
                             },
                         },
                         {
-                            "z_min": 0.4, "z_max": 0.7,
+                            "y_min": 0.4, "y_max": 0.7,
                             "method": "cylindrical",
                             "kwargs": {
                                 "nr": 5, "ntheta": 10, "nz": 6,
@@ -457,10 +465,10 @@ def get_configs(method):
                 ExperimentConfig(
                     method="multizone",
                     method_kwargs={
-                        "z_mode": "quantile",
+                        "y_mode": "quantile",
                         "zones": [
                             {
-                                "z_min": 0.0, "z_max": 0.75,
+                                "y_min": 0.0, "y_max": 0.75,
                                 "method": "cylindrical",
                                 "kwargs": {
                                     "nr": nr, "ntheta": 8, "nz": nz,
@@ -468,7 +476,7 @@ def get_configs(method):
                                 },
                             },
                             {
-                                "z_min": 0.75, "z_max": 1.0,
+                                "y_min": 0.75, "y_max": 1.0,
                                 "method": "single",
                                 "kwargs": {},
                             },
@@ -584,8 +592,8 @@ def _get_default_kwargs(method):
         "octree": {"max_particles": 100, "max_depth": 5},
         "physics": {"n_cells": 125},
         "adaptive": {
-            "z_split": 0.75,
-            "z_split_mode": "quantile",
+            "y_split": 0.75,
+            "y_split_mode": "quantile",
             "n_cells_top": 1,
             "top_method": "single",
             "top_kwargs": {},
@@ -596,10 +604,10 @@ def _get_default_kwargs(method):
             },
         },
         "multizone": {
-            "z_mode": "quantile",
+            "y_mode": "quantile",
             "zones": [
                 {
-                    "z_min": 0.0, "z_max": 0.75,
+                    "y_min": 0.0, "y_max": 0.75,
                     "method": "cylindrical",
                     "kwargs": {
                         "nr": 2, "ntheta": 2, "nz": 1,
@@ -607,7 +615,7 @@ def _get_default_kwargs(method):
                     },
                 },
                 {
-                    "z_min": 0.75, "z_max": 1.0,
+                    "y_min": 0.75, "y_max": 1.0,
                     "method": "single",
                     "kwargs": {},
                 },
@@ -776,9 +784,28 @@ def run_experiment(config, partitioner, files, fs, device):
     step = config.step
     dt = config.dt
     start_base = config.start_index
+    idx_prev = start_base  # Initialize properly
+    idx_curr = start_base
 
     print(f"   📐 Configuration: NLT={config.nlt}, step={step}, dt={dt}, tau={tau}")
-    
+    def load_coords(file_path):
+        with fs.open(file_path, "rb") as fh:
+            df = pl.read_csv(fh)
+        # Remplacement de l'accès par indexation directe
+        return (
+            df.select("coordinates:0").to_numpy(),  # Utilisation de select()
+            df.select("coordinates:1").to_numpy(),
+            df.select("coordinates:2").to_numpy()
+        )
+
+
+        # ✅ Use numpy arrays for states calculation
+    states_prev = partitioner.compute_states(
+        *load_coords(files[idx_prev])
+    )
+    states_curr = partitioner.compute_states(
+        *load_coords(files[idx_curr])
+    )
     # ── Construire toutes les paires ──
     all_pairs = []
     
@@ -957,7 +984,7 @@ def run_markov_sweep(method:str, configs:list[ExperimentConfig]=None, base_dir=B
     print("=" * 70)
     print(f"  SWEEP MARKOVIEN — méthode: {method.upper()}")
     print("=" * 70)
-
+    
     # ── Device ──
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"🖥️  Device: {device}")
