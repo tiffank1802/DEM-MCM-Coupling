@@ -37,7 +37,8 @@ from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
 # =============================================================================
 
 # BASE_OUTPUT_DIR = "NewResultsMCM"
-BASE_OUTPUT_DIR = "ResultsDtMCM"
+# BASE_OUTPUT_DIR = "ResultsDtMCM"
+BASE_OUTPUT_DIR = "RaffinageTemporel"
 HF_FOLDER = "hf://buckets/ktongue/DEM_MCM/Output Paraview"
 SAMPLE_RATE = 50  # pour le fit des partitionneurs
 
@@ -45,37 +46,33 @@ SAMPLE_RATE = 50  # pour le fit des partitionneurs
 # =============================================================================
 # DATACLASS EXPÉRIENCE
 # =============================================================================
-
-
-@dataclass # crée et ajoute automatiquement le constructeur de classe
+@dataclass
 class ExperimentConfig:
     """Configuration d'une expérience."""
 
     method: str = "cartesian"
-    method_kwargs: dict = field(default_factory=dict) # type par defaut de la (dict vide) lors de l'instanciation de la classe ExperimentConfig sans passage explicite de method_kwargs
+    method_kwargs: dict = field(default_factory=dict)
     nlt: int = 100
-    dt:float=None
-    step_size: int = 1 # pas de temps d'apprentissage telque le temps d'apprentissage soit T=nlt*step_size
-    start_index: int = 250 # début de l'apprentissage
+    tau: int = 50  # Écart entre start et end pour chaque paire
+    step: int = 100  # Distance entre 2 starts principaux (quand NLT > 1)
+    dt: int = None  # Raffinage temporel à l'intérieur de chaque step
+    start_index: int = 250
 
     def __post_init__(self):
         if self.method_kwargs is None:
             self.method_kwargs = {}
         if self.dt is None:
-            # Par défaut: 1/10 du step_size, minimum 1
-            # self.dt = min(1, self.step_size // 10)    
-            self.dt=.1 
+            # Raffinage par défaut : 5 apprentissages par step
+            self.dt = max(1, self.step // 5)
             
-    def output_folder(self, base_dir=BASE_OUTPUT_DIR,sample_coords=None):
+    def output_folder(self, base_dir=BASE_OUTPUT_DIR, sample_coords=None):
         part = create_partitioner(self.method, **self.method_kwargs)
         if sample_coords is not None:
             part.fit(sample_coords)
         return os.path.join(
             base_dir,
-            f"{part.label}_NLT{self.nlt}_step{self.step_size}_start{self.start_index}_dt{self.dt}",
+            f"{part.label}_NLT{self.nlt}_step{self.step}_dt{self.dt}_tau{self.tau}_start{self.start_index}",  # ✅ Ordre logique
         )
-   
-
 
 # =============================================================================
 # CONFIGURATIONS PAR MÉTHODE
@@ -154,7 +151,6 @@ def get_configs(method):
                     },
                 )
             )
-
     elif method == "voronoi":
         for nc in [8,10,12,14,16,18,20,24, 27,30, 64, 100]:
             configs.append(
@@ -493,13 +489,13 @@ def get_configs(method):
         raise ValueError(f"Méthode inconnue: {method}")
 
     # ══════════════════════════════════════════════════════════════════════
-    # Sweeps temporels (avec discrétisation spatiale par défaut)
+    # ✅ Sweeps temporels optimisés pour le CAS 1 (recouvrement)
     # ══════════════════════════════════════════════════════════════════════
 
     default_kwargs = _get_default_kwargs(method)
 
     # ── Sweep NLT ────────────────────────────────────────────────────────
-    for nlt in [10, 20, 50, 100, 150, 200, 300, 500]:
+    for nlt in [1, 2, 3, 5, 10]:  # Moins de blocs car chacun a plusieurs paires
         configs.append(
             ExperimentConfig(
                 method=method,
@@ -508,36 +504,61 @@ def get_configs(method):
             )
         )
 
-    # ── Sweep step_size ──────────────────────────────────────────────────
-    for step in [1, 2, 3, 5, 8, 10, 15, 20]:
+    # ── Sweep step (distance entre blocs NLT) ──────────
+    for step in [50, 100, 200, 500]:  
         configs.append(
             ExperimentConfig(
                 method=method,
                 method_kwargs=default_kwargs,
-                step_size=step,
+                step=step,
+                # dt sera calculé automatiquement = step//5
             )
         )
 
-    # ── Sweep start_index ────────────────────────────────────────────────
-    for start in [250, 500, 1000, 2000, 3000, 5000]:
+    # ── Sweep dt (raffinage temporel) ──────────
+    step_ref = 100
+    for dt in [10, 20, 25, 50]:  # Différents niveaux de raffinage
         configs.append(
             ExperimentConfig(
                 method=method,
                 method_kwargs=default_kwargs,
-                start_index=start,
-            )
-        )
-
-    # ── Sweep dt ─────────────────────────────────────────────────────────
-    for dt in [.01, .05, .10, .25, .50]:
-        configs.append(
-            ExperimentConfig(
-                method=method,
-                method_kwargs=default_kwargs,
+                step=step_ref,
                 dt=dt,
             )
         )
 
+    # ── Sweep tau (longueur des paires) ──────────
+    for tau in [20, 50, 100, 200]:
+        configs.append(
+            ExperimentConfig(
+                method=method,
+                method_kwargs=default_kwargs,
+                tau=tau,
+            )
+        )
+
+
+    # ✅ Configurations recommandées avec les bons noms
+    recommended_configs = [
+    # Raffinage fin
+    ExperimentConfig(
+        method=method, method_kwargs=default_kwargs,
+        nlt=3, step=100, dt=10, tau=50  # ✅ step, dt, tau
+    ),
+    # Raffinage moyen  
+    ExperimentConfig(
+        method=method, method_kwargs=default_kwargs,
+        nlt=5, step=200, dt=25, tau=100
+    ),
+    # Raffinage grossier
+    ExperimentConfig(
+        method=method, method_kwargs=default_kwargs,
+        nlt=2, step=500, dt=100, tau=200
+    ),
+]
+    
+    configs.extend(recommended_configs)
+    
     # ── Dédoublonner ─────────────────────────────────────────────────────
     seen = set()
     unique = []
@@ -555,7 +576,7 @@ def _get_default_kwargs(method):
     defaults = {
         "cartesian": {"nx": 5, "ny": 5, "nz": 5},
         "cylindrical": {
-            "nr": 5, "ntheta": 8, "nz": 5,
+            "nr": 3, "ntheta": 8, "nz": 1,
             "radial_mode": "equal_area",
         },
         "voronoi": {"n_cells": 125},
@@ -595,7 +616,6 @@ def _get_default_kwargs(method):
         "single": {},
     }
     return defaults.get(method, {})
-
 # =============================================================================
 # CHARGEMENT DES DONNÉES
 # =============================================================================
@@ -734,104 +754,92 @@ def compute_P_matrix_torch(states_prev, states_curr, n_states, device="cpu"):
 # =============================================================================
 # EXPÉRIENCE
 # =============================================================================
-
 def run_experiment(config, partitioner, files, fs, device):
     """
-    Exécute une expérience complète avec fenêtre glissante.
+    Exécute une expérience complète avec raffinage temporel.
 
-    Logique temporelle:
-        Chaque paire utilise deux snapshots séparés de step_size.
-        La fenêtre glisse de dt fichiers entre chaque paire.
-        dt << step_size → beaucoup de paires avec fort recouvrement.
+    Logique temporelle :
+    - NLT blocs principaux séparés de `step`
+    - Dans chaque bloc : int(step/dt) apprentissages avec décalage `dt`
+    - Chaque apprentissage : paire (start, start + tau)
+    - En fin de fichier : int((endfile-end)/dt) au lieu de int(step/dt)
 
-    Exemple: step_size=50, dt=5, start=0, nlt=6
+    Exemple: NLT=2, step=100, dt=20, tau=50, start=0
 
-        Fichiers:  0    5   10   15   20   25   ...  50   55   60   ...  75
-                   │    │    │    │    │    │         │    │    │         │
-        Paire 0:   ●────────────────────────────────→●
-                   0                                 50
-        Paire 1:        ●────────────────────────────────→●
-                        5                                 55
-        Paire 2:             ●────────────────────────────────→●
-                            10                                 60
-        Paire 3:                  ●────────────────────────────────→●
-                                 15                                 65
-        Paire 4:                       ●────────────────────────────────→●
-                                      20                                 70
-        Paire 5:                            ●────────────────────────────────→●
-                                           25                                 75
-
-        Toutes les paires ont le MÊME écart temporel (step_size=50).
-        Le glissement de dt=5 raffine l'échantillonnage statistique.
-
-        P_final = (P_0 + P_1 + P_2 + P_3 + P_4 + P_5) / 6
+    Bloc 1 (base=0):
+        (0,50), (20,70), (40,90), (60,110), (80,130)    # 5 apprentissages
+    Bloc 2 (base=100):  
+        (100,150), (120,170), (140,190), (160,210), (180,230)
     """
     n_states = partitioner.n_cells
-    step = config.step_size
+    tau = config.tau
+    step = config.step
     dt = config.dt
+    start_base = config.start_index
 
-    # ── Vérifier la faisabilité ──
-    # Dernier fichier nécessaire : start + (nlt-1)*dt + step
-    last_needed = config.start_index + (config.nlt - 1) * dt + step
-
-    if last_needed >= len(files):
-        max_nlt = (len(files) - 1 - config.start_index - 1*step) // dt + 1
-        max_nlt = max(max_nlt, 0)
-        print(
-            f"   ⚠️  Seulement {max_nlt} paires possibles "
-            f"(demandé: {config.nlt}, step={step}, dt={dt})"
-        )
-        actual_nlt = max_nlt
-    else:
-        actual_nlt = config.nlt
-
-    if actual_nlt <= 0:
-        raise ValueError(
-            f"Aucune paire possible: start={config.start_index}, "
-            f"step={step}, dt={dt}, fichiers={len(files)}"
-        )
-
-    # ── Construire les paires (fenêtre glissante) ──
-    #
-    #   Paire k : (start + k*dt,  start + k*dt + step)
-    #
-    #   L'écart entre les deux snapshots d'une paire est TOUJOURS = step
-    #   Le décalage entre paires successives est = dt
-    #
-    pairs: list[tuple[int, int]] = []
-    for k in range(actual_nlt):
-        idx_prev = config.start_index + k 
-        idx_curr = idx_prev + step
-        pairs.append((idx_prev, idx_curr))
-
-    # ── Diagnostic ──
-    ratio = dt / step
-    if ratio < 1:
-        overlap_pct = round((1 - ratio) * 100, 1)
-        n_paires_par_step = int(step / dt)
-        print(f"   🔄 Recouvrement: {overlap_pct}% "
-              f"({n_paires_par_step} paires par intervalle de step_size)")
-    elif ratio == 1:
-        print(f"   ▶️  Paires bout à bout (dt == step)")
-    else:
-        gap = dt - step
-        print(f"   ⏭️  Trou de {gap} fichiers entre paires")
-
-    plage_temporelle = pairs[-1][1] - pairs[0][0]
-    print(
-        f"   📐 {actual_nlt} paires | step={step} | dt={dt}\n"
-        f"   📂 Paire 0:   files[{int(pairs[0][0]):5d}] → files[{int(pairs[0][1]):5d}]\n"
-        f"   📂 Paire {actual_nlt-1}:  files[{int(pairs[-1][0]):5d}] → files[{int(pairs[-1][1]):5d}]\n"
-        f"   📏 Plage temporelle couverte: {plage_temporelle} fichiers"
-    )
+    print(f"   📐 Configuration: NLT={config.nlt}, step={step}, dt={dt}, tau={tau}")
+    
+    # ── Construire toutes les paires ──
+    all_pairs = []
+    
+    for nlt_idx in range(config.nlt):
+        # Start de base pour ce bloc NLT
+        current_start_base = start_base + nlt_idx * step
+        
+        # Calculer combien d'apprentissages dans ce bloc
+        if nlt_idx == config.nlt - 1:  # Dernier bloc
+            # Vérifier combien on peut faire avant la fin des fichiers
+            max_end_possible = len(files) - 1
+            max_start_possible = max_end_possible - tau
+            
+            if current_start_base > max_start_possible:
+                # Ce bloc ne peut pas commencer
+                print(f"   ⚠️  Bloc {nlt_idx+1} ignoré (start={current_start_base} > max={max_start_possible})")
+                break
+                
+            # Nombre d'apprentissages possibles dans ce dernier bloc
+            remaining_range = max_start_possible - current_start_base
+            n_apprentissages = min(step // dt, remaining_range // dt) + 1
+            
+        else:
+            # Bloc normal : int(step/dt) apprentissages
+            n_apprentissages = step // dt
+            
+        # Générer les paires pour ce bloc
+        for i in range(n_apprentissages):
+            start_idx = current_start_base + i * dt
+            end_idx = start_idx + tau
+            
+            if end_idx >= len(files):
+                print(f"   ⚠️  Paire ({start_idx},{end_idx}) ignorée (dépasse les fichiers)")
+                break
+                
+            all_pairs.append((start_idx, end_idx))
+    
+    if not all_pairs:
+        raise ValueError("Aucune paire possible avec ces paramètres")
+    
+    print(f"   📊 {len(all_pairs)} paires générées:")
+    print(f"      Premier: files[{all_pairs[0][0]}] → files[{all_pairs[0][1]}]")
+    print(f"      Dernier: files[{all_pairs[-1][0]}] → files[{all_pairs[-1][1]}]")
+    
+    # Analyser la structure
+    n_paires_par_step = step // dt
+    n_blocs_complets = len(all_pairs) // n_paires_par_step
+    n_paires_dernier_bloc = len(all_pairs) % n_paires_par_step
+    
+    print(f"      Structure: {n_blocs_complets} blocs complets de {n_paires_par_step} paires")
+    if n_paires_dernier_bloc > 0:
+        print(f"                 1 bloc partiel de {n_paires_dernier_bloc} paires")
 
     # ── Accumulateur ──
     P_acc = torch.zeros(
         (n_states, n_states), dtype=torch.float64, device=device
     )
 
-    for idx_prev, idx_curr in tqdm(pairs, desc="   Paires", leave=False):
-        # Lecture des deux snapshots séparés de step_size
+    # ── Traitement des paires ──
+    for i, (idx_prev, idx_curr) in enumerate(tqdm(all_pairs, desc="   Paires", leave=False)):
+        # Lecture des fichiers
         with fs.open(files[idx_prev], "rb") as f:
             df_prev = pl.read_csv(f)
         with fs.open(files[idx_curr], "rb") as f:
@@ -849,14 +857,11 @@ def run_experiment(config, partitioner, files, fs, device):
             df_curr["coordinates:2"],
         )
 
-        # Vers le device
-        sp = torch.from_numpy(states_prev).to(device)
-        sc = torch.from_numpy(states_curr).to(device)
+        # Calcul de la matrice de transition
+        P_acc += compute_P_matrix_torch(states_prev, states_curr, n_states, device)
 
-        P_acc [:]+= compute_P_matrix_torch(sp, sc, n_states, device)
-
-    # ── Moyenne sur les nlt évaluations ──
-    P = P_acc / actual_nlt
+    # ── Moyenne ──
+    P = P_acc / len(all_pairs)
     P_np = P.cpu().numpy()
 
     # ── Statistiques ──
@@ -865,7 +870,10 @@ def run_experiment(config, partitioner, files, fs, device):
     diag = np.diag(P_np)
 
     stats = {
-        "n_timesteps_used": actual_nlt,
+        "n_pairs_used": len(all_pairs),
+        "n_nlt_requested": config.nlt,
+        "n_blocs_complets": n_blocs_complets,
+        "n_paires_dernier_bloc": n_paires_dernier_bloc,
         "n_states": n_states,
         "n_states_visited": int(visited.sum()),
         "n_states_empty": int((~visited).sum()),
@@ -876,14 +884,14 @@ def run_experiment(config, partitioner, files, fs, device):
         "diagonal_mean": float(diag.mean()),
         "diagonal_std": float(diag.std()),
         "method": config.method,
-        "step_size": step,
+        "tau": tau,
+        "step": step,
         "dt": dt,
-        "overlap_ratio": round(max(0, 1 - dt / step), 4),
-        "n_paires_par_step": step // dt if dt > 0 else 0,
-        "plage_temporelle": int(pairs[-1][1] - pairs[0][0]),
+        "raffinage_ratio": step // dt,
+        "plage_temporelle": int(all_pairs[-1][1] - all_pairs[0][0]),
         "start_index": config.start_index,
-        "first_pair": list(pairs[0]),
-        "last_pair": list(pairs[-1]),
+        "first_pair": list(all_pairs[0]),
+        "last_pair": list(all_pairs[-1]),
     }
 
     return P_np, stats
@@ -983,8 +991,8 @@ def run_markov_sweep(method:str, configs:list[ExperimentConfig]=None, base_dir=B
         part = create_partitioner(c.method, **c.method_kwargs)
         part.fit(sample_coords)
         print(
-            f"  {i + 1:3d}. [{c.method:12s}] {part.label:40s} "
-            f"NLT={c.nlt:4d} step={c.step_size:2d} start={c.start_index}"
+            f"NLT={c.nlt:4d} step={c.step:3d} dt={c.dt:2d} tau={c.tau:3d} start={c.start_index}"
+            f"NLT={c.nlt:4d} step={c.step:3d} dt={c.dt:2d} tau={c.tau:3d} start={c.start_index}"  # ✅ Corrigé
         )
     print("-" * 70)
 
@@ -1031,10 +1039,12 @@ def run_markov_sweep(method:str, configs:list[ExperimentConfig]=None, base_dir=B
             results.append(
                 {"config": asdict(config), "stats": stats, "success": True}
             )
+          # À la fin de run_markov_sweep, dans la boucle de résultats :
             print(
                 f"   ✅ {stats['n_states_visited']}/{stats['n_states']} états | "
                 f"P(rester)={stats['diagonal_mean']:.4f} | "
-                f"Σrow=[{stats['column_sum_min']:.4f}, {stats['column_sum_max']:.4f}]"
+                f"pairs={stats['n_pairs_used']} | "  # ✅ Nouveau nom
+                f"step={config.step} dt={config.dt}"  # ✅ Corrigé
             )
 
         except Exception as e:

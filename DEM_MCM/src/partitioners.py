@@ -1606,18 +1606,21 @@ class MultiZonePartitioner(BasePartitioner):
 
 class SingleCellPartitioner(BasePartitioner):
     """Une seule cellule pour tout le domaine."""
-    
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
     @property
     def n_cells(self):
         return 1
-    
+
     @property
     def label(self):
         return "single_cell"
-    
+
     def fit(self, coordinates):
         return self
-    
+
     def compute_states(self, x, y, z):
         return np.zeros(len(np.asarray(x)), dtype=np.int64)
 
