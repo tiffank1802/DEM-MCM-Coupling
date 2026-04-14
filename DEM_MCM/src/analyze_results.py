@@ -25,7 +25,8 @@ import json
 import io
 from collections import defaultdict
 from huggingface_hub import HfFileSystem
-import src.bucket_io as b_io
+# import src.bucket_io as b_io
+from .import bucket_io as b_io
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -92,6 +93,8 @@ class MarkovAnalyzer:
         self.fs = HfFileSystem()
         self.results = {}           # {folder_name: {matrix, params, stats, method}}
         self.by_method = defaultdict(dict)  # {method: {folder_name: data}}
+        self.concentration_history=None
+        self.rsd=None
     
     # ─────────────────────────────────────────────────────────────────────
     # DÉTECTION DE MÉTHODE
@@ -312,7 +315,57 @@ class MarkovAnalyzer:
             "centroids": centroids,
             "partitioner_data": partitioner_data,
         }
-    
+            
+    def load_single(self, folder_name):
+        """Charge UNIQUEMENT un dossier spécifique (pas de scan automatique)."""
+        print(f"🔍 Chargement ciblé : {folder_name}")
+        
+        for base_path in [BUCKET_BASE, OLD_BUCKET_BASE]:
+            prefix = f"{base_path}/{folder_name}"
+            print(f"  → Test {prefix}")
+            
+            try:
+                # Test direct sans parsing des métadonnées
+                matrix = self._load_npy(f"{prefix}/transition_matrix.npy")
+                print(f"   ✅ Matrice trouvée : {matrix.shape}")
+                
+                # Charger les métadonnées si disponibles (optionnel)
+                params, stats, method, info = None, {}, {}, "unknown"
+                for fname in ["config.json", "params.json"]:
+                    try:
+                        params = self._load_json(f"{prefix}/{fname}")
+                        print(f"   ✅ {fname} chargé")
+                        break
+                    except:
+                        continue
+                
+                stats = self._load_json(f"{prefix}/stats.json") if self._exists(f"{prefix}/stats.json") else {}
+                method = self._detect_method(folder_name, params)
+                info = self._parse_experiment_info(folder_name, params, stats)
+                
+                # Stocker
+                self.results = {folder_name: {
+                    'matrix': matrix, 'params': params, 'stats': stats, 
+                    'method': method, 'info': info
+                }}
+                print(f"✅ {folder_name} chargé avec succès")
+                return True
+                
+            except FileNotFoundError:
+                print(f"   ❌ {prefix}/transition_matrix.npy introuvable")
+                continue
+            except Exception as e:
+                print(f"   ⚠️  Erreur {prefix}: {e}")
+                continue
+        
+        print(f"❌ Dossier {folder_name} introuvable dans les buckets")
+        return self.results
+    def load_single_folder(self, folder_name):
+        """Charge un seul dossier même s'il ne match pas la méthode."""
+        self.results = {}
+        data = self._load_experiment(BUCKET_BASE, folder_name)
+        self.results[folder_name] = data
+        print(f"✅ {folder_name} chargé")
     def load_all(self, include_old=True):
         """
         Charge toutes les expériences depuis le bucket.
@@ -761,60 +814,98 @@ class MarkovAnalyzer:
         plt.savefig(f"sweep_{method}_{sweep_param}.png", dpi=150, bbox_inches="tight")
         plt.show()
     
-    
-    # Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
-
-    def compute_rsd(self, folder_name, n_steps=200, initial_split=0.5):
+    def compute_rsd(
+    self,
+    folder_name,
+    n_steps=200,
+    initial_time=250,
+    partitioner=None,
+    species_labels=None,
+):
         """
         Calcule le RSD (Relative Standard Deviation) des particules
-        dans chaque partition au cours du temps.
+        dans chaque partition au cours du temps, à partir d'une
+        condition initiale réelle mesurée sur un snapshot DEM.
 
-        Le RSD mesure l'homogénéité du mélange:
-            RSD = 0%   → mélange parfait (distribution uniforme)
-            RSD = 100% → ségrégation totale
-
-        Formule: RSD(t) = σ(C_i(t)) / μ(C_i(t))
-        où C_i(t) est la concentration (fraction de particules) dans la cellule i.
+        Le calcul de C0 suit la même logique que compute_dem_rsd :
+            C_i(0) = n_A,i / n_total,i
 
         Args:
             folder_name: nom de l'expérience
-            n_steps: nombre de pas de simulation
-            initial_split: fraction de la frontière initiale (0.5 = moitié/moitié)
+            n_steps: nombre de pas de simulation Markov
+            initial_time: instant DEM utilisé pour construire C0
+            partitioner: partitionneur déjà fitté, obligatoire pour projeter les particules en cellules
+            species_labels: labels booléens des particules (True = espèce A)
 
         Returns:
             dict avec:
-                - rsd: array (n_steps,) — RSD à chaque pas
-                - rsd_percent: array (n_steps,) — RSD en pourcentage
-                - concentration_history: array (n_steps, n_states) — C_i(t)
-                - entropy: array (n_steps,) — entropie normalisée
-                - rsd_initial: float — RSD initial
-                - rsd_final: float — RSD final
-                - mixing_time_50: int ou None — pas où RSD < 50% du RSD initial
-                - mixing_time_90: int ou None — pas où RSD < 10% du RSD initial
+                - rsd: array (n_steps,)
+                - rsd_percent: array (n_steps,)
+                - concentration_history: array (n_steps, n_states)
+                - entropy: array (n_steps,)
+                - rsd_initial: float
+                - rsd_final: float
+                - mixing_time_50: int ou None
+                - mixing_time_90: int ou None
+                - n_states: int
+                - C0: array (n_states,) — condition initiale réelle
+                - initial_time: int
         """
         M = self.get_matrix(folder_name)
         n_states = M.shape[0]
 
-        # ── État initial ségrégé ──
-        # Concentration initiale: espèce A dans la moitié gauche,
-        # espèce B dans la moitié droite
-        C = np.zeros(n_states)
-        mid = int(n_states * initial_split)
-        C[:mid] = 1.0    # 100% d'espèce A dans les cellules 0..mid
-        C[mid:] = 0.0    # 0% d'espèce A dans les cellules mid..n
+        if partitioner is None:
+            raise ValueError(
+                "partitioner est requis pour calculer C0 depuis un snapshot DEM."
+            )
 
-        # ── Simulation ──
+        if species_labels is None:
+            if not hasattr(self, "species_labels"):
+                raise ValueError(
+                    "species_labels est requis (ou self.species_labels doit exister)."
+                )
+            species_labels = self.species_labels
+
+        if not hasattr(self, "dem_snapshots") or not self.dem_snapshots:
+            raise ValueError(
+                "Aucun snapshot DEM chargé. Appelez load_dem_snapshots(...) avant compute_rsd."
+            )
+
+        # Trouver le snapshot le plus proche de initial_time
+        # times = np.array([snap["t"] for snap in self.dem_snapshots])
+        # k0 = int(np.argmin(np.abs(times - initial_time)))
+        # k0 = initial_time
+        self.load_dem_snapshots(file_indices=[initial_time])
+        snap0 = self.dem_snapshots[0]
+        coords0 = snap0["coords"]
+        actual_time = int(snap0["t"])
+
+        # États des particules dans le partitionnement
+        states0 = partitioner.compute_states(
+            coords0[:, 0], coords0[:, 1], coords0[:, 2]
+        )
+
+        # Comptage par cellule
+        ntotal = np.bincount(states0, minlength=n_states).astype(float)
+        nA = np.bincount(states0[species_labels], minlength=n_states).astype(float)
+
+        # Condition initiale réelle : C0 = nA / ntotal
+        C = np.zeros(n_states)
+        mask = ntotal > 0
+        # C[mask] = nA[mask] / ntotal[mask]
+        C[mask] = nA[mask] # en nombre de particules de 
+
+        # Simulation Markov
         concentration_history = np.zeros((n_steps, n_states))
         rsd = np.zeros(n_steps)
         entropy = np.zeros(n_steps)
 
         for t in range(n_steps):
             C = C @ M
+            # C = np.clip(C, 0, 1) # cette ligne de code ne change rien car normalement les C sont toujours dans l'intervalle [0 1]
 
-            # Stocker
             concentration_history[t] = C
 
-            # RSD: σ/μ sur les cellules visitées (P > 0)
             visited = C > 1e-12
             if visited.sum() > 1:
                 mean_c = C[visited].mean()
@@ -823,15 +914,19 @@ class MarkovAnalyzer:
             else:
                 rsd[t] = 0
 
-            # Entropie normalisée
-            C_pos = C[C > 1e-12]
-            if len(C_pos) > 0 and n_states > 1:
-                entropy[t] = -np.sum(C_pos * np.log(C_pos)) / np.log(n_states)
+            C_active = C[visited]
+            if len(C_active) > 0:
+                C_clip = np.clip(C_active, 1e-10, 1 - 1e-10)
+                H = -np.mean(
+                    C_clip * np.log(C_clip) + (1 - C_clip) * np.log(1 - C_clip)
+                )
+                entropy[t] = H / np.log(2)
             else:
                 entropy[t] = 0
 
-        # ── Temps de mélange ──
         rsd_0 = rsd[0] if rsd[0] > 0 else 1.0
+        self.concentration_history=concentration_history
+        self.rsd=rsd
 
         mixing_time_50 = None
         mixing_time_90 = None
@@ -851,8 +946,9 @@ class MarkovAnalyzer:
             "mixing_time_50": mixing_time_50,
             "mixing_time_90": mixing_time_90,
             "n_states": n_states,
+            "C0": concentration_history[0] * 0 + C,  # ou stocker une copie avant la boucle
+            "initial_time": actual_time,
         }
-
     """
 Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
 """
@@ -860,7 +956,6 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
 # ═══════════════════════════════════════════════════════════════════
 # CHARGEMENT DES DONNÉES DEM
 # ═══════════════════════════════════════════════════════════════════
-
     def load_dem_snapshots(self, file_indices=None, sample_every=1):
         """
         Charge les positions des particules DEM à plusieurs instants.
@@ -876,6 +971,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         Returns:
             list de dict {t, coords} stocké dans self.dem_snapshots
         """
+    
         import polars as pl
 
         if not hasattr(self, '_dem_fs'):
@@ -883,7 +979,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
             self._dem_files = sorted(
                 self._dem_fs.glob("hf://buckets/ktongue/DEM_MCM/Output Paraview/*.csv")
             )
-            print(f"📁 {len(self._dem_files)} fichiers DEM disponibles")
+            print(f"{len(self._dem_files)} fichiers DEM disponibles")
 
         if file_indices is None:
             file_indices = list(range(0, min(len(self._dem_files), 500), 10))
@@ -892,82 +988,75 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         self.dem_file_indices = file_indices
 
         print(f"📂 Chargement de {len(file_indices)} snapshots DEM...")
-
         for i, idx in enumerate(file_indices):
             with self._dem_fs.open(self._dem_files[idx], "rb") as f:
                 df = pl.read_csv(f)
+                coords = np.column_stack([
+                    df["coordinates:0"].to_numpy(),
+                    df["coordinates:1"].to_numpy(),
+                    df["coordinates:2"].to_numpy(),
+                ])[::sample_every]
 
-            coords = np.column_stack([
-                df["coordinates:0"].to_numpy(),
-                df["coordinates:1"].to_numpy(),
-                df["coordinates:2"].to_numpy(),
-            ])[::sample_every]
+                # === NOUVEAU : récupération des diamètres (uniquement au premier snapshot) ===
+                if i == 0:
+                    self.dem_diameters = df["Diameter"].to_numpy()[::sample_every]
+                    print(f"   Diamètres chargés : {len(self.dem_diameters)} particules")
+                # ===========================================================================
 
-            self.dem_snapshots.append({"t": idx, "coords": coords})
+                self.dem_snapshots.append({"t": idx, "coords": coords})
 
             if (i + 1) % 10 == 0 or i == len(file_indices) - 1:
                 print(f"   [{i+1}/{len(file_indices)}] t={idx}: {len(coords)} particules")
 
         self.n_particles = len(self.dem_snapshots[0]["coords"])
         print(f"✅ {len(self.dem_snapshots)} snapshots | {self.n_particles} particules/snapshot")
-
         return self.dem_snapshots
 
 
-    def label_species(self, criterion="z_median", custom_labels=None):
+    def label_species(self, criterion="large", custom_labels=None):
         """
-        Étiquette chaque particule comme espèce A (1) ou B (0) à t=0.
-
-        L'étiquette est PERMANENTE: une particule garde son espèce
-        quel que soit son déplacement.
-
-        Args:
-            criterion: méthode d'étiquetage:
-                - "z_median": z > médiane(z) → espèce A
-                - "z_half":   z > (zmin+zmax)/2 → espèce A
-                - "x_median": x > médiane(x) → espèce A
-                - "y_median": y > médiane(y) → espèce A
-                - "r_median": r > médiane(r) → espèce A (radial)
-                - "random":   50/50 aléatoire
-                - "quadrant": haut-gauche vs bas-droite
-            custom_labels: array bool de taille n_particles (override)
-
-        Returns:
-            np.array bool de taille n_particles (True = espèce A)
+        Étiquette chaque particule comme espèce A (True) ou B (False) à t=0.
+        L'étiquette est PERMANENTE.
+        
+        Nouveau critère basé sur le diamètre des particules :
+            - "large" : particules de diamètre 0.008 m -> True, 0.004 m -> False
+            - "small" : inverse (0.004 m -> True)
+            - "auto"  : détection automatique (la valeur la plus grande = True)
         """
         if custom_labels is not None:
             self.species_labels = np.asarray(custom_labels, dtype=bool)
             n_a = self.species_labels.sum()
-            print(f"🏷️  Labels custom: {n_a} A / {len(self.species_labels) - n_a} B")
+            print(f"✅ Labels custom: {n_a} A / {len(self.species_labels) - n_a} B")
             return self.species_labels
 
-        coords_t0 = self.dem_snapshots[0]["coords"]
-        x, y, z = coords_t0[:, 0], coords_t0[:, 1], coords_t0[:, 2]
+        if not hasattr(self, 'dem_diameters'):
+            raise AttributeError("Les diamètres DEM n'ont pas été chargés. Exécutez load_dem_snapshots() d'abord.")
 
-        if criterion == "z_median":
-            labels = z > np.median(z)
-        elif criterion == "z_half":
-            labels = z > (z.min() + z.max()) / 2
-        elif criterion == "x_median":
-            labels = x > np.median(x)
-        elif criterion == "y_median":
-            labels = y > np.median(y)
-        elif criterion == "r_median":
-            xc, yc = (x.min() + x.max()) / 2, (y.min() + y.max()) / 2
-            r = np.sqrt((x - xc)**2 + (y - yc)**2)
-            labels = r > np.median(r)
-        elif criterion == "random":
-            rng = np.random.RandomState(42)
-            labels = rng.rand(len(x)) > 0.5
-        elif criterion == "quadrant":
-            labels = (z > np.median(z)) & (x > np.median(x))
+        diameters = self.dem_diameters
+
+        # Détermination automatique des deux tailles
+        unique_vals = np.unique(diameters)
+        if len(unique_vals) != 2:
+            print(f"⚠️ Attention : {len(unique_vals)} diamètres différents trouvés (attendu 2).")
+            # On prend les deux valeurs extrêmes
+            small_val, large_val = unique_vals[0], unique_vals[-1]
         else:
-            raise ValueError(f"Critère inconnu: {criterion}")
+            small_val, large_val = unique_vals[0], unique_vals[1]
+
+        print(f"📏 Diamètres détectés : {small_val:.4f} m et {large_val:.4f} m")
+
+        if criterion == "large":
+            labels = diameters == large_val
+        elif criterion == "small":
+            labels = diameters == small_val
+        elif criterion == "auto":
+            labels = diameters == large_val   # par défaut, grande taille = True
+        else:
+            raise ValueError(f"Critère '{criterion}' non reconnu. Utilisez 'large', 'small' ou 'auto'.")
 
         self.species_labels = labels
         n_a = labels.sum()
-        print(f"🏷️  Espèces ({criterion}): {n_a} A / {len(labels) - n_a} B")
-
+        print(f"✅ Espèces ({criterion}): {n_a} particules A / {len(labels) - n_a} particules B")
         return self.species_labels
 
 
@@ -1140,7 +1229,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         n_snaps = len(self.dem_snapshots)
 
         # ── Condition initiale depuis les données DEM ──
-        coords_t0 = self.dem_snapshots[0]["coords"]
+        coords_t0 = self.dem_snapshots[250]["coords"]
         states_t0 = partitioner.compute_states(
             coords_t0[:, 0], coords_t0[:, 1], coords_t0[:, 2]
         )
@@ -2112,7 +2201,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         partitioner_type = type(partitioner).__name__
         
         if partitioner_type == "AdaptiveZPartitioner":
-            return partitioner.visualize_profile(size=size)
+            return self._visualize_adaptive(partitioner, size=size)
         elif partitioner_type == "MultiZonePartitioner":
             return self._visualize_multizone(partitioner, size=size)
         elif partitioner_type == "CylindricalPartitioner":
@@ -2121,6 +2210,8 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
             return self._visualize_cartesian(partitioner, size=size)
         elif partitioner_type == "VoronoiPartitioner":
             return self._visualize_voronoi(partitioner, size=size)
+        elif partitioner_type == "SingleCellPartitioner":
+            return self._visualize_single(partitioner, size=size)
         else:
             return self._visualize_generic(partitioner, size=size)
 
@@ -2951,41 +3042,167 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         return HTML(html)
 
 
+    def _visualize_adaptive(self, partitioner, size=700):
+        """
+        Visualise un partitionnement AdaptiveZPartitioner.
+        
+        Affiche deux zones côte-à-côte:
+        - Zone basse (70-80% du mixer): partitionnement FINE
+        - Zone haute (20-30% du mixer): partitionnement GROSSIER (généralement 1 cellule)
+        """
+        import uuid
+        from IPython.display import HTML
+        
+        cid = f"adapt_viz_{uuid.uuid4().hex}"
+        
+        n_top = partitioner.n_cells_top
+        n_bot = partitioner.n_cells_bottom
+        n_total = partitioner.n_cells
+        z_split = partitioner._z_split
+        z_min = partitioner._z_min
+        z_max = partitioner._z_max
+        
+        if z_max - z_min > 0:
+            pct_bot = 100 * (z_split - z_min) / (z_max - z_min)
+            pct_top = 100 * (z_max - z_split) / (z_max - z_min)
+        else:
+            pct_bot = pct_top = 50
+        
+        colors_bot = [f"hsl({360 * i / max(1, n_bot)}, 70%, 50%)" for i in range(n_bot)]
+        colors_top = [f"hsl(200, 40%, 50%)"] * n_top
+        
+        html = f"""
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        <h3 style="margin-bottom:12px; color:#2c3e50;">🔍 Partitionnement ADAPTATIF (Zone Haute / Basse)</h3>
+        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius:8px; color:white;">
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:12px;">
+                <div><div style="font-size:13px; opacity:0.9;">Zone Basse</div><div style="font-size:18px; font-weight:bold;">{n_bot} cellules</div></div>
+                <div><div style="font-size:13px; opacity:0.9;">Zone Haute</div><div style="font-size:18px; font-weight:bold;">{n_top} cellule(s)</div></div>
+                <div><div style="font-size:13px; opacity:0.9;">Limite (z)</div><div style="font-size:18px; font-weight:bold;">{z_split:.3f}</div></div>
+                <div><div style="font-size:13px; opacity:0.9;">Total</div><div style="font-size:18px; font-weight:bold;">{n_total} cellules</div></div>
+            </div>
+        </div>
+        <canvas id="{cid}" width="{size}" height="{size}" style="border:2px solid #bdc3c7; border-radius:10px; display:block; margin:20px auto; background:white;"></canvas>
+        <script>
+        (function() {{
+            const canvas = document.getElementById("{cid}");
+            const ctx = canvas.getContext("2d");
+            const W = canvas.width, H = canvas.height;
+            const margin = 40, plot_w = W - 2*margin, plot_h = H - 2*margin;
+            ctx.strokeStyle = "#333"; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(margin, H - margin); ctx.lineTo(margin, margin); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(margin, H - margin); ctx.lineTo(W - margin, H - margin); ctx.stroke();
+            const h_bot = plot_h * {pct_bot} / 100, h_top = plot_h * {pct_top} / 100;
+            const colors_bot = {json.dumps(colors_bot)}, colors_top = {json.dumps(colors_top)};
+            const n_bot = {n_bot}, n_top = {n_top}, w_cell_bot = plot_w / n_bot, w_cell_top = plot_w / n_top;
+            for (let i = 0; i < n_bot; i++) {{
+                const x = margin + i * w_cell_bot, y = margin + h_top;
+                ctx.fillStyle = colors_bot[i]; ctx.fillRect(x, y, w_cell_bot, h_bot);
+                ctx.strokeStyle = "#333"; ctx.lineWidth = 1; ctx.strokeRect(x, y, w_cell_bot, h_bot);
+                ctx.fillStyle = "#000"; ctx.font = "bold 12px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+                ctx.fillText(i, x + w_cell_bot/2, y + h_bot/2);
+            }}
+            for (let i = 0; i < n_top; i++) {{
+                const x = margin + i * w_cell_top, y = margin;
+                ctx.fillStyle = colors_top[i]; ctx.fillRect(x, y, w_cell_top, h_top);
+                ctx.strokeStyle = "#888"; ctx.lineWidth = 2; ctx.strokeRect(x, y, w_cell_top, h_top);
+                ctx.fillStyle = "#fff"; ctx.font = "bold 12px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+                ctx.fillText({n_bot} + i, x + w_cell_top/2, y + h_top/2);
+            }}
+            ctx.strokeStyle = "red"; ctx.lineWidth = 3; ctx.setLineDash([5, 5]);
+            ctx.beginPath(); ctx.moveTo(margin, margin + h_top); ctx.lineTo(W - margin, margin + h_top); ctx.stroke(); ctx.setLineDash([]);
+        }})();
+        </script>
+        <div style="margin-top:16px; padding:12px; background:#ecf0f1; border-radius:6px; font-size:13px; color:#34495e;">
+            <strong>💡 Interprétation :</strong>
+            <ul style="margin:8px 0; padding-left:20px;">
+            <li><strong>Zone BASSE</strong>: {pct_bot:.0f}% du mixer — {n_bot} cellules</li>
+            <li><strong>Zone HAUTE</strong>: {pct_top:.0f}% du mixer — {n_top} cellule(s)</li>
+            <li><strong>Numérotation</strong>: cellules 0···{n_bot-1} en bas, puis {n_bot}···{n_total-1} en haut</li>
+            </ul>
+        </div>
+        </div>
+        """
+        return HTML(html)
+
     def _visualize_multizone(self, partitioner, size=700):
         """
-        Visualise un partitionnement MultiZone.
+        Visualise un partitionnement MultiZonePartitioner.
         
-        Args:
-            partitioner: MultiZonePartitioner instance
-            size: taille du canvas
-        
-        Returns:
-            HTML object pour Jupyter
+        Affiche N zones horizontales, chaque zone pouvant avoir une architecture différente.
         """
         import uuid
         from IPython.display import HTML
         
         cid = f"mz_viz_{uuid.uuid4().hex}"
-        n_cells = partitioner.n_cells
+        n_zones = len(partitioner._zones)
+        n_total = partitioner.n_cells
+        
+        zones_info = []
+        for i, (z_min, z_max, part) in enumerate(partitioner._zones):
+            zones_info.append({
+                "z_min": z_min,
+                "z_max": z_max,
+                "n_cells": part.n_cells,
+                "method": type(part).__name__,
+            })
+        
+        zone_colors = [f"hsl({360 * i / max(1, n_zones)}, 60%, 40%)" for i in range(n_zones)]
+        
+        all_colors = []
+        for i, info in enumerate(zones_info):
+            n_c = info["n_cells"]
+            hue_base = 360 * i / max(1, n_zones)
+            for j in range(n_c):
+                hue = (hue_base + 360 * j / max(1, n_c)) % 360
+                all_colors.append(f"hsl({hue}, 70%, 50%)")
         
         html = f"""
         <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-        
-        <h3 style="margin-bottom:12px; color:#2c3e50;">
-            🔍 Partitionnement MultiZone
-        </h3>
-        
-        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    border-radius:8px; color:white; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
-            <div style="text-align:center; font-size:16px; font-weight:bold;">
-                Total : {n_cells} cellules
-            </div>
-        </div>
-        
-        <p>Visualisation MultiZone non encore implémentée.</p>
-        
-        </div>
+        <h3 style="margin-bottom:12px; color:#2c3e50;">🔍 Partitionnement MULTI-ZONE</h3>
+        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius:8px; color:white;">
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap:12px;">
         """
+        for i in range(n_zones):
+            info = zones_info[i]
+            html += f'<div style="background:rgba(255,255,255,0.2); padding:8px; border-radius:4px;"><div style="font-size:12px;">Zone {i}</div><div style="font-size:14px; font-weight:bold;">{info["n_cells"]} cellules</div></div>'
+        html += f'</div><div style="text-align:center; margin-top:8px; font-weight:bold;">Total : {n_total} cellules</div></div>'
+        html += f'<canvas id="{cid}" width="{size}" height="{size}" style="border:2px solid #bdc3c7; border-radius:10px; display:block; margin:20px auto; background:white;"></canvas>'
+        html += f'''<script>
+        (function() {{
+            const canvas = document.getElementById("{cid}");
+            const ctx = canvas.getContext("2d");
+            const W = canvas.width, H = canvas.height, margin = 40, plot_w = W - 2*margin, plot_h = H - 2*margin;
+            ctx.strokeStyle = "#333"; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(margin, H - margin); ctx.lineTo(margin, margin); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(margin, H - margin); ctx.lineTo(W - margin, H - margin); ctx.stroke();
+            const n_zones = {n_zones}, zones_info = {json.dumps(zones_info)}, all_colors = {json.dumps(all_colors)};
+            let cell_offset = 0, z_offset = 0;
+            for (let zone_idx = 0; zone_idx < n_zones; zone_idx++) {{
+                const info = zones_info[zone_idx];
+                const n_cells_in_zone = info.n_cells;
+                const h_zone = plot_h / n_zones, y_zone = margin + z_offset;
+                const w_cell = plot_w / Math.max(...zones_info.map(z => z.n_cells));
+                for (let i = 0; i < n_cells_in_zone; i++) {{
+                    const x = margin + i * w_cell;
+                    ctx.fillStyle = all_colors[cell_offset]; ctx.fillRect(x, y_zone, w_cell, h_zone);
+                    ctx.strokeStyle = "#333"; ctx.lineWidth = 1; ctx.strokeRect(x, y_zone, w_cell, h_zone);
+                    ctx.fillStyle = "#000"; ctx.font = "bold 11px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+                    ctx.fillText(cell_offset, x + w_cell/2, y_zone + h_zone/2);
+                    cell_offset++;
+                }}
+                ctx.strokeStyle = "rgba(0, 0, 0, 0.4)"; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(margin, y_zone + h_zone); ctx.lineTo(W - margin, y_zone + h_zone); ctx.stroke();
+                z_offset += h_zone;
+            }}
+        }})();
+        </script>'''
+        html += '<div style="margin-top:16px; padding:12px; background:#ecf0f1; border-radius:6px; font-size:12px; color:#34495e;">'
+        html += '<strong>💡 Zone Details:</strong><table style="width:100%; border-collapse:collapse; margin-top:8px; font-size:11px;">'
+        html += '<tr style="background:#d0d0d0; font-weight:bold;"><th style="padding:4px; border:1px solid #999;">Zone</th><th style="padding:4px; border:1px solid #999;">z_min-z_max</th><th style="padding:4px; border:1px solid #999;">Cellules</th><th style="padding:4px; border:1px solid #999;">Méthode</th></tr>'
+        for i, info in enumerate(zones_info):
+            html += f'<tr style="border:1px solid #bbb;"><td style="padding:4px; border:1px solid #999;">Zone {i}</td><td style="padding:4px; border:1px solid #999;">[{info["z_min"]:.3f}, {info["z_max"]:.3f}]</td><td style="padding:4px; border:1px solid #999;">{info["n_cells"]}</td><td style="padding:4px; border:1px solid #999;">{info["method"]}</td></tr>'
+        html += '</table></div></div>'
         return HTML(html)
 
 
@@ -3020,8 +3237,53 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
             </div>
         </div>
         
-        <p>Visualisation Voronoï non encore implémentée.</p>
+        <p>Visualisation Voronoï — {n_cells} centroids K-means</p>
         
+        </div>
+        """
+        return HTML(html)
+
+    def _visualize_single(self, partitioner, size=700):
+        """
+        Visualise un partitionnement SingleCellPartitioner.
+        
+        Trivial: une seule cellule pour tout le domaine.
+        """
+        import uuid
+        from IPython.display import HTML
+        
+        cid = f"single_viz_{uuid.uuid4().hex}"
+        
+        html = f"""
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        <h3 style="margin-bottom:12px; color:#2c3e50;">🔍 Partitionnement SINGLE CELL</h3>
+        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius:8px; color:white;">
+            <div style="text-align:center; font-size:20px; font-weight:bold;">⚪ 1 SEULE CELLULE</div>
+            <div style="text-align:center; margin-top:8px; font-size:14px; opacity:0.9;">Tout le domaine = une seule partition</div>
+        </div>
+        <canvas id="{cid}" width="{size}" height="300" style="border:2px solid #bdc3c7; border-radius:10px; display:block; margin:20px auto; background:white;"></canvas>
+        <script>
+        (function() {{
+            const canvas = document.getElementById("{cid}");
+            const ctx = canvas.getContext("2d");
+            const W = canvas.width, H = canvas.height, margin = 50, rect_w = W - 2*margin, rect_h = H - 2*margin, x = margin, y = margin;
+            ctx.fillStyle = "#4CAF50"; ctx.fillRect(x, y, rect_w, rect_h);
+            ctx.strokeStyle = "#333"; ctx.lineWidth = 4; ctx.strokeRect(x, y, rect_w, rect_h);
+            ctx.fillStyle = "#fff"; ctx.font = "bold 48px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText("Cellule 0", W/2, H/2);
+            ctx.fillStyle = "#333"; ctx.font = "14px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "top";
+            ctx.fillText("Toutes les particules sont assignées à la même partition", W/2, y + rect_h + 20);
+        }})();
+        </script>
+        <div style="margin-top:24px; padding:16px; background:#fff3cd; border-left:4px solid #ffc107; border-radius:6px; font-size:13px; color:#333;">
+            <strong>⚠️ Note :</strong>
+            <p style="margin:8px 0;">Le partitionnement SINGLE CELL n'a pas d'intérêt pour l'étude du mélange:</p>
+            <ul style="margin:8px 0; padding-left:20px;">
+            <li>Toutes les particules sont dans la même cellule</li>
+            <li>Matrice de transition = [[1.0]] triviale</li>
+            <li>Utilisé comme baseline ou pour les zones vides d'un partitionnement adaptatif</li>
+            </ul>
+        </div>
         </div>
         """
         return HTML(html)
@@ -3049,7 +3311,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
         
         <h3 style="margin-bottom:12px; color:#2c3e50;">
-            🔍 Partitionnement générique
+            🔍 Partitionnement: {partitioner_type}
         </h3>
         
         <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
@@ -3058,8 +3320,8 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
                 <div style="font-size:16px; font-weight:bold; margin-bottom:8px;">
                     {partitioner_type}
                 </div>
-                <div style="font-size:14px;">
-                    Type : {label}
+                <div style="font-size:14px; margin-bottom:8px;">
+                    {label}
                 </div>
                 <div style="font-size:16px; font-weight:bold; margin-top:8px;">
                     Total : {n_cells} cellules
