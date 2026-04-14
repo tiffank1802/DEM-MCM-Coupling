@@ -853,6 +853,8 @@ class MarkovAnalyzer:
         """
         M = self.get_matrix(folder_name)
         n_states = M.shape[0]
+        print(f"matrice de transition {M}")
+        print(f"vérification de la condition de normalisation {M.sum(0)}")
 
         if partitioner is None:
             raise ValueError(
@@ -886,14 +888,16 @@ class MarkovAnalyzer:
         )
 
         # Comptage par cellule
-        ntotal = np.bincount(states0, minlength=n_states).astype(float)
+        # ntotal = np.bincount(states0, minlength=n_states).astype(float)
+        ntotal = self.species_labels.sum() # est le nombre de total de particules de l'espèce considérée
         nA = np.bincount(states0[species_labels], minlength=n_states).astype(float)
 
         # Condition initiale réelle : C0 = nA / ntotal
         C = np.zeros(n_states)
         mask = ntotal > 0
-        # C[mask] = nA[mask] / ntotal[mask]
-        C[mask] = nA[mask] # en nombre de particules de 
+        C[mask] = nA[mask] / ntotal[mask]
+        # C[mask] = nA[mask] # en nombre de particules de 
+        print(f"concetration initiale {C}")
 
         # Simulation Markov
         concentration_history = np.zeros((n_steps, n_states))
@@ -924,6 +928,7 @@ class MarkovAnalyzer:
             else:
                 entropy[t] = 0
 
+        print(f"concentration finale{C}")
         rsd_0 = rsd[0] if rsd[0] > 0 else 1.0
         self.concentration_history=concentration_history
         self.rsd=rsd
@@ -1046,7 +1051,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         print(f"📏 Diamètres détectés : {small_val:.4f} m et {large_val:.4f} m")
 
         if criterion == "large":
-            labels = diameters == large_val
+            labels = diameters == large_val # labels est une liste de booléen de taille celle des particules
         elif criterion == "small":
             labels = diameters == small_val
         elif criterion == "auto":
@@ -1054,7 +1059,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         else:
             raise ValueError(f"Critère '{criterion}' non reconnu. Utilisez 'large', 'small' ou 'auto'.")
 
-        self.species_labels = labels
+        self.species_labels = labels 
         n_a = labels.sum()
         print(f"✅ Espèces ({criterion}): {n_a} particules A / {len(labels) - n_a} particules B")
         return self.species_labels

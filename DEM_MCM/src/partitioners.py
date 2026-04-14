@@ -24,6 +24,9 @@ import numpy as np
 import os
 import json
 from abc import ABC, abstractmethod
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from scipy.spatial import ConvexHull
 
 __all__ = [
  
@@ -729,47 +732,37 @@ class PhysicsAwarePartitioner(BasePartitioner):
 # =============================================================================
 
 
-class AdaptiveZPartitioner(BasePartitioner):
+# import matplotlib.pyplot as plt
+# from mpl_toolkits.mplot3d import Axes3D
+
+class AdaptivePartitioner(BasePartitioner):
     """
-    Partitionnement adaptatif en z.
+    Partitionnement adaptatif en y.
     
     Divise le domaine en deux zones:
-      - Zone haute (z > z_split): peu de cellules (grossier)
-      - Zone basse (z ≤ z_split): partitionnement fin
-    
-    Utile pour les mélangeurs où la partie haute est moins intéressante
-    (zone de chute libre, espace vide, etc.)
+      - Zone haute (y > y_split): peu de cellules (grossier)
+      - Zone basse (y ≤ y_split): partitionnement fin
     
     Args:
-        z_split: altitude de séparation (ou quantile si z_split_mode="quantile")
-        z_split_mode: "absolute" ou "quantile" (ex: 0.7 = 70% des particules en dessous)
-        n_cells_top: nombre de cellules pour la zone haute (défaut=1)
+        y_split: coordonnée de séparation (ou quantile si y_split_mode="quantile")
+        y_split_mode: "absolute" ou "quantile"
+        n_cells_top: nombre de cellules pour la zone haute
         bottom_method: méthode de partitionnement pour la zone basse
         bottom_kwargs: arguments pour le partitionneur du bas
-    
-    Exemple:
-        # Zone haute = 1 cellule, zone basse = grille cylindrique fine
-        part = AdaptiveZPartitioner(
-            z_split_mode="quantile",
-            z_split=0.8,           # 80% des particules en bas
-            n_cells_top=1,
-            bottom_method="cylindrical",
-            bottom_kwargs={"nr": 5, "ntheta": 8, "nz": 10}
-        )
     """
     
     def __init__(
         self,
-        z_split: float = None,
-        z_split_mode: str = "quantile",  # "absolute" ou "quantile"
+        y_split: float = None,
+        y_split_mode: str = "quantile",
         n_cells_top: int = 1,
-        top_method: str = "single",      # "single", "cartesian", "cylindrical"
+        top_method: str = "single",
         top_kwargs: dict = None,
         bottom_method: str = "cylindrical",
         bottom_kwargs: dict = None,
     ):
-        self.z_split_input = z_split
-        self.z_split_mode = z_split_mode
+        self.y_split_input = y_split
+        self.y_split_mode = y_split_mode
         self.n_cells_top_target = n_cells_top
         self.top_method = top_method
         self.top_kwargs = top_kwargs or {}
@@ -777,9 +770,9 @@ class AdaptiveZPartitioner(BasePartitioner):
         self.bottom_kwargs = bottom_kwargs or {}
         
         # Calculés au fit
-        self._z_split = None
-        self._z_min = None
-        self._z_max = None
+        self._y_split = None
+        self._y_min = None
+        self._y_max = None
         self._top_partitioner = None
         self._bottom_partitioner = None
         self._n_cells_top = None
@@ -792,53 +785,39 @@ class AdaptiveZPartitioner(BasePartitioner):
         return self._n_cells_top + self._n_cells_bottom
     
     @property
-    def n_cells_top(self):
-        return self._n_cells_top
-    
-    @property
-    def n_cells_bottom(self):
-        return self._n_cells_bottom
-    
-    @property
     def label(self):
+        """Propriété manquante nécessaire à l'instanciation"""
         return (
-            f"adaptive_z_{self.bottom_method}"
-            f"_top{self._n_cells_top}_bot{self._n_cells_bottom}_split{self.z_split_input}_mode_split{self.z_split_mode}_m_bot{self.bottom_method}_n_top{self.n_cells_top}"
+            f"adaptive_y_{self.bottom_method}"
+            f"_top{self._n_cells_top}_bot{self._n_cells_bottom}"
+            f"_split{self.y_split_input}_mode{self.y_split_mode}"
         )
     
     def fit(self, coordinates: np.ndarray):
         coordinates = np.asarray(coordinates)
-        z = coordinates[:, 2]
+        y = coordinates[:, 1]  # Utilisation de la coordonnée y
         
-        self._z_min = z.min()
-        self._z_max = z.max()
+        self._y_min = y.min()
+        self._y_max = y.max()
         
-        # ── Déterminer z_split ──
-        if self.z_split_mode == "quantile":
-            quantile = self.z_split_input if self.z_split_input else 0.7
-            self._z_split = np.quantile(z, quantile)
-        elif self.z_split_mode == "absolute":
-            if self.z_split_input is None:
-                # Par défaut : milieu
-                self._z_split = (self._z_min + self._z_max) / 2
+        # ── Déterminer y_split ──
+        if self.y_split_mode == "quantile":
+            quantile = self.y_split_input if self.y_split_input else 0.7
+            self._y_split = np.quantile(y, quantile)
+        elif self.y_split_mode == "absolute":
+            if self.y_split_input is None:
+                self._y_split = (self._y_min + self._y_max) / 2
             else:
-                self._z_split = self.z_split_input
+                self._y_split = self.y_split_input
         else:
-            raise ValueError(f"z_split_mode inconnu: {self.z_split_mode}")
+            raise ValueError(f"y_split_mode inconnu: {self.y_split_mode}")
         
         # ── Séparer les données ──
-        mask_bottom = z <= self._z_split
-        mask_top = z > self._z_split
+        mask_bottom = y <= self._y_split
+        mask_top = y > self._y_split
         
         coords_bottom = coordinates[mask_bottom]
         coords_top = coordinates[mask_top]
-        
-        n_bottom = len(coords_bottom)
-        n_top = len(coords_top)
-        
-        print(f"   📊 Split z = {self._z_split:.4f}")
-        print(f"      Zone basse: {n_bottom} particules ({100*n_bottom/(n_bottom+n_top):.1f}%)")
-        print(f"      Zone haute: {n_top} particules ({100*n_top/(n_bottom+n_top):.1f}%)")
         
         # ── Fit zone basse ──
         self._bottom_partitioner = create_partitioner(
@@ -850,7 +829,6 @@ class AdaptiveZPartitioner(BasePartitioner):
         
         # ── Fit zone haute ──
         if self.top_method == "single":
-            # Une seule cellule pour toute la zone haute
             self._top_partitioner = None
             self._n_cells_top = 1
         else:
@@ -860,13 +838,9 @@ class AdaptiveZPartitioner(BasePartitioner):
             if len(coords_top) > 0:
                 self._top_partitioner.fit(coords_top)
             self._n_cells_top = self._top_partitioner.n_cells
-        
-        print(f"      Cellules bas: {self._n_cells_bottom}, haut: {self._n_cells_top}")
-        print(f"      Total: {self.n_cells} cellules")
-        
-        return self
     
     def compute_states(self, x, y, z):
+        # ── Convertir en numpy arrays pour éviter les erreurs de masquage booléen ──
         x = np.asarray(x, dtype=np.float64)
         y = np.asarray(y, dtype=np.float64)
         z = np.asarray(z, dtype=np.float64)
@@ -874,7 +848,7 @@ class AdaptiveZPartitioner(BasePartitioner):
         n = len(x)
         states = np.zeros(n, dtype=np.int64)
         
-        mask_bottom = z <= self._z_split
+        mask_bottom = y <= self._y_split
         mask_top = ~mask_bottom
         
         # ── Zone basse : états 0 à n_cells_bottom-1 ──
@@ -886,7 +860,6 @@ class AdaptiveZPartitioner(BasePartitioner):
         # ── Zone haute : états n_cells_bottom à n_cells-1 ──
         if mask_top.any():
             if self._top_partitioner is None:
-                # Une seule cellule
                 states[mask_top] = self._n_cells_bottom
             else:
                 top_states = self._top_partitioner.compute_states(
@@ -896,589 +869,80 @@ class AdaptiveZPartitioner(BasePartitioner):
         
         return states
     
-    def _save_data(self, path):
-        params = {
-            "z_split": self._z_split,
-            "z_min": self._z_min,
-            "z_max": self._z_max,
-            "n_cells_top": self._n_cells_top,
-            "n_cells_bottom": self._n_cells_bottom,
-            "top_method": self.top_method,
-            "bottom_method": self.bottom_method,
-            "top_kwargs": self.top_kwargs,
-            "bottom_kwargs": self.bottom_kwargs,
-        }
-        with open(os.path.join(path, "adaptive_params.json"), "w") as f:
-            json.dump(params, f, indent=2)
-        
-        # Sauvegarder les sous-partitionneurs
-        bottom_path = os.path.join(path, "bottom")
-        self._bottom_partitioner.save(bottom_path)
-        
-        if self._top_partitioner is not None:
-            top_path = os.path.join(path, "top")
-            self._top_partitioner.save(top_path)
-    
-    def _load_data(self, path):
-        with open(os.path.join(path, "adaptive_params.json")) as f:
-            params = json.load(f)
-        
-        self._z_split = params["z_split"]
-        self._z_min = params["z_min"]
-        self._z_max = params["z_max"]
-        self._n_cells_top = params["n_cells_top"]
-        self._n_cells_bottom = params["n_cells_bottom"]
-        self.top_method = params["top_method"]
-        self.bottom_method = params["bottom_method"]
-        self.top_kwargs = params.get("top_kwargs", {})
-        self.bottom_kwargs = params.get("bottom_kwargs", {})
-        
-        # Charger le partitionneur du bas
-        bottom_path = os.path.join(path, "bottom")
-        self._bottom_partitioner = create_partitioner(
-            self.bottom_method, **self.bottom_kwargs
-        )
-        self._bottom_partitioner.load(bottom_path)
-        
-        # Charger le partitionneur du haut (si existe)
-        top_path = os.path.join(path, "top")
-        if self.top_method != "single" and os.path.exists(top_path):
-            self._top_partitioner = create_partitioner(
-                self.top_method, **self.top_kwargs
-            )
-            self._top_partitioner.load(top_path)
-        else:
-            self._top_partitioner = None
-    
-    def diagnostics(self, coordinates):
-        """Diagnostics étendus avec stats par zone."""
-        base_diag = super().diagnostics(coordinates)
-        
-        z = coordinates[:, 2]
-        mask_bottom = z <= self._z_split
-        
-        # Stats zone basse
-        if mask_bottom.any():
-            bottom_diag = self._bottom_partitioner.diagnostics(
-                coordinates[mask_bottom]
-            )
-        else:
-            bottom_diag = {}
-        
-        base_diag["bottom_stats"] = bottom_diag
-        base_diag["z_split"] = self._z_split
-        base_diag["fraction_in_bottom"] = float(mask_bottom.mean())
-        
-        return base_diag
-    # À ajouter dans la classe AdaptiveZPartitioner
-
-    def visualize_profile(self, size=700):
+    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_path="partition_visualization"):
         """
-        Visualise le partitionnement adaptatif en vue de profil (cylindre vu de côté).
-        
-        Détecte automatiquement les méthodes utilisées dans les zones haute/basse
-        et adapte le rendu en conséquence.
-        
-        Args:
-            size: taille du canvas en pixels
-        
-        Returns:
-            HTML object pour affichage Jupyter
+        Génère des visualisations avec adaptation pour l'axe y
         """
-        import uuid
-        from IPython.display import HTML
+        states = self.compute_states(x, y, z)
         
-        if self._z_split is None:
-            raise ValueError("❌ Le partitionneur doit être fitté avant visualisation (appeler .fit())")
+        if "3d" in plot_types:
+            fig = plt.figure(figsize=(12, 8))
+            ax = fig.add_subplot(111, projection='3d')
+            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')  # Axe Y
+            ax.set_zlabel('Z')
+            ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
+            plt.colorbar(scatter, label='ID de Partition')
+            plt.tight_layout()
+            plt.savefig(f"{save_path}_3d.png", dpi=150)
+            plt.close()
         
-        cid = f"adaptive_viz_{uuid.uuid4().hex}"
-        
-        # Normaliser z_split entre 0 et 1
-        z_range = self._z_max - self._z_min
-        z_split_norm = (self._z_split - self._z_min) / z_range if z_range > 0 else 0.5
-        
-        # Préparer les données de visualisation
-        viz_data = self._prepare_visualization_data()
-        
-        html = f"""
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-        
-        <h3 style="margin-bottom:12px; color:#2c3e50;">
-            🔍 Vue de profil — Partitionnement adaptatif
-        </h3>
-        
-        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    border-radius:8px; color:white; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-                <div>
-                    <div style="font-size:13px; opacity:0.9; margin-bottom:4px;">Zone basse (z ≤ {self._z_split:.4f})</div>
-                    <div style="font-size:18px; font-weight:bold;">{self.bottom_method}</div>
-                    <div style="font-size:14px; margin-top:4px;">{self._n_cells_bottom} cellules</div>
-                </div>
-                <div>
-                    <div style="font-size:13px; opacity:0.9; margin-bottom:4px;">Zone haute (z > {self._z_split:.4f})</div>
-                    <div style="font-size:18px; font-weight:bold;">{self.top_method}</div>
-                    <div style="font-size:14px; margin-top:4px;">{self._n_cells_top} cellule(s)</div>
-                </div>
-            </div>
-            <div style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.3); 
-                        text-align:center; font-size:16px; font-weight:bold;">
-                Total : {self.n_cells} cellules
-            </div>
-        </div>
-        
-        <canvas id="{cid}" width="{size}" height="{size}"
-                style="border:2px solid #bdc3c7; border-radius:10px; 
-                    box-shadow:0 8px 16px rgba(0,0,0,0.15); display:block; margin:20px auto;
-                    background:white;"></canvas>
-        
-        <div style="margin-top:12px; padding:12px; background:#ecf0f1; border-radius:6px; font-size:13px; color:#34495e;">
-            <strong>💡 Légende :</strong>
-            <ul style="margin:8px 0; padding-left:20px;">
-                <li>Les couleurs représentent les différents états (cellules)</li>
-                <li>La ligne rouge en pointillés marque la séparation z_split</li>
-                <li>Les numéros indiquent l'identifiant de chaque état (0 à {self.n_cells-1})</li>
-            </ul>
-        </div>
-        
-        </div>
-        
-        <script>
-        (function() {{
-            const canvas = document.getElementById("{cid}");
-            const ctx = canvas.getContext("2d");
+        if "2d_xy" in plot_types:
+            plt.figure(figsize=(12, 5))
             
-            const W = canvas.width;
-            const H = canvas.height;
-            const cx = W / 2;
-            const cy = H / 2;
-            const R = Math.min(W, H) * 0.38;
+            # Vue XY
+            plt.subplot(121)
+            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.axhline(y=self._y_split, color='r', linestyle='--', 
+                         label=f'Seuil y={self._y_split:.2f}')
+            plt.xlabel('X')
+            plt.ylabel('Y')
+            plt.title('Vue XY')
+            plt.legend()
+            plt.colorbar(label='Partition ID')
             
-            const zMin = {self._z_min};
-            const zMax = {self._z_max};
-            const zSplit = {self._z_split};
-            const zSplitNorm = {z_split_norm};
-            
-            const vizData = {json.dumps(viz_data)};
-            
-            // ═══════════════════════════════════════════════════════════
-            // UTILITAIRES
-            // ═══════════════════════════════════════════════════════════
-            
-            function zToCanvas(z) {{
-                const zNorm = (z - zMin) / (zMax - zMin);
-                return cy + R * (1 - 2 * zNorm);
-            }}
-            
-            function colorForState(state, total) {{
-                const hue = (state * 360) / Math.max(total, 1);
-                return `hsla(${{hue}}, 75%, 62%, 0.88)`;
-            }}
-            
-            function darkenColor(state, total) {{
-                const hue = (state * 360) / Math.max(total, 1);
-                return `hsla(${{hue}}, 75%, 40%, 1)`;
-            }}
-            
-            // ═══════════════════════════════════════════════════════════
-            // DESSIN
-            // ═══════════════════════════════════════════════════════════
-            
-            ctx.clearRect(0, 0, W, H);
-            
-            // Fond du cylindre
-            ctx.beginPath();
-            ctx.arc(cx, cy, R, 0, 2*Math.PI);
-            ctx.fillStyle = "#f8f9fa";
-            ctx.fill();
-            
-            // Clip en forme de cercle
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(cx, cy, R, 0, 2*Math.PI);
-            ctx.clip();
-            
-            // Dessiner toutes les cellules
-            vizData.cells.forEach(cell => {{
-                const x = cx + cell.x * R;
-                const y = cy - cell.y * R;
-                const w = cell.w * R;
-                const h = cell.h * R;
-                
-                // Remplissage
-                ctx.fillStyle = colorForState(cell.state, vizData.total_cells);
-                ctx.fillRect(x - w/2, y - h/2, w, h);
-                
-                // Bordure
-                ctx.strokeStyle = darkenColor(cell.state, vizData.total_cells);
-                ctx.lineWidth = 1.2;
-                ctx.strokeRect(x - w/2, y - h/2, w, h);
-                
-                // Label (numéro d'état)
-                if (w > 15 && h > 15) {{
-                    ctx.fillStyle = "#000";
-                    ctx.font = "bold 11px monospace";
-                    ctx.textAlign = "center";
-                    ctx.textBaseline = "middle";
-                    ctx.fillText(String(cell.state), x, y);
-                }}
-            }});
-            
-            ctx.restore();
-            
-            // Ligne de séparation z_split
-            const ySplit = zToCanvas(zSplit);
-            ctx.beginPath();
-            ctx.moveTo(cx - R, ySplit);
-            ctx.lineTo(cx + R, ySplit);
-            ctx.setLineDash([8, 5]);
-            ctx.strokeStyle = "#e74c3c";
-            ctx.lineWidth = 3;
-            ctx.stroke();
-            ctx.setLineDash([]);
-            
-            // Label z_split
-            ctx.fillStyle = "#e74c3c";
-            ctx.font = "bold 13px sans-serif";
-            ctx.textAlign = "left";
-            ctx.fillText(`z_split = ${{zSplit.toFixed(4)}}`, cx - R + 15, ySplit - 12);
-            
-            // Contour du cylindre
-            ctx.beginPath();
-            ctx.arc(cx, cy, R, 0, 2*Math.PI);
-            ctx.strokeStyle = "#2c3e50";
-            ctx.lineWidth = 3;
-            ctx.stroke();
-            
-            // Annotations zones
-            ctx.fillStyle = "#34495e";
-            ctx.font = "14px sans-serif";
-            ctx.textAlign = "center";
-            
-            const yTopLabel = cy - R * 0.72;
-            const yBotLabel = cy + R * 0.72;
-            
-            ctx.fillText(`Zone haute : ${{vizData.top_method}}`, cx, yTopLabel);
-            ctx.fillText(`(${{vizData.n_cells_top}} cellule(s))`, cx, yTopLabel + 16);
-            
-            ctx.fillText(`Zone basse : ${{vizData.bottom_method}}`, cx, yBotLabel);
-            ctx.fillText(`(${{vizData.n_cells_bottom}} cellules)`, cx, yBotLabel + 16);
-            
-            // Flèche z
-            ctx.strokeStyle = "#7f8c8d";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(cx + R + 30, cy + R);
-            ctx.lineTo(cx + R + 30, cy - R);
-            ctx.stroke();
-            
-            // Pointe de flèche
-            ctx.beginPath();
-            ctx.moveTo(cx + R + 30, cy - R);
-            ctx.lineTo(cx + R + 25, cy - R + 8);
-            ctx.lineTo(cx + R + 35, cy - R + 8);
-            ctx.closePath();
-            ctx.fillStyle = "#7f8c8d";
-            ctx.fill();
-            
-            ctx.fillStyle = "#7f8c8d";
-            ctx.font = "italic 13px sans-serif";
-            ctx.textAlign = "center";
-            ctx.fillText("z", cx + R + 30, cy - R - 12);
-            
-        }})();
-        </script>
-        """
-        
-        return HTML(html)
-
-
-    def _prepare_visualization_data(self):
-        """
-        Prépare les données de visualisation adaptées à chaque méthode.
-        
-        Returns:
-            dict: données pour le rendu JavaScript
-        """
-        z_range = self._z_max - self._z_min
-        z_split_norm = (self._z_split - self._z_min) / z_range if z_range > 0 else 0.5
-        
-        data = {
-            "total_cells": self.n_cells,
-            "n_cells_top": self._n_cells_top,
-            "n_cells_bottom": self._n_cells_bottom,
-            "top_method": self.top_method,
-            "bottom_method": self.bottom_method,
-            "cells": []
-        }
-        
-        # ══════════════════════════════════════════════════════════════
-        # ZONE BASSE
-        # ══════════════════════════════════════════════════════════════
-        
-        if self.bottom_method == "cylindrical":
-            data["cells"].extend(
-                self._render_cylindrical(
-                    self._bottom_partitioner,
-                    z_min=0,
-                    z_max=z_split_norm,
-                    state_offset=0
-                )
-            )
-        elif self.bottom_method == "cartesian":
-            data["cells"].extend(
-                self._render_cartesian(
-                    self._bottom_partitioner,
-                    z_min=0,
-                    z_max=z_split_norm,
-                    state_offset=0
-                )
-            )
-        elif self.bottom_method == "voronoi":
-            data["cells"].extend(
-                self._render_voronoi(
-                    self._bottom_partitioner,
-                    z_min=0,
-                    z_max=z_split_norm,
-                    state_offset=0
-                )
-            )
-        elif self.bottom_method == "quantile":
-            data["cells"].extend(
-                self._render_quantile(
-                    self._bottom_partitioner,
-                    z_min=0,
-                    z_max=z_split_norm,
-                    state_offset=0
-                )
-            )
-        elif self.bottom_method == "single":
-            data["cells"].append({
-                "state": 0,
-                "x": 0,
-                "y": z_split_norm / 2,
-                "w": 2,
-                "h": z_split_norm
-            })
-        else:
-            # Rendu générique
-            data["cells"].extend(
-                self._render_generic(
-                    self._bottom_partitioner,
-                    z_min=0,
-                    z_max=z_split_norm,
-                    state_offset=0
-                )
-            )
-        
-        # ══════════════════════════════════════════════════════════════
-        # ZONE HAUTE
-        # ══════════════════════════════════════════════════════════════
-        
-        if self.top_method == "single" or self._top_partitioner is None:
-            data["cells"].append({
-                "state": self._n_cells_bottom,
-                "x": 0,
-                "y": (z_split_norm + 1) / 2,
-                "w": 2,
-                "h": (1 - z_split_norm)
-            })
-        elif self.top_method == "cylindrical":
-            data["cells"].extend(
-                self._render_cylindrical(
-                    self._top_partitioner,
-                    z_min=z_split_norm,
-                    z_max=1,
-                    state_offset=self._n_cells_bottom
-                )
-            )
-        elif self.top_method == "cartesian":
-            data["cells"].extend(
-                self._render_cartesian(
-                    self._top_partitioner,
-                    z_min=z_split_norm,
-                    z_max=1,
-                    state_offset=self._n_cells_bottom
-                )
-            )
-        else:
-            data["cells"].extend(
-                self._render_generic(
-                    self._top_partitioner,
-                    z_min=z_split_norm,
-                    z_max=1,
-                    state_offset=self._n_cells_bottom
-                )
-            )
-        
-        return data
-
-
-    # ═══════════════════════════════════════════════════════════════════
-    # MÉTHODES DE RENDU PAR TYPE DE PARTITIONNEUR
-    # ═══════════════════════════════════════════════════════════════════
-
-    def _render_cylindrical(self, part, z_min, z_max, state_offset):
-        """Rendu d'un partitionneur cylindrique en vue de profil."""
-        cells = []
-        
-        nr, ntheta, nz = part.nr, part.ntheta, part.nz
-        z_edges = np.linspace(z_min, z_max, nz + 1)
-        
-        for iz in range(nz):
-            z_mid = (z_edges[iz] + z_edges[iz + 1]) / 2
-            z_h = z_edges[iz + 1] - z_edges[iz]
-            
-            for itheta in range(ntheta):
-                theta_mid = (itheta + 0.5) * 2 * np.pi / ntheta
-                
-                for ir in range(nr):
-                    # Rayons
-                    if part.radial_mode == "equal_area":
-                        r_inner = np.sqrt(ir / nr)
-                        r_outer = np.sqrt((ir + 1) / nr)
-                    else:
-                        r_inner = ir / nr
-                        r_outer = (ir + 1) / nr
-                    
-                    r_mid = (r_inner + r_outer) / 2
-                    
-                    # Projection : vue de profil du cylindre
-                    x = r_mid * np.cos(theta_mid)
-                    
-                    # Largeur radiale projetée
-                    w = (r_outer - r_inner) * 2
-                    
-                    state = ir + itheta * nr + iz * nr * ntheta
-                    
-                    cells.append({
-                        "state": state + state_offset,
-                        "x": x,
-                        "y": z_mid,
-                        "w": w,
-                        "h": z_h
-                    })
-        
-        return cells
-
-
-    def _render_cartesian(self, part, z_min, z_max, state_offset):
-        """Rendu d'un partitionneur cartésien en vue de profil."""
-        cells = []
-        
-        nx, ny, nz = part.nx, part.ny, part.nz
-        
-        x_edges = np.linspace(-1, 1, nx + 1)
-        z_edges = np.linspace(z_min, z_max, nz + 1)
-        
-        # En vue de profil, on prend une "tranche" en y=0
-        for iz in range(nz):
-            z_mid = (z_edges[iz] + z_edges[iz + 1]) / 2
-            z_h = z_edges[iz + 1] - z_edges[iz]
-            
-            for ix in range(nx):
-                x_mid = (x_edges[ix] + x_edges[ix + 1]) / 2
-                x_w = x_edges[ix + 1] - x_edges[ix]
-                
-                # On prend la tranche centrale en y
-                iy = ny // 2
-                state = ix + iy * nx + iz * nx * ny
-                
-                cells.append({
-                    "state": state + state_offset,
-                    "x": x_mid,
-                    "y": z_mid,
-                    "w": x_w,
-                    "h": z_h
-                })
-        
-        return cells
-
-
-    def _render_voronoi(self, part, z_min, z_max, state_offset):
-        """Rendu d'un partitionneur Voronoi en vue de profil."""
-        cells = []
-        
-        centers = part.centers
-        avg_size = 2.0 / np.sqrt(len(centers))
-        
-        for i, (x, y, z) in enumerate(centers):
-            # Normaliser z
-            z_norm = (z - self._z_min) / (self._z_max - self._z_min) if self._z_max > self._z_min else 0.5
-            
-            # Vérifier si dans la zone
-            if z_min <= z_norm <= z_max:
-                # Projection radiale pour vue de profil
-                r = np.sqrt(x**2 + y**2)
-                theta = np.arctan2(y, x)
-                x_proj = r * np.cos(theta)
-                
-                cells.append({
-                    "state": i + state_offset,
-                    "x": x_proj,
-                    "y": z_norm,
-                    "w": avg_size,
-                    "h": avg_size
-                })
-        
-        return cells
-
-
-    def _render_quantile(self, part, z_min, z_max, state_offset):
-        """Rendu d'un partitionneur par quantiles (similaire au cartésien)."""
-        return self._render_cartesian(part, z_min, z_max, state_offset)
-
-
-    def _render_generic(self, part, z_min, z_max, state_offset):
-        """Rendu générique pour méthodes inconnues."""
-        cells = []
-        n = part.n_cells
-        n_cols = int(np.ceil(np.sqrt(n)))
-        
-        cell_w = 2.0 / n_cols
-        cell_h = (z_max - z_min) / n_cols
-        
-        for i in range(n):
-            ix = i % n_cols
-            iy = i // n_cols
-            
-            cells.append({
-                "state": i + state_offset,
-                "x": -1 + cell_w * (ix + 0.5),
-                "y": z_min + cell_h * (iy + 0.5),
-                "w": cell_w,
-                "h": cell_h
-            })
-        
-        return cells
+            # Vue YZ
+            plt.subplot(122)
+            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.axhline(y=self._y_split, color='r', linestyle='--')
+            plt.xlabel('Y')
+            plt.ylabel('Z')
+            plt.title('Vue YZ')
+            plt.tight_layout()
+            plt.savefig(f"{save_path}_2d.png", dpi=150)
+            plt.close()
 
 
 # =============================================================================
 # 8. PARTITIONNEMENT MULTI-ZONES (généralisation)
 # =============================================================================
 
-
 class MultiZonePartitioner(BasePartitioner):
     """
-    Partitionnement multi-zones généralisé.
+    Partitionnement multi-zones généralisé (basé sur l'axe Y).
     
     Permet de définir plusieurs zones avec des partitionnements différents.
-    Plus flexible que AdaptiveZPartitioner.
+    Plus flexible que AdaptiveYPartitioner.
     
     Args:
         zones: liste de dicts définissant chaque zone
             [
-                {"z_min": -inf, "z_max": 0.5, "method": "cylindrical", "kwargs": {...}},
-                {"z_min": 0.5, "z_max": 0.8, "method": "voronoi", "kwargs": {"n_cells": 50}},
-                {"z_min": 0.8, "z_max": inf, "method": "single", "kwargs": {}},
+                {"y_min": -inf, "y_max": 0.5, "method": "cylindrical", "kwargs": {...}},
+                {"y_min": 0.5, "y_max": 0.8, "method": "voronoi", "kwargs": {"n_cells": 50}},
+                {"y_min": 0.8, "y_max": inf, "method": "single", "kwargs": {}},
             ]
-        z_mode: "absolute" ou "quantile"
+        y_mode: "absolute" ou "quantile"
     """
     
-    def __init__(self, zones: list, z_mode: str = "absolute"):
+    def __init__(
+        self,
+        zones: list,
+        y_mode: str = "absolute"
+    ):
         self.zones_config = zones
-        self.z_mode = z_mode
-        self._zones = []  # [(z_min, z_max, partitioner), ...]
+        self.y_mode = y_mode
+        self._zones = []  # [(y_min, y_max, partitioner), ...]
         self._cell_offsets = []
         self._total_cells = 0
     
@@ -1493,25 +957,26 @@ class MultiZonePartitioner(BasePartitioner):
     
     def fit(self, coordinates):
         coordinates = np.asarray(coordinates)
-        z = coordinates[:, 2]
+        y = coordinates[:, 1]  # Utilisation de l'axe Y (index 1)
         
         self._zones = []
         self._cell_offsets = [0]
         
         for i, zone_cfg in enumerate(self.zones_config):
             # Convertir les bornes si mode quantile
-            if self.z_mode == "quantile":
-                z_min = np.quantile(z, zone_cfg.get("z_min", 0))
-                z_max = np.quantile(z, zone_cfg.get("z_max", 1))
+            if self.y_mode == "quantile":
+                y_min = np.quantile(y, zone_cfg.get("y_min", 0))
+                y_max = np.quantile(y, zone_cfg.get("y_max", 1))
             else:
-                z_min = zone_cfg.get("z_min", z.min())
-                z_max = zone_cfg.get("z_max", z.max())
+                y_min = zone_cfg.get("y_min", y.min())
+                y_max = zone_cfg.get("y_max", y.max())
             
             # Sélectionner les particules de cette zone
-            mask = (z >= z_min) & (z < z_max)
             if i == len(self.zones_config) - 1:
-                mask = (z >= z_min) & (z <= z_max)  # inclure le max pour la dernière
-            
+                mask = (y >= y_min) & (y <= y_max)  # Inclure le max pour la dernière zone
+            else:
+                mask = (y >= y_min) & (y < y_max)
+                
             coords_zone = coordinates[mask]
             
             method = zone_cfg.get("method", "single")
@@ -1525,12 +990,12 @@ class MultiZonePartitioner(BasePartitioner):
             if len(coords_zone) > 0:
                 partitioner.fit(coords_zone)
             
-            self._zones.append((z_min, z_max, partitioner))
+            self._zones.append((y_min, y_max, partitioner))
             self._cell_offsets.append(
                 self._cell_offsets[-1] + partitioner.n_cells
             )
             
-            print(f"   Zone {i}: z ∈ [{z_min:.3f}, {z_max:.3f}], "
+            print(f"   Zone {i}: y ∈ [{y_min:.3f}, {y_max:.3f}], "
                   f"{partitioner.n_cells} cellules, {len(coords_zone)} particules")
         
         self._total_cells = self._cell_offsets[-1]
@@ -1547,11 +1012,11 @@ class MultiZonePartitioner(BasePartitioner):
         states = np.zeros(n, dtype=np.int64)
         assigned = np.zeros(n, dtype=bool)
         
-        for i, (z_min, z_max, partitioner) in enumerate(self._zones):
+        for i, (y_min, y_max, partitioner) in enumerate(self._zones):
             if i == len(self._zones) - 1:
-                mask = (z >= z_min) & (z <= z_max) & ~assigned
+                mask = (y >= y_min) & (y <= y_max) & ~assigned
             else:
-                mask = (z >= z_min) & (z < z_max) & ~assigned
+                mask = (y >= y_min) & (y < y_max) & ~assigned
             
             if mask.any():
                 zone_states = partitioner.compute_states(
@@ -1565,9 +1030,9 @@ class MultiZonePartitioner(BasePartitioner):
     def _save_data(self, path):
         config = {
             "zones_config": self.zones_config,
-            "z_mode": self.z_mode,
+            "y_mode": self.y_mode,
             "cell_offsets": self._cell_offsets,
-            "zones_bounds": [(z_min, z_max) for z_min, z_max, _ in self._zones],
+            "zones_bounds": [(y_min, y_max) for y_min, y_max, _ in self._zones],
         }
         with open(os.path.join(path, "multizone_config.json"), "w") as f:
             json.dump(config, f, indent=2)
@@ -1581,15 +1046,13 @@ class MultiZonePartitioner(BasePartitioner):
             config = json.load(f)
         
         self.zones_config = config["zones_config"]
-        self.z_mode = config["z_mode"]
+        self.y_mode = config["y_mode"]
         self._cell_offsets = config["cell_offsets"]
         self._total_cells = self._cell_offsets[-1]
         
         self._zones = []
-        for i, (zone_cfg, bounds) in enumerate(
-            zip(self.zones_config, config["zones_bounds"])
-        ):
-            z_min, z_max = bounds
+        for i, (y_min, y_max) in enumerate(config["zones_bounds"]):
+            zone_cfg = self.zones_config[i]
             method = zone_cfg.get("method", "single")
             kwargs = zone_cfg.get("kwargs", {})
             
@@ -1601,7 +1064,7 @@ class MultiZonePartitioner(BasePartitioner):
             zone_path = os.path.join(path, f"zone_{i}")
             partitioner.load(zone_path)
             
-            self._zones.append((z_min, z_max, partitioner))
+            self._zones.append((y_min, y_max, partitioner))
 
 
 class SingleCellPartitioner(BasePartitioner):
@@ -1636,7 +1099,7 @@ REGISTRY = {
     "quantile": QuantileGridPartitioner,
     "octree": OctreePartitioner,
     "physics": PhysicsAwarePartitioner,
-    "adaptive": AdaptiveZPartitioner,      # ← nouveau
+    "adaptive": AdaptivePartitioner,      # ← nouveau
     "multizone": MultiZonePartitioner,     # ← nouveau
     "single": SingleCellPartitioner,       # ← nouveau
 }
@@ -1646,14 +1109,7 @@ REGISTRY = {
 # FACTORY
 # =============================================================================
 
-# REGISTRY = {
-#     "cartesian": CartesianPartitioner,
-#     "cylindrical": CylindricalPartitioner,
-#     "voronoi": VoronoiPartitioner,
-#     "quantile": QuantileGridPartitioner,
-#     "octree": OctreePartitioner,
-#     "physics": PhysicsAwarePartitioner,
-# }
+
 
 
 def create_partitioner(method:str, **kwargs)-> BasePartitioner:

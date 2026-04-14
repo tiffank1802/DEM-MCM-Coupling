@@ -1,0 +1,647 @@
+[
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.5,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 3,
+          "ntheta": 3,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 100,
+      "tau": 50,
+      "step": 100,
+      "dt": 20,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.6,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 3,
+          "ntheta": 3,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 100,
+      "tau": 50,
+      "step": 100,
+      "dt": 20,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.7,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 3,
+          "ntheta": 3,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 100,
+      "tau": 50,
+      "step": 100,
+      "dt": 20,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.8,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 3,
+          "ntheta": 3,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 100,
+      "tau": 50,
+      "step": 100,
+      "dt": 20,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.9,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 3,
+          "ntheta": 3,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 100,
+      "tau": 50,
+      "step": 100,
+      "dt": 20,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.75,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 3,
+          "ntheta": 2,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 100,
+      "tau": 50,
+      "step": 100,
+      "dt": 20,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.75,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "voronoi",
+        "bottom_kwargs": {
+          "n_cells": 64
+        }
+      },
+      "nlt": 100,
+      "tau": 50,
+      "step": 100,
+      "dt": 20,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.75,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 2,
+          "ntheta": 2,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 1,
+      "tau": 50,
+      "step": 100,
+      "dt": 20,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.75,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 2,
+          "ntheta": 2,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 2,
+      "tau": 50,
+      "step": 100,
+      "dt": 20,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.75,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 2,
+          "ntheta": 2,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 3,
+      "tau": 50,
+      "step": 100,
+      "dt": 20,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.75,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 2,
+          "ntheta": 2,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 5,
+      "tau": 50,
+      "step": 100,
+      "dt": 20,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.75,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 2,
+          "ntheta": 2,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 10,
+      "tau": 50,
+      "step": 100,
+      "dt": 20,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.75,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 2,
+          "ntheta": 2,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 100,
+      "tau": 50,
+      "step": 50,
+      "dt": 10,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.75,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 2,
+          "ntheta": 2,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 100,
+      "tau": 50,
+      "step": 200,
+      "dt": 40,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.75,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 2,
+          "ntheta": 2,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 100,
+      "tau": 50,
+      "step": 500,
+      "dt": 100,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.75,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 2,
+          "ntheta": 2,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 100,
+      "tau": 50,
+      "step": 100,
+      "dt": 10,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.75,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 2,
+          "ntheta": 2,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 100,
+      "tau": 50,
+      "step": 100,
+      "dt": 25,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.75,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 2,
+          "ntheta": 2,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 100,
+      "tau": 50,
+      "step": 100,
+      "dt": 50,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.75,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 2,
+          "ntheta": 2,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 100,
+      "tau": 20,
+      "step": 100,
+      "dt": 20,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.75,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 2,
+          "ntheta": 2,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 100,
+      "tau": 100,
+      "step": 100,
+      "dt": 20,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.75,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 2,
+          "ntheta": 2,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 100,
+      "tau": 200,
+      "step": 100,
+      "dt": 20,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.75,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 2,
+          "ntheta": 2,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 3,
+      "tau": 50,
+      "step": 100,
+      "dt": 10,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.75,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 2,
+          "ntheta": 2,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 5,
+      "tau": 100,
+      "step": 200,
+      "dt": 25,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  },
+  {
+    "config": {
+      "method": "adaptive",
+      "method_kwargs": {
+        "y_split": 0.75,
+        "y_split_mode": "quantile",
+        "n_cells_top": 1,
+        "top_method": "single",
+        "top_kwargs": {},
+        "bottom_method": "cylindrical",
+        "bottom_kwargs": {
+          "nr": 2,
+          "ntheta": 2,
+          "nz": 1,
+          "radial_mode": "equal_area"
+        }
+      },
+      "nlt": 2,
+      "tau": 200,
+      "step": 500,
+      "dt": 100,
+      "start_index": 250
+    },
+    "stats": null,
+    "success": false,
+    "error": "too many indices for array: array is 1-dimensional, but 2 were indexed"
+  }
+]
