@@ -42,56 +42,59 @@ def get_api():
 # =============================================================================
 # ÉCRITURE
 # =============================================================================
-
-def save_experiment_to_bucket(folder_name, matrix, stats, config, partitioner_data=None):
-    """
-    Sauvegarde tous les fichiers d'une expérience dans le bucket.
-    """
+def save_experiment_to_bucket(folder_name, matrix, stats, config,
+                              partitioner_data=None, image_data=None):  # ← Changé image_paths en image_data
     api = get_api()
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         local_folder = Path(tmpdir)
-        
-        # Préparer tous les fichiers localement
         files_to_upload = []
-        
-        # Matrice
-        matrix_path = local_folder / "transition_matrix.npy"
+
+        # ✅ Corriger les chemins avec / entre BUCKET_PREFIX et folder_name
+        matrix_path = local_folder / "transitionmatrix.npy"
         np.save(matrix_path, matrix)
-        files_to_upload.append((str(matrix_path), f"{BUCKET_PREFIX}/{folder_name}/transition_matrix.npy"))
-        
-        # Stats
+        files_to_upload.append((str(matrix_path), f"{BUCKET_PREFIX}/{folder_name}/transitionmatrix.npy"))
+
         stats_path = local_folder / "stats.json"
         with open(stats_path, "w") as f:
             json.dump(stats, f, indent=2)
         files_to_upload.append((str(stats_path), f"{BUCKET_PREFIX}/{folder_name}/stats.json"))
-        
-        # Config
+
         config_path = local_folder / "config.json"
         with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
         files_to_upload.append((str(config_path), f"{BUCKET_PREFIX}/{folder_name}/config.json"))
-        
-        # Données du partitionneur
+
+        # données partitionneur
         if partitioner_data:
             for key, value in partitioner_data.items():
                 if isinstance(value, np.ndarray):
-                    file_path = local_folder / f"{key}.npy"
-                    np.save(file_path, value)
-                    files_to_upload.append((str(file_path), f"{BUCKET_PREFIX}/{folder_name}/{key}.npy"))
+                    p = local_folder / f"{key}.npy"
+                    np.save(p, value)
+                    files_to_upload.append((str(p), f"{BUCKET_PREFIX}/{folder_name}/{key}.npy"))
                 else:
-                    file_path = local_folder / f"{key}.json"
-                    with open(file_path, "w") as f:
+                    p = local_folder / f"{key}.json"
+                    with open(p, "w") as f:
                         json.dump(value, f, indent=2)
-                    files_to_upload.append((str(file_path), f"{BUCKET_PREFIX}/{folder_name}/{key}.json"))
-        
+                    files_to_upload.append((str(p), f"{BUCKET_PREFIX}/{folder_name}/{key}.json"))
+
+        # ✅ Images en mémoire → fichiers temporaires → upload
+        if image_data:
+            for img_name, img_bytes in image_data.items():
+                img_path = local_folder / img_name
+                with open(img_path, "wb") as f:
+                    f.write(img_bytes)
+                files_to_upload.append(
+                    (str(img_path), f"{BUCKET_PREFIX}/{folder_name}/images/{img_name}")
+                )
+                
         # Upload batch
         api.batch_bucket_files(
             bucket_id=BUCKET_ID,
             add=[(local_path, path_in_bucket) for local_path, path_in_bucket in files_to_upload],
         )
-
-
+        
+        print(f"   ✅ {len(files_to_upload)} fichiers uploadés vers {BUCKET_PREFIX}/{folder_name}/")
 # =============================================================================
 # LECTURE
 # =============================================================================
