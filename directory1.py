@@ -11,8 +11,9 @@ subdirs=[
 "NewResultsMCM",
 "RaffinageTemporel",
 ]
-for folder in subdirs:
-    
-    fs.rm(f"{BUCKET_BASE}/{BUCKET_PREFIX}/{folder}",recursive=True)
+
     # fs.move(f"{BUCKET_BASE}/{folder}/*",f"{BUCKET_BASE}/{BUCKET_PREFIX}/{folder}")
+fs.rm(f"{BUCKET_BASE}/{BUCKET_PREFIX}ada*",recursive=True)
+# with fs.open(f"{BUCKET_BASE}/{BUCKET_PREFIX}/.keep" ,"w") as f:
+#     f.write("")
    

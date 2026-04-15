@@ -25,10 +25,10 @@ from tqdm import tqdm
 from dataclasses import dataclass, field, asdict
 from huggingface_hub import HfFileSystem
 
-from partitioners import create_partitioner, REGISTRY
-from bucket_io import save_experiment_to_bucket, BUCKET_BASE
-# from .partitioners import create_partitioner, REGISTRY
-# from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
+# from partitioners import create_partitioner, REGISTRY
+# from bucket_io import save_experiment_to_bucket, BUCKET_BASE
+from .partitioners import create_partitioner, REGISTRY
+from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
 
 
 
@@ -52,9 +52,9 @@ class ExperimentConfig:
 
     method: str = "cartesian"
     method_kwargs: dict = field(default_factory=dict)
-    nlt: int = 100
+    nlt: int = 10
     tau: int = 50  # Écart entre start et end pour chaque paire
-    step: int = 100  # Distance entre 2 starts principaux (quand NLT > 1)
+    step: int = 10  # Distance entre 2 starts principaux (quand NLT > 1)
     dt: int = None  # Raffinage temporel à l'intérieur de chaque step
     start_index: int = 250
 
@@ -70,17 +70,13 @@ class ExperimentConfig:
         if sample_coords is not None:
             part.fit(sample_coords)
             
-        # ✅ Create directory if it doesn't exist
-        output_path = os.path.join(
-            base_dir,
-            f"{part.label}_NLT{self.nlt}_step{self.step}_dt{self.dt}_tau{self.tau}_start{self.start_index}"
+        # ✅ Retourner seulement le nom du dossier, pas un chemin
+        folder_name = (
+            f"{part.label}_NLT{self.nlt}_step{self.step}_"
+            f"dt{self.dt}_tau{self.tau}_start{self.start_index}"
         )
-        
-        if not os.path.exists(output_path):
-            os.makedirs(output_path, exist_ok=True)
-            
-        return output_path
-
+    
+        return folder_name    # ✅ Retourne juste le nom
 # =============================================================================
 # CONFIGURATIONS PAR MÉTHODE
 # =============================================================================
@@ -89,19 +85,18 @@ class ExperimentConfig:
 def get_configs(method):
     """
     Retourne la liste de configs pour une méthode donnée.
-
-    Axes de sweep:
-      1. Paramètres de discrétisation (propres à chaque méthode)
-      2. Nombre de pas de temps (NLT)
-      3. Pas de sous-échantillonnage temporel (step_size)
-      4. Index de départ (start_index)
-      5. Pas de glissement (dt)
+    
+    Structure :
+    1. Configurations spatiales pures (paramètres temporels par défaut)
+    2. Configurations temporelles pures (paramètres spatiaux par défaut) 
+    3. Pas de dédoublonnage abusif qui supprime des combinaisons légitimes
     """
-
     configs = []
+    
+    print(f"   🔍 Génération des configs pour {method}...")
 
     # ══════════════════════════════════════════════════════════════════════
-    # Sweep de discrétisation spatiale
+    # 1. SWEEP DE DISCRÉTISATION SPATIALE (avec paramètres temporels par défaut)
     # ══════════════════════════════════════════════════════════════════════
 
     if method == "cartesian":
@@ -131,13 +126,13 @@ def get_configs(method):
                 ExperimentConfig(
                     method="cylindrical",
                     method_kwargs={
-                        "nr": 2, "ntheta": nth, "nz": 1,
+                        "nr": 1, "ntheta": nth, "nz": 1,
                         "radial_mode": "equal_area",
                     },
                 )
             )
         # nz variable
-        for nz in [1,2]:
+        for nz in [1, 2]:
             configs.append(
                 ExperimentConfig(
                     method="cylindrical",
@@ -158,8 +153,9 @@ def get_configs(method):
                     },
                 )
             )
+
     elif method == "voronoi":
-        for nc in [8,10,12,14,16,18,20,24, 27,30, 64, 100]:
+        for nc in [8, 10, 12, 14, 16, 18, 20, 24, 27, 30, 64, 100]:
             configs.append(
                 ExperimentConfig(
                     method="voronoi",
@@ -210,35 +206,34 @@ def get_configs(method):
                 ExperimentConfig(
                     method="adaptive",
                     method_kwargs={
-                        "y_split": y_q,  # Changed from z_split
-                        "y_split_mode": "quantile",  # Changed from z_split_mode
-                        "n_cells_top": 1,
-                        "top_method": "single",
-                        "top_kwargs": {},
-                        "bottom_method": "cylindrical",
-                        "bottom_kwargs": {
-                            "nr": 3, "ntheta": 3, "nz": 1,
-                            "radial_mode": "equal_area",
-                        },
-                    },
-                )
-            )
-
-
-        # ── Sweep finesse zone basse (nr) ────────────────────────────
-        for nr in [3, 5, 8, 10, 15]:
-            configs.append(
-                ExperimentConfig(
-                    method="adaptive",
-                    method_kwargs={
-                        "y_split": 0.75,
+                        "y_split": y_q,
                         "y_split_mode": "quantile",
                         "n_cells_top": 1,
                         "top_method": "single",
                         "top_kwargs": {},
                         "bottom_method": "cylindrical",
                         "bottom_kwargs": {
-                            "nr": nr, "ntheta": 2, "nz": 1,
+                            "nr": 1, "ntheta": 36, "nz": 1,
+                            "radial_mode": "equal_area",
+                        },
+                    },
+                )
+            )
+
+        # ── Sweep finesse zone basse (nr) ────────────────────────────
+        for nr in [2, 3,1]:
+            configs.append(
+                ExperimentConfig(
+                    method="adaptive",
+                    method_kwargs={
+                        "y_split": 0.90,
+                        "y_split_mode": "quantile",
+                        "n_cells_top": 1,
+                        "top_method": "single",
+                        "top_kwargs": {},
+                        "bottom_method": "cylindrical",
+                        "bottom_kwargs": {
+                            "nr": nr, "ntheta": 30, "nz": 1,
                             "radial_mode": "equal_area",
                         },
                     },
@@ -246,19 +241,19 @@ def get_configs(method):
             )
 
         # ── Sweep finesse zone basse (nz) ────────────────────────────
-        for nz in [1,4, 2, 3]:
+        for nz in [1, 2]:
             configs.append(
                 ExperimentConfig(
                     method="adaptive",
                     method_kwargs={
-                        "y_split": 0.75,
+                        "y_split": 0.90,
                         "y_split_mode": "quantile",
                         "n_cells_top": 1,
                         "top_method": "single",
                         "top_kwargs": {},
                         "bottom_method": "cylindrical",
                         "bottom_kwargs": {
-                            "nr": 2, "ntheta": 2, "nz": nz,
+                            "nr": 1, "ntheta": 30, "nz": nz,
                             "radial_mode": "equal_area",
                         },
                     },
@@ -266,19 +261,19 @@ def get_configs(method):
             )
 
         # ── Sweep ntheta zone basse ──────────────────────────────────
-        for nth in [1, 4, 8, 12, 16]:
+        for nth in [1, 4, 8, 12, 16,20,30,21,23,22,35,37,39,40,50,60,70,80,90,100,120,130,140]:
             configs.append(
                 ExperimentConfig(
                     method="adaptive",
                     method_kwargs={
-                        "y_split": 0.75,
+                        "y_split": 0.90,
                         "y_split_mode": "quantile",
                         "n_cells_top": 1,
                         "top_method": "single",
                         "top_kwargs": {},
                         "bottom_method": "cylindrical",
                         "bottom_kwargs": {
-                            "nr": 2, "ntheta": nth, "nz": 1,
+                            "nr": 1, "ntheta": nth, "nz": 1,
                             "radial_mode": "equal_area",
                         },
                     },
@@ -286,7 +281,7 @@ def get_configs(method):
             )
 
         # ── Zone haute avec quelques cellules ────────────────────────
-        for n_top in [1, 2, 4,3]:
+        for n_top in [1, 2, 3, 4]:
             top_method = "single" if n_top == 1 else "cylindrical"
             top_kwargs = {} if n_top == 1 else {
                 "nr": 1, "ntheta": n_top, "nz": 1,
@@ -296,14 +291,14 @@ def get_configs(method):
                 ExperimentConfig(
                     method="adaptive",
                     method_kwargs={
-                        "y_split": 0.75,
+                        "y_split": 0.90,
                         "y_split_mode": "quantile",
                         "n_cells_top": n_top,
                         "top_method": top_method,
                         "top_kwargs": top_kwargs,
                         "bottom_method": "cylindrical",
                         "bottom_kwargs": {
-                            "nr": 2, "ntheta": 2, "nz": 1,
+                            "nr": 1, "ntheta": 30, "nz": 1,
                             "radial_mode": "equal_area",
                         },
                     },
@@ -311,12 +306,12 @@ def get_configs(method):
             )
 
         # ── Voronoï en bas au lieu de cylindrique ────────────────────
-        for nc in [64, 125, 250, 500]:
+        for nc in [10, 20, 30, 50, 64, 100, 125, 250, 500]:
             configs.append(
                 ExperimentConfig(
                     method="adaptive",
                     method_kwargs={
-                        "y_split": 0.75,
+                        "y_split": 0.90,
                         "y_split_mode": "quantile",
                         "n_cells_top": 1,
                         "top_method": "single",
@@ -328,162 +323,8 @@ def get_configs(method):
             )
 
     elif method == "multizone":
-        # 2 zones: fin en bas, grossier en haut ────────────────────
-        configs.append(
-            ExperimentConfig(
-                method="multizone",
-                method_kwargs={
-                    "y_mode": "quantile",  # Changed from z_mode
-                    "zones": [
-                        {
-                            "y_min": 0.0, "y_max": 0.8,  # Changed from z_min/z_max
-                            "method": "cylindrical",
-                            "kwargs": {
-                                "nr": 2, "ntheta": 2, "nz": 1,
-                                "radial_mode": "equal_area",
-                            },
-                        },
-                        {
-                            "y_min": 0.8, "y_max": 1.0,  # Changed from z_min/z_max
-                            "method": "single",
-                            "kwargs": {},
-                        },
-                    ],
-                },
-            )
-        )
-
-        # ── 3 zones: gradient de finesse ─────────────────────────────
-        for split1, split2 in [(0.5, 0.8), (0.6, 0.85), (0.7, 0.9)]:
-            configs.append(
-                ExperimentConfig(
-                    method="multizone",
-                    method_kwargs={
-                        "y_mode": "quantile",
-                        "zones": [
-                            {
-                                "y_min": 0.0, "y_max": split1,
-                                "method": "cylindrical",
-                                "kwargs": {
-                                    "nr": 2, "ntheta": 2, "nz": 1,
-                                    "radial_mode": "equal_area",
-                                },
-                            },
-                            {
-                                "y_min": split1, "y_max": split2,
-                                "method": "cylindrical",
-                                "kwargs": {
-                                    "nr": 2, "ntheta": 2, "nz": 1,
-                                    "radial_mode": "equal_area",
-                                },
-                            },
-                            {
-                                "y_min": split2, "y_max": 1.0,
-                                "method": "single",
-                                "kwargs": {},
-                            },
-                        ],
-                    },
-                )
-            )
-
-        # ── 3 zones avec Voronoï en bas ──────────────────────────────
-        for nc_bottom in [2, 4, 8, 16, 32, 64]:
-            configs.append(
-                ExperimentConfig(
-                    method="multizone",
-                    method_kwargs={
-                        "y_mode": "quantile",
-                        "zones": [
-                            {
-                                "y_min": 0.0, "y_max": 0.6,
-                                "method": "voronoi",
-                                "kwargs": {"n_cells": nc_bottom},
-                            },
-                            {
-                                "y_min": 0.6, "y_max": 0.85,
-                                "method": "cylindrical",
-                                "kwargs": {
-                                    "nr": 2, "ntheta": 2, "nz": 1,
-                                    "radial_mode": "equal_area",
-                                },
-                            },
-                            {
-                                "y_min": 0.85, "y_max": 1.0,
-                                "method": "single",
-                                "kwargs": {},
-                            },
-                        ],
-                    },
-                )
-            )
-
-        # ── 4 zones (très gradué) ────────────────────────────────────
-        configs.append(
-            ExperimentConfig(
-                method="multizone",
-                method_kwargs={
-                    "y_mode": "quantile",
-                    "zones": [
-                        {
-                            "y_min": 0.0, "y_max": 0.4,
-                            "method": "cylindrical",
-                            "kwargs": {
-                                "nr": 8, "ntheta": 16, "nz": 10,
-                                "radial_mode": "equal_area",
-                            },
-                        },
-                        {
-                            "y_min": 0.4, "y_max": 0.7,
-                            "method": "cylindrical",
-                            "kwargs": {
-                                "nr": 5, "ntheta": 10, "nz": 6,
-                                "radial_mode": "equal_area",
-                            },
-                        },
-                        {
-                            "z_min": 0.7, "z_max": 0.9,
-                            "method": "cylindrical",
-                            "kwargs": {
-                                "nr": 3, "ntheta": 6, "nz": 3,
-                                "radial_mode": "equal_area",
-                            },
-                        },
-                        {
-                            "z_min": 0.9, "z_max": 1.0,
-                            "method": "single",
-                            "kwargs": {},
-                        },
-                    ],
-                },
-            )
-        )
-
-        # ── Sweep nb cellules zone basse ─────────────────────────────
-        for nr, nz in [(3, 5), (5, 8), (8, 10), (10, 12)]:
-            configs.append(
-                ExperimentConfig(
-                    method="multizone",
-                    method_kwargs={
-                        "y_mode": "quantile",
-                        "zones": [
-                            {
-                                "y_min": 0.0, "y_max": 0.75,
-                                "method": "cylindrical",
-                                "kwargs": {
-                                    "nr": nr, "ntheta": 8, "nz": nz,
-                                    "radial_mode": "equal_area",
-                                },
-                            },
-                            {
-                                "y_min": 0.75, "y_max": 1.0,
-                                "method": "single",
-                                "kwargs": {},
-                            },
-                        ],
-                    },
-                )
-            )
+        # Ajoutez ici les configs multizone...
+        pass
 
     elif method == "single":
         configs.append(
@@ -496,40 +337,48 @@ def get_configs(method):
     else:
         raise ValueError(f"Méthode inconnue: {method}")
 
+    # ✅ Debug : afficher les configs spatiales
+    spatial_count = len(configs)
+    print(f"   📊 Configs spatiales pour {method}: {spatial_count}")
+    if configs:
+        print(f"      Exemple: {configs[0].method_kwargs}")
+
     # ══════════════════════════════════════════════════════════════════════
-    # ✅ Sweeps temporels optimisés pour le CAS 1 (recouvrement)
+    # 2. SWEEP TEMPOREL (avec paramètres spatiaux par défaut)
     # ══════════════════════════════════════════════════════════════════════
 
-    default_kwargs = _get_default_kwargs(method)
+    default_spatial_kwargs = _get_default_kwargs(method)
+    print(f"   🕒 Ajout des sweeps temporels avec: {default_spatial_kwargs}")
+
+    temporal_configs = []
 
     # ── Sweep NLT ────────────────────────────────────────────────────────
-    for nlt in [1, 2, 3, 5, 10]:  # Moins de blocs car chacun a plusieurs paires
-        configs.append(
+    for nlt in [1, 2, 3, 5]:  # Réduit pour éviter trop de configs
+        temporal_configs.append(
             ExperimentConfig(
                 method=method,
-                method_kwargs=default_kwargs,
+                method_kwargs=default_spatial_kwargs,
                 nlt=nlt,
             )
         )
 
     # ── Sweep step (distance entre blocs NLT) ──────────
-    for step in [50, 100, 200, 500]:  
-        configs.append(
+    for step in [20, 30, 40]:  # Réduit
+        temporal_configs.append(
             ExperimentConfig(
                 method=method,
-                method_kwargs=default_kwargs,
+                method_kwargs=default_spatial_kwargs,
                 step=step,
-                # dt sera calculé automatiquement = step//5
             )
         )
 
     # ── Sweep dt (raffinage temporel) ──────────
-    step_ref = 100
-    for dt in [10, 20, 25, 50]:  # Différents niveaux de raffinage
-        configs.append(
+    step_ref = 20
+    for dt in [1, 2, 3, 4]:
+        temporal_configs.append(
             ExperimentConfig(
                 method=method,
-                method_kwargs=default_kwargs,
+                method_kwargs=default_spatial_kwargs,
                 step=step_ref,
                 dt=dt,
             )
@@ -537,47 +386,63 @@ def get_configs(method):
 
     # ── Sweep tau (longueur des paires) ──────────
     for tau in [20, 50, 100, 200]:
-        configs.append(
+        temporal_configs.append(
             ExperimentConfig(
                 method=method,
-                method_kwargs=default_kwargs,
+                method_kwargs=default_spatial_kwargs,
                 tau=tau,
             )
         )
 
-
-    # ✅ Configurations recommandées avec les bons noms
+    # ✅ Configurations recommandées
     recommended_configs = [
-    # Raffinage fin
-    ExperimentConfig(
-        method=method, method_kwargs=default_kwargs,
-        nlt=3, step=100, dt=10, tau=50  # ✅ step, dt, tau
-    ),
-    # Raffinage moyen  
-    ExperimentConfig(
-        method=method, method_kwargs=default_kwargs,
-        nlt=5, step=200, dt=25, tau=100
-    ),
-    # Raffinage grossier
-    ExperimentConfig(
-        method=method, method_kwargs=default_kwargs,
-        nlt=2, step=500, dt=100, tau=200
-    ),
-]
+        ExperimentConfig(
+            method=method, method_kwargs=default_spatial_kwargs,
+            nlt=3, step=100, dt=1, tau=50
+        ),
+        ExperimentConfig(
+            method=method, method_kwargs=default_spatial_kwargs,
+            nlt=5, step=20, dt=2, tau=100
+        ),
+        ExperimentConfig(
+            method=method, method_kwargs=default_spatial_kwargs,
+            nlt=2, step=20, dt=1, tau=100
+        ),
+    ]
     
-    configs.extend(recommended_configs)
+    temporal_configs.extend(recommended_configs)
     
-    # ── Dédoublonner ─────────────────────────────────────────────────────
+    print(f"   🕒 Configs temporelles générées: {len(temporal_configs)}")
+    
+    # ══════════════════════════════════════════════════════════════════════
+    # 3. COMBINAISON ET DÉDOUBLONNAGE INTELLIGENT
+    # ══════════════════════════════════════════════════════════════════════
+    
+    all_configs = configs + temporal_configs
+    print(f"   🔗 Total avant dédoublonnage: {len(all_configs)} ({spatial_count} spatiales + {len(temporal_configs)} temporelles)")
+    
+    # ✅ Dédoublonnage intelligent basé sur output_folder() qui inclut TOUS les paramètres
     seen = set()
     unique = []
-    for c in configs:
-        key = c.output_folder()
+    duplicates = 0
+    
+    for c in all_configs:
+        if c.method in ["adaptive", "multizone"]:
+            # Ces méthodes nécessitent sample_coords pour le fit, on ne peut pas générer la clé ici
+            # On utilise une clé approximative
+            key = f"{c.method}_{c.method_kwargs}_NLT{c.nlt}_step{c.step}_dt{c.dt}_tau{c.tau}_start{c.start_index}"
+        else:
+            key = c.output_folder()
+            
         if key not in seen:
             seen.add(key)
             unique.append(c)
+        else:
+            duplicates += 1
+            print(f"      🔄 Doublon supprimé: {key}")
 
+    print(f"   🔄 Dédoublonnage: {len(all_configs)} → {len(unique)} ({duplicates} doublons supprimés)")
     return unique
-
 
 def _get_default_kwargs(method):
     """Paramètres de discrétisation par défaut pour les sweeps temporels."""
@@ -592,15 +457,18 @@ def _get_default_kwargs(method):
         "octree": {"max_particles": 100, "max_depth": 5},
         "physics": {"n_cells": 125},
         "adaptive": {
-            "y_split": 0.75,
+            "y_split": 0.90,
             "y_split_mode": "quantile",
             "n_cells_top": 1,
             "top_method": "single",
             "top_kwargs": {},
-            "bottom_method": "cylindrical",
+            "bottom_method": "voronoi",
+            # "bottom_kwargs": {
+            #     "nr": 3, "ntheta": 12, "nz": 1,
+            #     "radial_mode": "equal_area",
+            # },
             "bottom_kwargs": {
-                "nr": 2, "ntheta": 2, "nz": 1,
-                "radial_mode": "equal_area",
+                "n_cells": 100,
             },
         },
         "multizone": {
@@ -637,7 +505,7 @@ def sample_coordinates(files, fs, sample_rate=SAMPLE_RATE):
         np.ndarray shape (N, 3)
     """
     all_coords = []
-    for f in tqdm(files[::sample_rate], desc="   Échantillonnage", leave=False):
+    for f in tqdm(files[5::sample_rate], desc="   Échantillonnage", leave=False):
         with fs.open(f, "rb") as fh:
             df = pl.read_csv(fh)
         coords = np.column_stack(
@@ -791,11 +659,11 @@ def run_experiment(config, partitioner, files, fs, device):
     def load_coords(file_path):
         with fs.open(file_path, "rb") as fh:
             df = pl.read_csv(fh)
-        # Remplacement de l'accès par indexation directe
+        # ✅ Indexation directe plus rapide que select(), et conversion immédiate
         return (
-            df.select("coordinates:0").to_numpy(),  # Utilisation de select()
-            df.select("coordinates:1").to_numpy(),
-            df.select("coordinates:2").to_numpy()
+            df["coordinates:0"].to_numpy(),
+            df["coordinates:1"].to_numpy(),
+            df["coordinates:2"].to_numpy()
         )
 
 
@@ -872,16 +740,16 @@ def run_experiment(config, partitioner, files, fs, device):
         with fs.open(files[idx_curr], "rb") as f:
             df_curr = pl.read_csv(f)
 
-        # Assignation des états
+        # ✅ Conversion immédiate en numpy (un seul appel à to_numpy())
         states_prev = partitioner.compute_states(
-            df_prev["coordinates:0"],
-            df_prev["coordinates:1"],
-            df_prev["coordinates:2"],
+            df_prev["coordinates:0"].to_numpy(),
+            df_prev["coordinates:1"].to_numpy(),
+            df_prev["coordinates:2"].to_numpy(),
         )
         states_curr = partitioner.compute_states(
-            df_curr["coordinates:0"],
-            df_curr["coordinates:1"],
-            df_curr["coordinates:2"],
+            df_curr["coordinates:0"].to_numpy(),
+            df_curr["coordinates:1"].to_numpy(),
+            df_curr["coordinates:2"].to_numpy(),
         )
 
         # Calcul de la matrice de transition
@@ -922,11 +790,12 @@ def run_experiment(config, partitioner, files, fs, device):
     }
 
     return P_np, stats
-
-def save_results(config, partitioner, P, stats, output_dir):
+def save_results(config, partitioner, P, stats, image_data=None, folder_name=None):  # ← Changé image_paths en image_data
     """Sauvegarde les résultats dans le bucket HuggingFace."""
     
-    folder_name = os.path.basename(output_dir)
+    # ✅ folder_name est maintenant juste un nom, pas un chemin
+    if folder_name is None:
+        folder_name = config.output_folder()
     
     # Préparer les données du partitionneur
     partitioner_data = {}
@@ -948,13 +817,14 @@ def save_results(config, partitioner, P, stats, output_dir):
         "n_cells": partitioner.n_cells,
     }
     
-    # Sauvegarder dans le bucket
+    # ✅ Sauvegarder directement dans le bucket
     save_experiment_to_bucket(
         folder_name=folder_name,
         matrix=P,
         stats=stats,
         config=asdict(config),
         partitioner_data=partitioner_data,
+        image_data=image_data  # ← Changé
     )
     
     print(f"   💾 Bucket: {BUCKET_BASE}/{folder_name}/")
@@ -963,22 +833,9 @@ def save_results(config, partitioner, P, stats, output_dir):
 # =============================================================================
 
 
-def run_markov_sweep(method:str, configs:list[ExperimentConfig]=None, base_dir=BASE_OUTPUT_DIR)-> list[dict]:
+def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, base_dir=BASE_OUTPUT_DIR) -> list[dict]:
     """
     Lance le sweep Markovien pour une méthode de partitionnement.
-
-    Args:
-        method: str — "cartesian", "cylindrical", "voronoi",
-                       "quantile", "octree", "physics", ou "all"
-        configs: liste de ExperimentConfig (None = configs par défaut)
-        base_dir: dossier de sortie
-
-    Exemple:
-        run_markov_sweep("voronoi")
-        run_markov_sweep("cylindrical", configs=[
-            ExperimentConfig(method="cylindrical",
-                             method_kwargs={"nr":10, "ntheta":8, "nz":10}),
-        ])
     """
 
     print("=" * 70)
@@ -1014,64 +871,67 @@ def run_markov_sweep(method:str, configs:list[ExperimentConfig]=None, base_dir=B
 
     print(f"\n📋 {len(all_configs)} expériences à lancer:")
     print("-" * 70)
-    for i, c in enumerate(all_configs):
-        part = create_partitioner(c.method, **c.method_kwargs)
-        part.fit(sample_coords)
-        print(
-            f"NLT={c.nlt:4d} step={c.step:3d} dt={c.dt:2d} tau={c.tau:3d} start={c.start_index}"
-            f"NLT={c.nlt:4d} step={c.step:3d} dt={c.dt:2d} tau={c.tau:3d} start={c.start_index}"  # ✅ Corrigé
-        )
-    print("-" * 70)
 
-    # ── Cache des partitionneurs fittés ──
-    fitted_cache = {}
-
-    # ── Boucle principale ──
+    # ── Boucle principale (SANS CACHE) ──
     results = []
     for i, config in enumerate(all_configs):
-        if config.method=="adaptive" or config.method=="multizone":
-            output_dir=config.output_folder(base_dir=base_dir,sample_coords=sample_coords)
-        else :
-            output_dir = config.output_folder(base_dir)
-        print(f"\n[{i + 1}/{len(all_configs)}] {os.path.basename(output_dir)}")
+        # ✅ Générer le nom du dossier (pas un chemin)
+        if config.method in ["adaptive", "multizone"]:
+            folder_name = config.output_folder(base_dir=base_dir, sample_coords=sample_coords)
+        else:
+            folder_name = config.output_folder(base_dir)
+        
+        print(f"\n[{i + 1}/{len(all_configs)}] {folder_name}")
 
         try:
-            # Créer ou récupérer le partitionneur
+            # ✅ Créer et fitter le partitionneur (pas de cache)
             partitioner = create_partitioner(config.method, **config.method_kwargs)
-            cache_key = partitioner.label
+            print(f"   🔧 Fit partitionneur...")
+            partitioner.fit(sample_coords)
 
-            if cache_key in fitted_cache:
-                partitioner = fitted_cache[cache_key]
-                print(f"   ♻️  Partitionneur en cache: {cache_key}")
-            else:
-                print(f"   🔧 Fit: {cache_key}...")
-                partitioner.fit(sample_coords)
-                fitted_cache[cache_key] = partitioner
-
-                # Diagnostics
-                diag = partitioner.diagnostics(sample_coords)
-                print(
-                    f"   📊 {partitioner.n_cells} cellules | "
-                    f"{diag['n_visited']} visitées | "
-                    f"pop: [{diag['pop_min']}, {diag['pop_max']}] "
-                    f"μ={diag['pop_mean']:.0f} σ={diag['pop_std']:.0f}"
-                )
+            # ✅ Diagnostics (maintenant disponible)
+            diag = partitioner.diagnostics(sample_coords)
+            print(
+                f"   📊 {partitioner.n_cells} cellules | "
+                f"{diag['n_visited']} visitées | "
+                f"pop: [{diag['pop_min']}, {diag['pop_max']}] "
+                f"μ={diag['pop_mean']:.0f} σ={diag['pop_std']:.0f}"
+            )
+            
+            # ✅ Générer les visualisations
+            image_data = None
+            if hasattr(partitioner, 'visualize'):
+                try:
+                    x, y, z = sample_coords[:, 0], sample_coords[:, 1], sample_coords[:, 2]
+                    # Créer un nom de fichier sûr
+                    safe_label = partitioner.label.replace('=', '_').replace(' ', '_').replace('/', '_')
+                    image_data = partitioner.visualize(x, y, z, save_prefix=f"partition_vis_{safe_label}")
+                    print(f"   🎨 {len(image_data)} images générées")
+                except Exception as e:
+                    print(f"   ⚠️  Visualisation échouée: {e}")
 
             # Lancer l'expérience
             P, stats = run_experiment(config, partitioner, files, fs, device)
 
             # Sauvegarder
-            save_results(config, partitioner, P, stats, output_dir)
+            save_results(
+                config=config, 
+                partitioner=partitioner, 
+                P=P, 
+                stats=stats,
+                image_data=image_data,
+                folder_name=folder_name
+            )
 
             results.append(
                 {"config": asdict(config), "stats": stats, "success": True}
             )
-          # À la fin de run_markov_sweep, dans la boucle de résultats :
+            
             print(
                 f"   ✅ {stats['n_states_visited']}/{stats['n_states']} états | "
                 f"P(rester)={stats['diagonal_mean']:.4f} | "
-                f"pairs={stats['n_pairs_used']} | "  # ✅ Nouveau nom
-                f"step={config.step} dt={config.dt}"  # ✅ Corrigé
+                f"pairs={stats['n_pairs_used']} | "
+                f"step={config.step} dt={config.dt}"
             )
 
         except Exception as e:
@@ -1098,15 +958,29 @@ def run_markov_sweep(method:str, configs:list[ExperimentConfig]=None, base_dir=B
         for r in ko:
             print(f"   - {r['config']['method']}: {r.get('error', '?')}")
 
-    # Sauvegarder le résumé
-    summary_path = os.path.join(base_dir, f"summary_{method}.json")
-    with open(summary_path, "w") as f:
-        json.dump(results, f, indent=2)
-    print(f"\n💾 Résumé: {summary_path}")
+    # ✅ Sauvegarder le résumé dans le bucket
+    summary_data = {
+        "method": method,
+        "total": len(results),
+        "success": len(ok),
+        "failed": len(ko),
+        "results": results
+    }
+    
+    try:
+        save_experiment_to_bucket(
+            folder_name=f"_summary_{method}",
+            matrix=np.array([]),  # Pas de matrice pour un résumé
+            stats=summary_data,
+            config={"type": "summary", "method": method}
+        )
+        print(f"\n💾 Résumé sauvegardé dans le bucket: _summary_{method}/")
+    except Exception as e:
+        print(f"\n⚠️  Impossible de sauvegarder le résumé: {e}")
+    
     print("✨ Terminé!")
 
     return results
-
 
 # =============================================================================
 # CLI
@@ -1144,13 +1018,13 @@ def main():
                 print(f"\n{m.upper()} ({len(configs)} configs):")
                 for c in configs:
                     p = create_partitioner(c.method, **c.method_kwargs)
-                    print(f"  {p.label} NLT={c.nlt} step={c.step_size} dt={c.dt}")
+                    print(f"  {p.label} NLT={c.nlt} step={c.step} dt={c.dt}")
         else:
             configs = get_configs(args.method)
             print(f"{args.method.upper()} ({len(configs)} configs):")
             for c in configs:
                 p = create_partitioner(c.method, **c.method_kwargs)
-                print(f"  {p.label} NLT={c.nlt} step={c.step_size} dt={c.dt}")
+                print(f"  {p.label} NLT={c.nlt} step={c.step} dt={c.dt}")
         return
 
     run_markov_sweep(args.method, base_dir=args.output)

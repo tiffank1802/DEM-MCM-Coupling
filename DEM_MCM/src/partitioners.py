@@ -22,6 +22,7 @@ Méthodes disponibles:
 
 import numpy as np
 import os
+import io
 import json
 from abc import ABC, abstractmethod
 import matplotlib.pyplot as plt
@@ -114,28 +115,83 @@ class BasePartitioner(ABC):
     def _load_data(self, path):
         pass
 
-    def diagnostics(self, coordinates):
+    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="partition_visualization"):
         """
-        Statistiques de population par cellule.
-
-        Args:
-            coordinates: np.ndarray (N, 3)
+        Génère des visualisations et retourne les données des images en mémoire
+        
         Returns:
-            dict avec min, max, mean, std, n_empty
+            dict: {"filename.png": bytes_data, ...}
         """
-        states = self.compute_states(
-            coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
-        )
-        counts = np.bincount(states, minlength=self.n_cells)
-        return {
-            "pop_min": int(counts.min()),
-            "pop_max": int(counts.max()),
-            "pop_mean": float(counts.mean()),
-            "pop_std": float(counts.std()),
-            "n_empty": int((counts == 0).sum()),
-            "n_visited": int((counts > 0).sum()),
-            "fraction_visited": float((counts > 0).sum() / self.n_cells),
-        }
+        self.fit(np.column_stack([x,y,z]))
+        states = self.compute_states(x, y, z)
+        
+        image_data = {}
+        
+        if "3d" in plot_types:
+            fig = plt.figure(figsize=(12, 8))
+            ax = fig.add_subplot(111, projection='3d')
+            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            ax.set_title(f'Partitionnement 3D - {self.label}')
+            plt.colorbar(scatter, label='ID de Partition')
+            plt.tight_layout()
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        if "2d_xy" in plot_types:
+            plt.figure(figsize=(12, 5))
+            
+            # Vue XY
+            plt.subplot(121)
+            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.xlabel('X')
+            plt.ylabel('Y')
+            plt.title('Vue XY')
+            plt.colorbar(label='Partition ID')
+            
+            # Vue YZ
+            plt.subplot(122)
+            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.xlabel('Y')
+            plt.ylabel('Z')
+            plt.title('Vue YZ')
+            plt.colorbar(label='Partition ID')
+            plt.tight_layout()
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        return image_data
+    def diagnostics(self, coordinates):
+            """
+            Statistiques de population par cellule pour le partitionneur adaptatif.
+            """
+            coordinates = np.asarray(coordinates)
+            x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
+            states = self.compute_states(x, y, z)
+            counts = np.bincount(states, minlength=self.n_cells)
+            return {
+                "pop_min": int(counts.min()),
+                "pop_max": int(counts.max()),
+                "pop_mean": float(counts.mean()),
+                "pop_std": float(counts.std()),
+                "n_empty": int((counts == 0).sum()),
+                "n_visited": int((counts > 0).sum()),
+                "fraction_visited": float((counts > 0).sum() / self.n_cells),
+            }
+
+    
 
 
 # =============================================================================
@@ -197,6 +253,82 @@ class CartesianPartitioner(BasePartitioner):
     def _load_data(self, path):
         self._bounds = tuple(np.load(os.path.join(path, "bounds.npy")))
 
+    
+    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
+        """
+        Génère des visualisations avec adaptation pour l'axe y
+        """
+        self.fit(np.column_stack([x,y,z]))
+        states = self.compute_states(x, y, z)
+        
+        image_data = {}
+        
+        if "3d" in plot_types:
+            fig = plt.figure(figsize=(12, 8))
+            ax = fig.add_subplot(111, projection='3d')
+            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
+            plt.colorbar(scatter, label='ID de Partition')
+            plt.tight_layout()
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        if "2d_xy" in plot_types:
+            plt.figure(figsize=(12, 5))
+            
+            # Vue XY
+            plt.subplot(121)
+            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.axhline(y=self._y_split, color='r', linestyle='--', 
+                         label=f'Seuil y={self._y_split:.2f}')
+            plt.xlabel('X')
+            plt.ylabel('Y')
+            plt.title('Vue XY')
+            plt.legend()
+            plt.colorbar(label='Partition ID')
+            
+            # Vue YZ
+            plt.subplot(122)
+            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
+            plt.xlabel('Y')
+            plt.ylabel('Z')
+            plt.title('Vue YZ')
+            plt.tight_layout()
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        return image_data
+    def diagnostics(self, coordinates):
+            """
+            Statistiques de population par cellule pour le partitionneur adaptatif.
+            """
+            coordinates = np.asarray(coordinates)
+            x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
+            states = self.compute_states(x, y, z)
+            counts = np.bincount(states, minlength=self.n_cells)
+            return {
+                "pop_min": int(counts.min()),
+                "pop_max": int(counts.max()),
+                "pop_mean": float(counts.mean()),
+                "pop_std": float(counts.std()),
+                "n_empty": int((counts == 0).sum()),
+                "n_visited": int((counts > 0).sum()),
+                "fraction_visited": float((counts > 0).sum() / self.n_cells),
+            }
 
 # =============================================================================
 # 2. CYLINDRIQUE
@@ -309,6 +441,82 @@ class CylindricalPartitioner(BasePartitioner):
         self._z_min = p["z_min"]
         self._z_max = p["z_max"]
         self._r_edges = np.load(os.path.join(path, "r_edges.npy"))
+    
+    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
+        """
+        Génère des visualisations avec adaptation pour l'axe y
+        """
+        self.fit(np.column_stack([x,y,z]))
+        states = self.compute_states(x, y, z)
+        
+        image_data = {}
+        
+        if "3d" in plot_types:
+            fig = plt.figure(figsize=(12, 8))
+            ax = fig.add_subplot(111, projection='3d')
+            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
+            plt.colorbar(scatter, label='ID de Partition')
+            plt.tight_layout()
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        if "2d_xy" in plot_types:
+            plt.figure(figsize=(12, 5))
+            
+            # Vue XY
+            plt.subplot(121)
+            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.axhline(y=self._y_split, color='r', linestyle='--', 
+                         label=f'Seuil y={self._y_split:.2f}')
+            plt.xlabel('X')
+            plt.ylabel('Y')
+            plt.title('Vue XY')
+            plt.legend()
+            plt.colorbar(label='Partition ID')
+            
+            # Vue YZ
+            plt.subplot(122)
+            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
+            plt.xlabel('Y')
+            plt.ylabel('Z')
+            plt.title('Vue YZ')
+            plt.tight_layout()
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        return image_data
+    def diagnostics(self, coordinates):
+            """
+            Statistiques de population par cellule pour le partitionneur adaptatif.
+            """
+            coordinates = np.asarray(coordinates)
+            x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
+            states = self.compute_states(x, y, z)
+            counts = np.bincount(states, minlength=self.n_cells)
+            return {
+                "pop_min": int(counts.min()),
+                "pop_max": int(counts.max()),
+                "pop_mean": float(counts.mean()),
+                "pop_std": float(counts.std()),
+                "n_empty": int((counts == 0).sum()),
+                "n_visited": int((counts > 0).sum()),
+                "fraction_visited": float((counts > 0).sum() / self.n_cells),
+            }
 
 
 # =============================================================================
@@ -380,6 +588,82 @@ class VoronoiPartitioner(BasePartitioner):
         self.centroids = np.load(os.path.join(path, "centroids.npy"))
         self._tree = cKDTree(self.centroids)
         self._n_cells = len(self.centroids)
+    
+    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
+        """
+        Génère des visualisations avec adaptation pour l'axe y
+        """
+        self.fit(np.column_stack([x,y,z]))
+        states = self.compute_states(x, y, z)
+        
+        image_data = {}
+        
+        if "3d" in plot_types:
+            fig = plt.figure(figsize=(12, 8))
+            ax = fig.add_subplot(111, projection='3d')
+            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
+            plt.colorbar(scatter, label='ID de Partition')
+            plt.tight_layout()
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        if "2d_xy" in plot_types:
+            plt.figure(figsize=(12, 5))
+            
+            # Vue XY
+            plt.subplot(121)
+            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.axhline(y=self._y_split, color='r', linestyle='--', 
+                         label=f'Seuil y={self._y_split:.2f}')
+            plt.xlabel('X')
+            plt.ylabel('Y')
+            plt.title('Vue XY')
+            plt.legend()
+            plt.colorbar(label='Partition ID')
+            
+            # Vue YZ
+            plt.subplot(122)
+            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
+            plt.xlabel('Y')
+            plt.ylabel('Z')
+            plt.title('Vue YZ')
+            plt.tight_layout()
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        return image_data
+    def diagnostics(self, coordinates):
+            """
+            Statistiques de population par cellule pour le partitionneur adaptatif.
+            """
+            coordinates = np.asarray(coordinates)
+            x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
+            states = self.compute_states(x, y, z)
+            counts = np.bincount(states, minlength=self.n_cells)
+            return {
+                "pop_min": int(counts.min()),
+                "pop_max": int(counts.max()),
+                "pop_mean": float(counts.mean()),
+                "pop_std": float(counts.std()),
+                "n_empty": int((counts == 0).sum()),
+                "n_visited": int((counts > 0).sum()),
+                "fraction_visited": float((counts > 0).sum() / self.n_cells),
+            }
 
 
 # =============================================================================
@@ -460,6 +744,82 @@ class QuantileGridPartitioner(BasePartitioner):
         self._x_edges = data["x"]
         self._y_edges = data["y"]
         self._z_edges = data["z"]
+    
+    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
+        """
+        Génère des visualisations avec adaptation pour l'axe y
+        """
+        self.fit(np.column_stack([x,y,z]))
+        states = self.compute_states(x, y, z)
+        
+        image_data = {}
+        
+        if "3d" in plot_types:
+            fig = plt.figure(figsize=(12, 8))
+            ax = fig.add_subplot(111, projection='3d')
+            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
+            plt.colorbar(scatter, label='ID de Partition')
+            plt.tight_layout()
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        if "2d_xy" in plot_types:
+            plt.figure(figsize=(12, 5))
+            
+            # Vue XY
+            plt.subplot(121)
+            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.axhline(y=self._y_split, color='r', linestyle='--', 
+                         label=f'Seuil y={self._y_split:.2f}')
+            plt.xlabel('X')
+            plt.ylabel('Y')
+            plt.title('Vue XY')
+            plt.legend()
+            plt.colorbar(label='Partition ID')
+            
+            # Vue YZ
+            plt.subplot(122)
+            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
+            plt.xlabel('Y')
+            plt.ylabel('Z')
+            plt.title('Vue YZ')
+            plt.tight_layout()
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        return image_data
+    def diagnostics(self, coordinates):
+            """
+            Statistiques de population par cellule pour le partitionneur adaptatif.
+            """
+            coordinates = np.asarray(coordinates)
+            x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
+            states = self.compute_states(x, y, z)
+            counts = np.bincount(states, minlength=self.n_cells)
+            return {
+                "pop_min": int(counts.min()),
+                "pop_max": int(counts.max()),
+                "pop_mean": float(counts.mean()),
+                "pop_std": float(counts.std()),
+                "n_empty": int((counts == 0).sum()),
+                "n_visited": int((counts > 0).sum()),
+                "fraction_visited": float((counts > 0).sum() / self.n_cells),
+            }
 
 
 # =============================================================================
@@ -594,6 +954,82 @@ class OctreePartitioner(BasePartitioner):
         bounds_path = os.path.join(path, "bounds.npy")
         if os.path.exists(bounds_path):
             self._bounds = tuple(np.load(bounds_path))
+    
+    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
+        """
+        Génère des visualisations avec adaptation pour l'axe y
+        """
+        self.fit(np.column_stack([x,y,z]))
+        states = self.compute_states(x, y, z)
+        
+        image_data = {}
+        
+        if "3d" in plot_types:
+            fig = plt.figure(figsize=(12, 8))
+            ax = fig.add_subplot(111, projection='3d')
+            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
+            plt.colorbar(scatter, label='ID de Partition')
+            plt.tight_layout()
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        if "2d_xy" in plot_types:
+            plt.figure(figsize=(12, 5))
+            
+            # Vue XY
+            plt.subplot(121)
+            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.axhline(y=self._y_split, color='r', linestyle='--', 
+                         label=f'Seuil y={self._y_split:.2f}')
+            plt.xlabel('X')
+            plt.ylabel('Y')
+            plt.title('Vue XY')
+            plt.legend()
+            plt.colorbar(label='Partition ID')
+            
+            # Vue YZ
+            plt.subplot(122)
+            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
+            plt.xlabel('Y')
+            plt.ylabel('Z')
+            plt.title('Vue YZ')
+            plt.tight_layout()
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        return image_data
+    def diagnostics(self, coordinates):
+            """
+            Statistiques de population par cellule pour le partitionneur adaptatif.
+            """
+            coordinates = np.asarray(coordinates)
+            x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
+            states = self.compute_states(x, y, z)
+            counts = np.bincount(states, minlength=self.n_cells)
+            return {
+                "pop_min": int(counts.min()),
+                "pop_max": int(counts.max()),
+                "pop_mean": float(counts.mean()),
+                "pop_std": float(counts.std()),
+                "n_empty": int((counts == 0).sum()),
+                "n_visited": int((counts > 0).sum()),
+                "fraction_visited": float((counts > 0).sum() / self.n_cells),
+            }
 
 
 # =============================================================================
@@ -725,7 +1161,81 @@ class PhysicsAwarePartitioner(BasePartitioner):
         self._n_cells = len(self._centroids)
         with open(os.path.join(path, "physics_params.json")) as f:
             self._n_features = json.load(f)["n_features"]
-
+    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
+        """
+        Génère des visualisations avec adaptation pour l'axe y
+        """
+        self.fit(np.column_stack([x,y,z]))
+        states = self.compute_states(x, y, z)
+        
+        image_data = {}
+        
+        if "3d" in plot_types:
+            fig = plt.figure(figsize=(12, 8))
+            ax = fig.add_subplot(111, projection='3d')
+            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
+            plt.colorbar(scatter, label='ID de Partition')
+            plt.tight_layout()
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        if "2d_xy" in plot_types:
+            plt.figure(figsize=(12, 5))
+            
+            # Vue XY
+            plt.subplot(121)
+            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.axhline(y=self._y_split, color='r', linestyle='--', 
+                         label=f'Seuil y={self._y_split:.2f}')
+            plt.xlabel('X')
+            plt.ylabel('Y')
+            plt.title('Vue XY')
+            plt.legend()
+            plt.colorbar(label='Partition ID')
+            
+            # Vue YZ
+            plt.subplot(122)
+            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
+            plt.xlabel('Y')
+            plt.ylabel('Z')
+            plt.title('Vue YZ')
+            plt.tight_layout()
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        return image_data
+    def diagnostics(self, coordinates):
+            """
+            Statistiques de population par cellule pour le partitionneur adaptatif.
+            """
+            coordinates = np.asarray(coordinates)
+            x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
+            states = self.compute_states(x, y, z)
+            counts = np.bincount(states, minlength=self.n_cells)
+            return {
+                "pop_min": int(counts.min()),
+                "pop_max": int(counts.max()),
+                "pop_mean": float(counts.mean()),
+                "pop_std": float(counts.std()),
+                "n_empty": int((counts == 0).sum()),
+                "n_visited": int((counts > 0).sum()),
+                "fraction_visited": float((counts > 0).sum() / self.n_cells),
+            }
 
 # =============================================================================
 # 7. PARTITIONNEMENT ADAPTATIF HAUT/BAS
@@ -868,24 +1378,31 @@ class AdaptivePartitioner(BasePartitioner):
                 states[mask_top] = top_states + self._n_cells_bottom
         
         return states
-    
-    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_path="partition_visualization"):
+    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
         """
         Génère des visualisations avec adaptation pour l'axe y
         """
+        self.fit(np.column_stack([x,y,z]))
         states = self.compute_states(x, y, z)
+        
+        image_data = {}
         
         if "3d" in plot_types:
             fig = plt.figure(figsize=(12, 8))
             ax = fig.add_subplot(111, projection='3d')
             scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
             ax.set_xlabel('X')
-            ax.set_ylabel('Y')  # Axe Y
+            ax.set_ylabel('Y')
             ax.set_zlabel('Z')
             ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
             plt.colorbar(scatter, label='ID de Partition')
             plt.tight_layout()
-            plt.savefig(f"{save_path}_3d.png", dpi=150)
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
             plt.close()
         
         if "2d_xy" in plot_types:
@@ -905,13 +1422,38 @@ class AdaptivePartitioner(BasePartitioner):
             # Vue YZ
             plt.subplot(122)
             plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axhline(y=self._y_split, color='r', linestyle='--')
+            plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
             plt.xlabel('Y')
             plt.ylabel('Z')
             plt.title('Vue YZ')
             plt.tight_layout()
-            plt.savefig(f"{save_path}_2d.png", dpi=150)
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
             plt.close()
+        
+        return image_data
+    def diagnostics(self, coordinates):
+            """
+            Statistiques de population par cellule pour le partitionneur adaptatif.
+            """
+            coordinates = np.asarray(coordinates)
+            x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
+            states = self.compute_states(x, y, z)
+            counts = np.bincount(states, minlength=self.n_cells)
+            return {
+                "pop_min": int(counts.min()),
+                "pop_max": int(counts.max()),
+                "pop_mean": float(counts.mean()),
+                "pop_std": float(counts.std()),
+                "n_empty": int((counts == 0).sum()),
+                "n_visited": int((counts > 0).sum()),
+                "fraction_visited": float((counts > 0).sum() / self.n_cells),
+            }
+        
 
 
 # =============================================================================
@@ -1065,6 +1607,81 @@ class MultiZonePartitioner(BasePartitioner):
             partitioner.load(zone_path)
             
             self._zones.append((y_min, y_max, partitioner))
+    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
+        """
+        Génère des visualisations avec adaptation pour l'axe y
+        """
+        self.fit(np.column_stack([x,y,z]))
+        states = self.compute_states(x, y, z)
+        
+        image_data = {}
+        
+        if "3d" in plot_types:
+            fig = plt.figure(figsize=(12, 8))
+            ax = fig.add_subplot(111, projection='3d')
+            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
+            plt.colorbar(scatter, label='ID de Partition')
+            plt.tight_layout()
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        if "2d_xy" in plot_types:
+            plt.figure(figsize=(12, 5))
+            
+            # Vue XY
+            plt.subplot(121)
+            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.axhline(y=self._y_split, color='r', linestyle='--', 
+                         label=f'Seuil y={self._y_split:.2f}')
+            plt.xlabel('X')
+            plt.ylabel('Y')
+            plt.title('Vue XY')
+            plt.legend()
+            plt.colorbar(label='Partition ID')
+            
+            # Vue YZ
+            plt.subplot(122)
+            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
+            plt.xlabel('Y')
+            plt.ylabel('Z')
+            plt.title('Vue YZ')
+            plt.tight_layout()
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        return image_data
+    def diagnostics(self, coordinates):
+            """
+            Statistiques de population par cellule pour le partitionneur adaptatif.
+            """
+            coordinates = np.asarray(coordinates)
+            x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
+            states = self.compute_states(x, y, z)
+            counts = np.bincount(states, minlength=self.n_cells)
+            return {
+                "pop_min": int(counts.min()),
+                "pop_max": int(counts.max()),
+                "pop_mean": float(counts.mean()),
+                "pop_std": float(counts.std()),
+                "n_empty": int((counts == 0).sum()),
+                "n_visited": int((counts > 0).sum()),
+                "fraction_visited": float((counts > 0).sum() / self.n_cells),
+            }
 
 
 class SingleCellPartitioner(BasePartitioner):
@@ -1086,6 +1703,81 @@ class SingleCellPartitioner(BasePartitioner):
 
     def compute_states(self, x, y, z):
         return np.zeros(len(np.asarray(x)), dtype=np.int64)
+    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
+        """
+        Génère des visualisations avec adaptation pour l'axe y
+        """
+        self.fit(np.column_stack([x,y,z]))
+        states = self.compute_states(x, y, z)
+        
+        image_data = {}
+        
+        if "3d" in plot_types:
+            fig = plt.figure(figsize=(12, 8))
+            ax = fig.add_subplot(111, projection='3d')
+            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
+            plt.colorbar(scatter, label='ID de Partition')
+            plt.tight_layout()
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        if "2d_xy" in plot_types:
+            plt.figure(figsize=(12, 5))
+            
+            # Vue XY
+            plt.subplot(121)
+            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.axhline(y=self._y_split, color='r', linestyle='--', 
+                         label=f'Seuil y={self._y_split:.2f}')
+            plt.xlabel('X')
+            plt.ylabel('Y')
+            plt.title('Vue XY')
+            plt.legend()
+            plt.colorbar(label='Partition ID')
+            
+            # Vue YZ
+            plt.subplot(122)
+            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
+            plt.xlabel('Y')
+            plt.ylabel('Z')
+            plt.title('Vue YZ')
+            plt.tight_layout()
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        return image_data
+    def diagnostics(self, coordinates):
+            """
+            Statistiques de population par cellule pour le partitionneur adaptatif.
+            """
+            coordinates = np.asarray(coordinates)
+            x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
+            states = self.compute_states(x, y, z)
+            counts = np.bincount(states, minlength=self.n_cells)
+            return {
+                "pop_min": int(counts.min()),
+                "pop_max": int(counts.max()),
+                "pop_mean": float(counts.mean()),
+                "pop_std": float(counts.std()),
+                "n_empty": int((counts == 0).sum()),
+                "n_visited": int((counts > 0).sum()),
+                "fraction_visited": float((counts > 0).sum() / self.n_cells),
+            }
 
 
 # =============================================================================
