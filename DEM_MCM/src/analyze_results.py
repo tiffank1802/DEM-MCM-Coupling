@@ -890,14 +890,14 @@ class MarkovAnalyzer:
         # Comptage par cellule
         # ntotal = np.bincount(states0, minlength=n_states).astype(float)
         ntotal = self.species_labels.sum() # est le nombre de total de particules de l'espèce considérée
-        nA = np.bincount(states0[species_labels], minlength=n_states).astype(float)
+        nA = np.bincount(states0[species_labels], minlength=n_states).astype(float) # nombre de particules de type species_labels dans chaque partition
 
         # Condition initiale réelle : C0 = nA / ntotal
         C = np.zeros(n_states)
         mask = ntotal > 0
         C[mask] = nA[mask] / ntotal[mask]
         # C[mask] = nA[mask] # en nombre de particules de 
-        print(f"concetration initiale {C}")
+        print(f"concetration initiale {C.sum()}")
 
         # Simulation Markov
         concentration_history = np.zeros((n_steps, n_states))
@@ -928,7 +928,7 @@ class MarkovAnalyzer:
             else:
                 entropy[t] = 0
 
-        print(f"concentration finale{C}")
+        print(f"concentration finale {C.sum()}")
         rsd_0 = rsd[0] if rsd[0] > 0 else 1.0
         self.concentration_history=concentration_history
         self.rsd=rsd

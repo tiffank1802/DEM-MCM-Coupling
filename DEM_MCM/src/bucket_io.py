@@ -115,6 +115,20 @@ def load_json_from_bucket(path):
 
 
 def load_experiment_from_bucket(folder_name):
+    """Charge  depuis le bucket huggingface:
+            - la matrice de transition
+            - les statistiques de l'experience
+            - la configuration de l'experience
+
+    Args:
+        folder_name (str): est le nom du dossier de l'experience à charger depuis le bucket
+
+    Returns:
+        dict: un dictionnare comportant:
+                -Matrice de transition correspondant à l'expérience chargée
+                - les statistiques
+                - les configurations
+    """
     return {
         "matrix": load_matrix_from_bucket(f"{folder_name}/transitionmatrix.npy"),
         "stats": load_json_from_bucket(f"{folder_name}/stats.json"),
@@ -123,6 +137,12 @@ def load_experiment_from_bucket(folder_name):
 
 
 def list_experiments():
+    """Liste les expériences dans un dossier BUCKET_PREFIX (celui correspondant à la route BUCKET_BASE) qui est le dossier par où toutes les entrées sorties des expériences se font
+    
+
+    Returns:
+        list[str]: Une liste des expériences se trouvent dans le dossier BUCKET_PREFIX correspondant à la route BUCKET_BASE
+    """
     fs = get_fs()
     try:
         items = fs.ls(BUCKET_BASE)
@@ -136,6 +156,11 @@ def list_experiments():
 
 
 def load_all_experiments():
+    """Charge les fichiers se sortie de chacune des expérience se trouvant dans le dossier BUCKET_PREFIX dont la route est BUCKET_BAE
+
+    Returns:
+        list[dict]: Retourne une liste de dictionnaires dont chaque dictionnaire de la liste correspond aux résultats de chaque expérience dans le dossier BUCKET_PREFIX
+    """
     results = {}
     for folder in list_experiments():
         try:
