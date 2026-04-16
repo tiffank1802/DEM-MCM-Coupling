@@ -35,6 +35,7 @@ from .partitioners import (
     QuantileGridPartitioner,
     OctreePartitioner,
     PhysicsAwarePartitioner,
+    AdaptivePartitioner,
 )
 
 # =============================================================================
@@ -326,9 +327,9 @@ class PartitionVisualizer:
                     [corners[1], corners[2], corners[6], corners[5]],
                 ]
 
-     poly = Poly3DCollection(faces, alpha=alpha, edgecolors="k", linewidths=0.3)
-            poly.set_facecolor((0.5, 0.5, 0.5, alpha))
-            ax.add_collection3d(poly)
+        poly = Poly3DCollection(faces, alpha=alpha, edgecolors="k", linewidths=0.3)
+        poly.set_facecolor((0.5, 0.5, 0.5, alpha))
+        ax.add_collection3d(poly)
 
     def _draw_adaptive_split(self, ax, partitioner, alpha=0.3):
         """Dessine le plan de séparation adaptative en z."""
