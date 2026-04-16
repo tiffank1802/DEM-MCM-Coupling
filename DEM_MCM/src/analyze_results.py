@@ -266,7 +266,7 @@ class MarkovAnalyzer:
         prefix = f"{base_path}/{folder_name}"
         
         # Matrice (obligatoire)
-        matrix = self._load_npy(f"{prefix}/transition_matrix.npy")
+        matrix = self._load_npy(f"{prefix}/transitionmatrix.npy")
         
         # Params (essayer config.json puis params.json)
         params = {}
@@ -853,7 +853,7 @@ class MarkovAnalyzer:
         """
         M = self.get_matrix(folder_name)
         n_states = M.shape[0]
-        print(f"matrice de transition {M}")
+        # print(f"matrice de transition {M}")
         print(f"vérification de la condition de normalisation {M.sum(0)}")
 
         if partitioner is None:
