@@ -25,9 +25,9 @@ from tqdm import tqdm
 from dataclasses import dataclass, field, asdict
 from huggingface_hub import HfFileSystem
 
-from partitioners import create_partitioner, REGISTRY
+from partitioners import create_partitioner, REGISTRY       # pour le notebook  .ipynb
 from bucket_io import save_experiment_to_bucket, BUCKET_BASE
-# from .partitioners import create_partitioner, REGISTRY
+# from .partitioners import create_partitioner, REGISTRY            # pour le terminal et fichiers .py
 # from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
 
 
@@ -761,7 +761,7 @@ def run_experiment(config, partitioner, files, fs, device):
     P_acc = compute_P_matrix_torch(states_prev_acc, states_curr_acc, n_states, device)
 
     # ── Moyenne ──
-    P = P_acc / len(all_pairs)
+    P = P_acc 
     P_np = P.cpu().numpy()
 
     # ── Statistiques ──

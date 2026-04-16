@@ -30,10 +30,11 @@ if __name__=="__main__":
 
     from DEM_MCM.src.analyze_results import MarkovAnalyzer
     from DEM_MCM.src.partitioners import create_partitioner  # Utilisez create_partitioner !
+    from DEM_MCM.src import run_sweep as r_s
     import numpy as np
     rsd_history={}
     Time=120
-    folder_name = "cylindrical_nr3_nth1_nz1_equal_area_NLT100_step100_dt20_tau50_start250"
+    folder_name = "adaptive_y_cylindrical_top1_bot36_split0.7_modequantile_NLT10_step10_dt2_tau50_start250"
     # 1. Créer analyzer et charger DEM
     analyzer = MarkovAnalyzer()
     analyzer.load_single_folder(folder_name) # charge la matrice de transition
@@ -48,7 +49,13 @@ if __name__=="__main__":
     # print(f"Shape des coordonnées pour fit: {all_coords.shape}")
 
     # 3. Créer ET fitter le partitionneur (3 cellules = nr=3, ntheta=1, nz=1)
-        part = create_partitioner("cylindrical", nr=3, ntheta=1, nz=1)
+  
+    
+        part = create_partitioner(method="adaptive",y_split=0.9,bottom_method="cartesian",bottom_kwargs= {
+      "nx": 3,
+      "ny": 5,
+      "nz": 1
+    })
         part.fit(all_coords)  # ← CRITIQUE : fit avec coordonnées réelles
     # print(f"Partitionneur fitté: {part.n_cells} cellules, label={part.label}")
 

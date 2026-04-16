@@ -116,7 +116,7 @@ def load_json_from_bucket(path):
 
 def load_experiment_from_bucket(folder_name):
     return {
-        "matrix": load_matrix_from_bucket(f"{folder_name}/transition_matrix.npy"),
+        "matrix": load_matrix_from_bucket(f"{folder_name}/transitionmatrix.npy"),
         "stats": load_json_from_bucket(f"{folder_name}/stats.json"),
         "config": load_json_from_bucket(f"{folder_name}/config.json"),
     }
