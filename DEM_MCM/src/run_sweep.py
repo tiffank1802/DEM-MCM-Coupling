@@ -25,10 +25,10 @@ from tqdm import tqdm
 from dataclasses import dataclass, field, asdict
 from huggingface_hub import HfFileSystem
 
-# from partitioners import create_partitioner, REGISTRY
-# from bucket_io import save_experiment_to_bucket, BUCKET_BASE
-from .partitioners import create_partitioner, REGISTRY
-from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
+from partitioners import create_partitioner, REGISTRY
+from bucket_io import save_experiment_to_bucket, BUCKET_BASE
+# from .partitioners import create_partitioner, REGISTRY
+# from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
 
 
 
@@ -653,7 +653,7 @@ def run_experiment(config, partitioner, files, fs, device):
     dt = config.dt
     start_base = config.start_index
     idx_prev = start_base  # Initialize properly
-    idx_curr = start_base
+    idx_curr = start_base+tau
 
     print(f"   📐 Configuration: NLT={config.nlt}, step={step}, dt={dt}, tau={tau}")
     def load_coords(file_path):
@@ -694,7 +694,8 @@ def run_experiment(config, partitioner, files, fs, device):
                 
             # Nombre d'apprentissages possibles dans ce dernier bloc
             remaining_range = max_start_possible - current_start_base
-            n_apprentissages = min(step // dt, remaining_range // dt) + 1
+            n_apprentissages = min(step // dt, remaining_range // dt) + 1 # important de noter que nous choisissons le minimum entre le nombre cycles d'apprentissages
+                    # entre ceux initialement prévus et ceux effectivement disponibles
             
         else:
             # Bloc normal : int(step/dt) apprentissages
@@ -731,6 +732,8 @@ def run_experiment(config, partitioner, files, fs, device):
     P_acc = torch.zeros(
         (n_states, n_states), dtype=torch.float64, device=device
     )
+    states_prev_acc=np.array([])
+    states_curr_acc=np.array([])
 
     # ── Traitement des paires ──
     for i, (idx_prev, idx_curr) in enumerate(tqdm(all_pairs, desc="   Paires", leave=False)):
@@ -751,9 +754,11 @@ def run_experiment(config, partitioner, files, fs, device):
             df_curr["coordinates:1"].to_numpy(),
             df_curr["coordinates:2"].to_numpy(),
         )
+        states_prev_acc = np.concatenate((states_prev_acc, np.asarray(states_prev)))
+        states_curr_acc = np.concatenate((states_curr_acc, np.asarray(states_curr)))
 
         # Calcul de la matrice de transition
-        P_acc += compute_P_matrix_torch(states_prev, states_curr, n_states, device)
+    P_acc = compute_P_matrix_torch(states_prev_acc, states_curr_acc, n_states, device)
 
     # ── Moyenne ──
     P = P_acc / len(all_pairs)
