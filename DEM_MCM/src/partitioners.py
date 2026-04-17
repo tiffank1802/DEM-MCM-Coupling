@@ -1168,6 +1168,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
         self.fit(np.column_stack([x,y,z]))
         states = self.compute_states(x, y, z)
         
+        
         image_data = {}
         
         if "3d" in plot_types:
