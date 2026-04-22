@@ -1,4 +1,5 @@
 from huggingface_hub import HfApi,HfFileSystem 
+import matplotlib.pyplot as plt
 
 fs=HfFileSystem()
 
@@ -33,12 +34,17 @@ if __name__=="__main__":
     from DEM_MCM.src import run_sweep as r_s
     import numpy as np
     rsd_history={}
-    Time=120
-    folder_name = "adaptive_y_cylindrical_top1_bot36_split0.7_modequantile_NLT10_step10_dt2_tau50_start250"
+    Time=250
+    # folder_name ="physics_400cells_pos_NLT10_step10_dt2_tau50_start250"
+    # folder_name ="cartesian_nx3_ny3_nz3_NLT10_step100_dt2_tau50_start250"
+    # folder_name ="voronoi_600cells_NLT10_step10_dt2_tau50_start250"
+    folder_name ="voronoi_1000cells_NLT10_step10_dt2_tau50_start250"
+    # folder_name ="cylindrical_nr3_nth8_nz1_equal_area_NLT10_step10_dt2_tau100_start250"
+    # folder_name ="voronoi_400cells_NLT10_step10_dt2_tau50_start250"
     # 1. Créer analyzer et charger DEM
     analyzer = MarkovAnalyzer()
     analyzer.load_single_folder(folder_name) # charge la matrice de transition
-    for Time in range(10,11):
+    for Time in range(250,251):
         
         analyzer.load_dem_snapshots(file_indices=[Time])
         analyzer.label_species()
@@ -51,11 +57,19 @@ if __name__=="__main__":
     # 3. Créer ET fitter le partitionneur (3 cellules = nr=3, ntheta=1, nz=1)
   
     
-        part = create_partitioner(method="adaptive",y_split=0.9,bottom_method="cartesian",bottom_kwargs= {
-      "nx": 3,
-      "ny": 5,
-      "nz": 1
-    })
+    #     part = create_partitioner(method="adaptive",y_split=0.9,bottom_method="cartesian",bottom_kwargs= {
+    #   "nx": 3,
+    #   "ny": 5,
+    #   "nz": 1
+    # })
+        # part = create_partitioner(method="physics",n_cells=400
+    # )
+    #     part = create_partitioner(method="cartesian",nx=3,ny=3,nz=3
+    # )
+    #     part = create_partitioner(method="cylindrical",nr=3,ntheta=8,nz=1
+    # )
+        part = create_partitioner(method="voronoi",n_cells=1000
+    )
         part.fit(all_coords)  # ← CRITIQUE : fit avec coordonnées réelles
     # print(f"Partitionneur fitté: {part.n_cells} cellules, label={part.label}")
 
@@ -64,12 +78,31 @@ if __name__=="__main__":
     # print(f"y_center={getattr(part, '_y_center', 'MISSING')}")
 
     # 5. Calculer RSD
-        rsd = analyzer.compute_rsd(folder_name=folder_name, partitioner=part,initial_time=Time)
-        # rsd_history[f"init={Time}"]=analyzer.rsd
+        step=10
+        tau=50
+        tt=step+tau
+        analyzer.label_species()
+        rsd = analyzer.compute_rsd(folder_name=folder_name, partitioner=part,initial_time=Time,n_steps=39)
+        rsd_history[f"init={Time}"]=analyzer.rsd
+        
+        analyzer.load_dem_snapshots(file_indices=list(range(250,6000,10)))
+        rsd_DEM=analyzer.compute_dem_rsd(partitioner=part)
+        start=(250/6000)*60
+        t_DEM=np.linspace(start,60,len(rsd_DEM['rsd']))
+        t_MCM=np.linspace(start,60,len(analyzer.rsd))
     
-        print(f"RSD initial: {rsd['rsd_initial']:.3f}")
-        print(f"RSD final: {rsd['rsd_final']:.3f}")
-        print(f"t_50%: {rsd['mixing_time_50']}")
-        print(f"t_90%: {rsd['mixing_time_90']}")
-        print(analyzer.concentration_history.sum(1))
-        print(analyzer.concentration_history.sum(1).shape)
+        # print(f"RSD initial: {rsd['rsd_initial']:.3f}")
+        # print(f"RSD final: {rsd['rsd_final']:.3f}")
+        # print(f"t_50%: {rsd['mixing_time_50']}")
+        # print(f"t_90%: {rsd['mixing_time_90']}")
+        # print(analyzer.concentration_history.sum(1))
+        # print(analyzer.concentration_history.sum(1).shape)
+        # print(analyzer.rsd)
+        plt.plot(t_MCM,analyzer.rsd,"*",label="MCM")
+        plt.plot(t_DEM,rsd_DEM["concentrations"].std(axis=1)/rsd_DEM["concentrations"].mean(axis=1),".",label="DEM")
+        plt.title("RSD découpage 1000 partitions méthode voronoï")
+        plt.xlabel("t(s)")
+        plt.ylabel("RSD")
+        plt.legend()
+        plt.savefig('rsd.png')
+        

@@ -53,6 +53,7 @@ __all__ = [
 
 class BasePartitioner(ABC):
     """Interface commune pour tous les partitionneurs."""
+    _y_split=0
 
     @property
     @abstractmethod
@@ -270,7 +271,7 @@ class CartesianPartitioner(BasePartitioner):
             ax.set_xlabel('X')
             ax.set_ylabel('Y')
             ax.set_zlabel('Z')
-            ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
+            # ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
             plt.colorbar(scatter, label='ID de Partition')
             plt.tight_layout()
             
@@ -279,6 +280,7 @@ class CartesianPartitioner(BasePartitioner):
             plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
             img_buffer.seek(0)
             image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
+            plt.show()
             plt.close()
         
         if "2d_xy" in plot_types:
@@ -298,7 +300,7 @@ class CartesianPartitioner(BasePartitioner):
             # Vue YZ
             plt.subplot(122)
             plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
+            # plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
             plt.xlabel('Y')
             plt.ylabel('Z')
             plt.title('Vue YZ')
@@ -309,6 +311,8 @@ class CartesianPartitioner(BasePartitioner):
             plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
             img_buffer.seek(0)
             image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
+            plt.show()
+            
             plt.close()
         
         return image_data
@@ -1051,7 +1055,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
         states = part.compute_states_with_physics(x, y, z, vx, vy, vz)
     """
 
-    def __init__(self, n_cells=125, velocity_weight=0.3, random_state=42):
+    def __init__(self, n_cells=125, velocity_weight=0.0, random_state=42):
         self._n_cells = n_cells
         self.velocity_weight = velocity_weight
         self.random_state = random_state
@@ -1161,13 +1165,71 @@ class PhysicsAwarePartitioner(BasePartitioner):
         self._n_cells = len(self._centroids)
         with open(os.path.join(path, "physics_params.json")) as f:
             self._n_features = json.load(f)["n_features"]
+    def visualize(self, x, y, z,vx,vy,vz, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
+        """
+        Génère des visualisations avec adaptation pour l'axe y
+        """
+        self.fit_with_physics(np.column_stack([x,y,z]),np.column_stack([vx,vy,vz]))
+        states = self.compute_states_with_physics(x, y, z,vx,vy,vz)
+        
+        
+        image_data = {}
+        
+        if "3d" in plot_types:
+            fig = plt.figure(figsize=(12, 8))
+            ax = fig.add_subplot(111, projection='3d')
+            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
+            plt.colorbar(scatter, label='ID de Partition')
+            plt.tight_layout()
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        if "2d_xy" in plot_types:
+            plt.figure(figsize=(12, 5))
+            
+            # Vue XY
+            plt.subplot(121)
+            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.axhline(y=self._y_split, color='r', linestyle='--', 
+                         label=f'Seuil y={self._y_split:.2f}')
+            plt.xlabel('X')
+            plt.ylabel('Y')
+            plt.title('Vue XY')
+            plt.legend()
+            plt.colorbar(label='Partition ID')
+            
+            # Vue YZ
+            plt.subplot(122)
+            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
+            plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
+            plt.xlabel('Y')
+            plt.ylabel('Z')
+            plt.title('Vue YZ')
+            plt.tight_layout()
+            
+            # ✅ Sauvegarder en mémoire
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        return image_data
     def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
         """
         Génère des visualisations avec adaptation pour l'axe y
         """
         self.fit(np.column_stack([x,y,z]))
         states = self.compute_states(x, y, z)
-        
         
         image_data = {}
         

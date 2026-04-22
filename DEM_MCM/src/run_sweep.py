@@ -25,10 +25,12 @@ from tqdm import tqdm
 from dataclasses import dataclass, field, asdict
 from huggingface_hub import HfFileSystem
 
-# from partitioners import create_partitioner, REGISTRY       # pour le notebook  .ipynb
-# from bucket_io import save_experiment_to_bucket, BUCKET_BASE
-from .partitioners import create_partitioner, REGISTRY            # pour le terminal et fichiers .py
-from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
+from partitioners import create_partitioner, REGISTRY  
+import partitioners as part     # pour le notebook  .ipynb
+from bucket_io import save_experiment_to_bucket, BUCKET_BASE
+# from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
+# from .partitioners import create_partitioner, REGISTRY            # pour le terminal et fichiers .py
+# from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
 
 
 
@@ -155,7 +157,8 @@ def get_configs(method):
             )
 
     elif method == "voronoi":
-        for nc in [8, 10, 12, 14, 16, 18, 20, 24, 27, 30, 64, 100]:
+        # for nc in [8, 10, 12, 14, 16, 18, 20, 24, 27, 30, 64, 100]:
+        for nc in [ 200,300]:
             configs.append(
                 ExperimentConfig(
                     method="voronoi",
@@ -174,15 +177,16 @@ def get_configs(method):
 
     elif method == "octree":
         # max_particles variable
-        for mp in [2, 4, 8, 16, 32, 64, 100]:
+        for mp in [20, 40, 80, 16, 32, 64, 100,200]:
             configs.append(
                 ExperimentConfig(
                     method="octree",
-                    method_kwargs={"max_particles": mp, "max_depth": 5},
+                    method_kwargs={"max_particles": mp, "max_depth": 2},
                 )
             )
         # max_depth variable
-        for md in [3, 4, 5, 6, 7]:
+        # for md in [3, 4, 5, 6, 7]:
+        for md in [3, 2,1,4]:
             configs.append(
                 ExperimentConfig(
                     method="octree",
@@ -191,7 +195,8 @@ def get_configs(method):
             )
 
     elif method == "physics":
-        for nc in [2, 4, 8, 16, 32, 64, 100]:
+        # for nc in [2, 4, 8, 16, 32, 64, 100]:
+        for nc in [200,300,400,500]:
             configs.append(
                 ExperimentConfig(
                     method="physics",
@@ -452,9 +457,9 @@ def _get_default_kwargs(method):
             "nr": 3, "ntheta": 8, "nz": 1,
             "radial_mode": "equal_area",
         },
-        "voronoi": {"n_cells": 125},
+        "voronoi": {"n_cells": 400},
         "quantile": {"nx": 5, "ny": 5, "nz": 5},
-        "octree": {"max_particles": 100, "max_depth": 5},
+        "octree": {"max_particles": 100, "max_depth": 2},
         "physics": {"n_cells": 125},
         "adaptive": {
             "y_split": 0.90,
@@ -513,6 +518,27 @@ def sample_coordinates(files, fs, sample_rate=SAMPLE_RATE):
                 df["coordinates:0"].to_numpy(),
                 df["coordinates:1"].to_numpy(),
                 df["coordinates:2"].to_numpy(),
+            ]
+        )
+        all_coords.append(coords)
+    return np.vstack(all_coords)
+
+def sample_velocities(files, fs, sample_rate=SAMPLE_RATE):
+    """
+    Échantillonne des coordonnées pour le fit des partitionneurs.
+
+    Returns:
+        np.ndarray shape (N, 3)
+    """
+    all_coords = []
+    for f in tqdm(files[5::sample_rate], desc="   Échantillonnage", leave=False):
+        with fs.open(f, "rb") as fh:
+            df = pl.read_csv(fh)
+        coords = np.column_stack(
+            [
+                df["Velocity:0"].to_numpy(),
+                df["Velocity:1"].to_numpy(),
+                df["Velocity:2"].to_numpy(),
             ]
         )
         all_coords.append(coords)
@@ -665,15 +691,17 @@ def run_experiment(config, partitioner, files, fs, device):
             df["coordinates:1"].to_numpy(),
             df["coordinates:2"].to_numpy()
         )
+    def load_velocities(file_path):
+        with fs.open(file_path, "rb") as fh:
+            df = pl.read_csv(fh)
+        # ✅ Indexation directe plus rapide que select(), et conversion immédiate
+        return (
+            df["Velocity:0"].to_numpy(),
+            df["Velocity:1"].to_numpy(),
+            df["Velocity:2"].to_numpy()
+        )
 
 
-        # ✅ Use numpy arrays for states calculation
-    states_prev = partitioner.compute_states(
-        *load_coords(files[idx_prev])
-    )
-    states_curr = partitioner.compute_states(
-        *load_coords(files[idx_curr])
-    )
     # ── Construire toutes les paires ──
     all_pairs = []
     
@@ -737,25 +765,34 @@ def run_experiment(config, partitioner, files, fs, device):
 
     # ── Traitement des paires ──
     for i, (idx_prev, idx_curr) in enumerate(tqdm(all_pairs, desc="   Paires", leave=False)):
+        # ✅ Charger les coordonnées pour cette paire
+        coords_prev = load_coords(files[idx_prev])
+        coords_curr = load_coords(files[idx_curr])
+        
         # Lecture des fichiers
-        with fs.open(files[idx_prev], "rb") as f:
-            df_prev = pl.read_csv(f)
-        with fs.open(files[idx_curr], "rb") as f:
-            df_curr = pl.read_csv(f)
+        # with fs.open(files[idx_prev], "rb") as f:
+        #     df_prev = pl.read_csv(f)
+        # with fs.open(files[idx_curr], "rb") as f:
+        #     df_curr = pl.read_csv(f)
 
         # ✅ Conversion immédiate en numpy (un seul appel à to_numpy())
-        states_prev = partitioner.compute_states(
-            df_prev["coordinates:0"].to_numpy(),
-            df_prev["coordinates:1"].to_numpy(),
-            df_prev["coordinates:2"].to_numpy(),
-        )
-        states_curr = partitioner.compute_states(
-            df_curr["coordinates:0"].to_numpy(),
-            df_curr["coordinates:1"].to_numpy(),
-            df_curr["coordinates:2"].to_numpy(),
-        )
-        states_prev_acc = np.concatenate((states_prev_acc, np.asarray(states_prev)))
-        states_curr_acc = np.concatenate((states_curr_acc, np.asarray(states_curr)))
+        if isinstance(partitioner, part.PhysicsAwarePartitioner):
+            # vel_prev = load_velocities(files[idx_prev])
+            # vel_curr = load_velocities(files[idx_curr])
+
+            # states_prev = partitioner.compute_states_with_physics(*coords_prev, *vel_prev)
+            # states_curr = partitioner.compute_states_with_physics(*coords_curr, *vel_curr)
+            states_prev = partitioner.compute_states(*coords_prev)
+            states_curr = partitioner.compute_states(*coords_curr)
+
+            states_prev_acc = np.concatenate((states_prev_acc, np.asarray(states_prev)))
+            states_curr_acc = np.concatenate((states_curr_acc, np.asarray(states_curr)))
+        else:
+            states_prev = partitioner.compute_states(*coords_prev)
+            states_curr = partitioner.compute_states(*coords_curr)
+
+            states_prev_acc = np.concatenate((states_prev_acc, np.asarray(states_prev)))
+            states_curr_acc = np.concatenate((states_curr_acc, np.asarray(states_curr)))
 
         # Calcul de la matrice de transition
     P_acc = compute_P_matrix_torch(states_prev_acc, states_curr_acc, n_states, device)
@@ -859,6 +896,7 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, base_d
     # ── Coordonnées pour fit ──
     print("\n🔍 Échantillonnage des coordonnées pour le fit...")
     sample_coords = sample_coordinates(files, fs)
+    s_velocities=sample_velocities(files,fs)
     print(f"   {len(sample_coords)} points échantillonnés")
 
     # ── Configs ──
@@ -892,7 +930,11 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, base_d
             # ✅ Créer et fitter le partitionneur (pas de cache)
             partitioner = create_partitioner(config.method, **config.method_kwargs)
             print(f"   🔧 Fit partitionneur...")
-            partitioner.fit(sample_coords)
+            if method=='physics':
+                # partitioner.fit_with_physics(sample_coords,s_velocities)
+                partitioner.fit(sample_coords)
+            else:
+                partitioner.fit(sample_coords)
 
             # ✅ Diagnostics (maintenant disponible)
             diag = partitioner.diagnostics(sample_coords)
@@ -907,11 +949,16 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, base_d
             image_data = None
             if hasattr(partitioner, 'visualize'):
                 try:
-                    x, y, z = sample_coords[:, 0], sample_coords[:, 1], sample_coords[:, 2]
+                    x, y, z ,vx,vy,vz= sample_coords[:, 0], sample_coords[:, 1], sample_coords[:, 2],s_velocities[:,0],s_velocities[:,1],s_velocities[:,2]
                     # Créer un nom de fichier sûr
                     safe_label = partitioner.label.replace('=', '_').replace(' ', '_').replace('/', '_')
-                    image_data = partitioner.visualize(x, y, z, save_prefix=f"partition_vis_{safe_label}")
-                    print(f"   🎨 {len(image_data)} images générées")
+                    if method=='physics':
+                        # image_data=partitioner.visualize(x,y,z,vx,vy,vz,save_prefix=f"partition_vis_{safe_label}")
+                        image_data = partitioner.visualize(x, y, z, save_prefix=f"partition_vis_{safe_label}")
+                        print(f"   🎨 {len(image_data)} images générées")
+                    else:
+                        image_data = partitioner.visualize(x, y, z, save_prefix=f"partition_vis_{safe_label}")
+                        print(f"   🎨 {len(image_data)} images générées")
                 except Exception as e:
                     print(f"   ⚠️  Visualisation échouée: {e}")
 
