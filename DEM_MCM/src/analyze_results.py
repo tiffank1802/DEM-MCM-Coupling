@@ -896,6 +896,7 @@ class MarkovAnalyzer:
         C = np.zeros(n_states)
         mask = ntotal > 0
         C[mask] = nA[mask] / ntotal[mask]
+        # C[mask] = nA[mask] 
         # C[mask] = nA[mask] # en nombre de particules de 
         print(f"concetration initiale {C.sum()}")
 
@@ -1122,10 +1123,11 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
                 - intensity_of_segregation: I(t) = σ²(C) / (C̄(1-C̄))
         """
         if species_labels is None:
+            self.label_species()
             species_labels = self.species_labels
 
         n_states = partitioner.n_cells
-        n_snaps = len(self.dem_snapshots)
+        n_snaps = len(self.dem_snapshots) if len(self.dem_snapshots)>0 else len(self.load_dem_snapshots(file_indices=list(range(250,6000,50))))
 
         times = np.zeros(n_snaps)
         rsd = np.zeros(n_snaps)
@@ -1143,14 +1145,18 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
                 coords[:, 0], coords[:, 1], coords[:, 2]
             )
 
-            # Compter par cellule: total et espèce A
-            n_total = np.bincount(states, minlength=n_states).astype(float)
-            n_A = np.bincount(states[species_labels], minlength=n_states).astype(float)
+            # # Compter par cellule: total et espèce A
+            # n_total = np.bincount(states, minlength=n_states).astype(float)
+            # n_A = np.bincount(states[species_labels], minlength=n_states).astype(float)
+            n_total = self.species_labels.sum() # est le nombre de total de particules de l'espèce considérée
+            n_A = np.bincount(states[species_labels], minlength=n_states).astype(float) # nombre de particules de type species_labels dans chaque partition
+
 
             # Concentration C_i = n_A / n_total
             C = np.zeros(n_states)
             mask = n_total > 0
             C[mask] = n_A[mask] / n_total[mask]
+            # C[mask] = n_A[mask] 
 
             concentrations.append(C.copy())
             populations.append(n_total.copy())
@@ -1190,7 +1196,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
             "times": times,
             "rsd": rsd,
             "rsd_percent": rsd * 100,
-            "concentrations": concentrations,
+            "concentrations": np.array(concentrations),
             "populations": populations,
             "entropy": entropy,
             "intensity_of_segregation": intensity_seg,
