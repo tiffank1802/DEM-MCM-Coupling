@@ -36,9 +36,12 @@ if __name__=="__main__":
     rsd_history={}
     Time=250
     # folder_name ="physics_400cells_pos_NLT10_step10_dt2_tau50_start250"
+    folder_name ="cylindrical_nr1_nth10_nz1_equal_area_NLT10_step10_dt2_tau50_start250"
     # folder_name ="cartesian_nx3_ny3_nz3_NLT10_step100_dt2_tau50_start250"
     # folder_name ="voronoi_600cells_NLT10_step10_dt2_tau50_start250"
-    folder_name ="voronoi_1000cells_NLT10_step10_dt2_tau50_start250"
+    # folder_name ="voronoi_1000cells_NLT10_step10_dt2_tau50_start250"
+    # folder_name ="octree_mp200_md2_NLT10_step10_dt2_tau50_start250"
+    # folder_name ="octree_mp100_md2_NLT100_step20_dt2_tau50_start250"
     # folder_name ="cylindrical_nr3_nth8_nz1_equal_area_NLT10_step10_dt2_tau100_start250"
     # folder_name ="voronoi_400cells_NLT10_step10_dt2_tau50_start250"
     # 1. Créer analyzer et charger DEM
@@ -62,14 +65,16 @@ if __name__=="__main__":
     #   "ny": 5,
     #   "nz": 1
     # })
-        # part = create_partitioner(method="physics",n_cells=400
+    #     part = create_partitioner(method="physics",n_cells=400
     # )
-    #     part = create_partitioner(method="cartesian",nx=3,ny=3,nz=3
+        # part = create_partitioner(method="cartesian",nx=3,ny=3,nz=3
     # )
-    #     part = create_partitioner(method="cylindrical",nr=3,ntheta=8,nz=1
-    # )
-        part = create_partitioner(method="voronoi",n_cells=1000
+        part = create_partitioner(method="cylindrical",nr=1,ntheta=10,nz=1
     )
+    #     part = create_partitioner(method="voronoi",n_cells=600
+    # )
+    #     part = create_partitioner(method="octree",max_particles=200,max_depth=2
+    # )
         part.fit(all_coords)  # ← CRITIQUE : fit avec coordonnées réelles
     # print(f"Partitionneur fitté: {part.n_cells} cellules, label={part.label}")
 
@@ -100,7 +105,7 @@ if __name__=="__main__":
         # print(analyzer.rsd)
         plt.plot(t_MCM,analyzer.rsd,"*",label="MCM")
         plt.plot(t_DEM,rsd_DEM["concentrations"].std(axis=1)/rsd_DEM["concentrations"].mean(axis=1),".",label="DEM")
-        plt.title("RSD découpage 1000 partitions méthode voronoï")
+        plt.title("RSD découpage 400 particules méthode physique")
         plt.xlabel("t(s)")
         plt.ylabel("RSD")
         plt.legend()

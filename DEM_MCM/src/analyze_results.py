@@ -25,7 +25,7 @@ import json
 import io
 from collections import defaultdict
 from huggingface_hub import HfFileSystem
-# import src.bucket_io as b_io
+# import bucket_io as b_io
 from .import bucket_io as b_io
 # =============================================================================
 # CONFIGURATION
@@ -58,7 +58,7 @@ METHOD_PREFIXES = {
     "octree": ["octree_"],
     "physics": ["physics_"],
     "adaptive":["adaptive_"],
-    "mutlizone":["multizone_"],
+    "multizone":["multizone_"],
     "single":["single_"],
 }
 
@@ -888,8 +888,8 @@ class MarkovAnalyzer:
         )
 
         # Comptage par cellule
-        # ntotal = np.bincount(states0, minlength=n_states).astype(float)
-        ntotal = self.species_labels.sum() # est le nombre de total de particules de l'espèce considérée
+        ntotal = np.bincount(states0, minlength=n_states).astype(float)
+        # ntotal = self.species_labels.sum() # est le nombre de total de particules de l'espèce considérée
         nA = np.bincount(states0[species_labels], minlength=n_states).astype(float) # nombre de particules de type species_labels dans chaque partition
 
         # Condition initiale réelle : C0 = nA / ntotal
@@ -1146,9 +1146,9 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
             )
 
             # # Compter par cellule: total et espèce A
-            # n_total = np.bincount(states, minlength=n_states).astype(float)
+            n_total = np.bincount(states, minlength=n_states).astype(float)
             # n_A = np.bincount(states[species_labels], minlength=n_states).astype(float)
-            n_total = self.species_labels.sum() # est le nombre de total de particules de l'espèce considérée
+            # n_total = self.species_labels.sum() # est le nombre de total de particules de l'espèce considérée
             n_A = np.bincount(states[species_labels], minlength=n_states).astype(float) # nombre de particules de type species_labels dans chaque partition
 
 

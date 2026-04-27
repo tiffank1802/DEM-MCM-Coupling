@@ -28,6 +28,7 @@ from abc import ABC, abstractmethod
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.spatial import ConvexHull
+from . import analyze_results as ar
 
 __all__ = [
  
@@ -54,6 +55,7 @@ __all__ = [
 class BasePartitioner(ABC):
     """Interface commune pour tous les partitionneurs."""
     _y_split=0
+    # analyzer=ar.MarkovAnalyzer()
 
     @property
     @abstractmethod
@@ -379,8 +381,10 @@ class CylindricalPartitioner(BasePartitioner):
         coordinates=np.asarray(coordinates)
         x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
 
-        self._x_center = (x.min() + x.max()) / 2  # est un scalaire       # position en x du centre de la distribution des particules 
-        self._y_center = (y.min() + y.max()) / 2  # est un scalaire       # position en y du centre de la distribution des particules
+        # self._x_center = (x.min() + x.max()) / 2  # est un scalaire       # position en x du centre de la distribution des particules 
+        # self._y_center = (y.min() + y.max()) / 2  # est un scalaire       # position en y du centre de la distribution des particules
+        self._x_center = 0 # est un scalaire       # position en x du centre de la distribution des particules 
+        self._y_center = 0 # est un scalaire       # position en y du centre de la distribution des particules
 
         r = np.sqrt((x - self._x_center) ** 2 + (y - self._y_center) ** 2) # rayon issue des positions recentrées des particules
         self._r_max = r.max() + eps
@@ -401,6 +405,8 @@ class CylindricalPartitioner(BasePartitioner):
         x = np.asarray(x, dtype=np.float64)
         y = np.asarray(y, dtype=np.float64)
         z = np.asarray(z, dtype=np.float64)
+        # self.load_dem_snapshots(file_indices=[250])
+        # self.label_species()
 
         dx = x - self._x_center
         dy = y - self._y_center
@@ -422,7 +428,7 @@ class CylindricalPartitioner(BasePartitioner):
             ((z - self._z_min) / dz).astype(np.int64), 0, self.nz - 1
         )
 
-        return ir + itheta * self.nr + iz * self.nr * self.ntheta # la numérotation des partitons se fait partant des rayons, puis les angles et enfin les hauteurs z
+        return  ir + itheta * self.nr + iz * self.nr * self.ntheta # la numérotation des partitons se fait partant des rayons, puis les angles et enfin les hauteurs z
 
     def _save_data(self, path):
         params = {
@@ -445,65 +451,337 @@ class CylindricalPartitioner(BasePartitioner):
         self._z_min = p["z_min"]
         self._z_max = p["z_max"]
         self._r_edges = np.load(os.path.join(path, "r_edges.npy"))
-    
-    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
+        
+    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="partition", 
+              use_alpha_shapes=False, alpha_value=0.1, show_fill=True, 
+              fill_alpha=0.4, points_alpha=0.8, show_hulls=True):
         """
-        Génère des visualisations avec adaptation pour l'axe y
+        Visualisation complète 2D + 3D avec remplissage basé sur contours délimités
+        
+        Args:
+            plot_types: ["3d", "2d_xy"] ou ["3d"] ou ["2d_xy"]
+            use_alpha_shapes: True = alpha shapes (précis), False = convex hulls  
+            alpha_value: finesse des alpha shapes (0.05=très précis, 0.2=plus lisse)
+            show_fill: remplir l'intérieur des contours délimités
+            fill_alpha: transparence du remplissage (0.3-0.6 recommandé)
+            points_alpha: transparence des points (0.7-0.9 recommandé)
+            show_hulls: afficher les contours des enveloppes
         """
-        self.fit(np.column_stack([x,y,z]))
+        self.fit(np.column_stack([x, y, z]))
         states = self.compute_states(x, y, z)
         
         image_data = {}
+    
         
+        if "2d_xy" in plot_types:
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
+            
+            # Choisir la méthode de remplissage
+            plot_method = (self._plot_filled_partitions_alpha_shapes if use_alpha_shapes 
+                        else self._plot_filled_partitions_with_points)
+            
+            # ========== Vue XY ==========
+            if use_alpha_shapes:
+                plot_method(ax1, x, y, z, states, view='xy', alpha_value=alpha_value,
+                        show_fill=show_fill, fill_alpha=fill_alpha, points_alpha=points_alpha)
+            else:
+                plot_method(ax1, x, y, z, states, view='xy', show_hulls=True,
+                        show_fill=show_fill, fill_alpha=fill_alpha, points_alpha=points_alpha)
+            
+            ax1.set_xlabel('X', fontsize=12, fontweight='bold')
+            ax1.set_ylabel('Y', fontsize=12, fontweight='bold')
+            ax1.set_title('Vue XY - Remplissage par contours', fontsize=14, fontweight='bold')
+            ax1.grid(True, alpha=0.3, linestyle='--')
+            
+            # ========== Vue YZ ==========
+            if use_alpha_shapes:
+                plot_method(ax2, x, y, z, states, view='yz', alpha_value=alpha_value,
+                        show_fill=show_fill, fill_alpha=fill_alpha, points_alpha=points_alpha)
+            else:
+                plot_method(ax2, x, y, z, states, view='yz', show_hulls=True,
+                        show_fill=show_fill, fill_alpha=fill_alpha, points_alpha=points_alpha)
+            
+            if hasattr(self, '_y_split') and self._y_split is not None:
+                ax2.axvline(x=self._y_split, color='red', linestyle='-', 
+                        linewidth=3, label=f'Seuil Y={self._y_split:.3f}', zorder=10)
+                ax2.legend(fontsize=11)
+            
+            # fig.colorbar(scatter, ax=ax1, label="ID Partition", shrink=0.6)
+            ax2.set_xlabel('Y', fontsize=12, fontweight='bold')
+            ax2.set_ylabel('Z', fontsize=12, fontweight='bold')
+            ax2.set_title('Vue YZ - Remplissage par contours', fontsize=14, fontweight='bold')
+            ax2.grid(True, alpha=0.3, linestyle='--')
+
+            
+            
+            plt.tight_layout()
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
+            plt.close()
+        # ========== VUE 3D ==========
         if "3d" in plot_types:
-            fig = plt.figure(figsize=(12, 8))
+            fig = plt.figure(figsize=(14, 10))
             ax = fig.add_subplot(111, projection='3d')
-            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
-            plt.colorbar(scatter, label='ID de Partition')
+            
+            # 1. ✅ REMPLISSAGE 3D basé sur enveloppes convexes
+            if show_fill:
+                self._plot_3d_filled_surfaces(ax, x, y, z, states, alpha=fill_alpha)
+            
+            # 2. ✅ CONTOURS 3D (arêtes des enveloppes)
+            if show_hulls:
+                self._plot_3d_hull_edges(ax, x, y, z, states)
+            
+            # 3. ✅ POINTS par-dessus tout
+            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=18, 
+                                alpha=points_alpha, edgecolors='black', linewidth=0.4, zorder=10)
+            
+            ax.set_xlabel('X', fontsize=12, fontweight='bold')
+            ax.set_ylabel('Y', fontsize=12, fontweight='bold')
+            ax.set_zlabel('Z', fontsize=12, fontweight='bold')
+            ax.set_title(f'{self.label} - Remplissage 3D par contours délimités', 
+                        fontsize=14, fontweight='bold')
+            
+            # Colorbar
+            plt.colorbar(scatter, ax=ax, label='ID Partition', shrink=0.6)
+            
+            # Améliorer l'affichage 3D
+            ax.xaxis.pane.fill = False
+            ax.yaxis.pane.fill = False
+            ax.zaxis.pane.fill = False
+            ax.grid(True, alpha=0.3)
+            
             plt.tight_layout()
             
-            # ✅ Sauvegarder en mémoire
             img_buffer = io.BytesIO()
             plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
             img_buffer.seek(0)
             image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
             plt.close()
         
-        if "2d_xy" in plot_types:
-            plt.figure(figsize=(12, 5))
-            
-            # Vue XY
-            plt.subplot(121)
-            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axhline(y=self._y_split, color='r', linestyle='--', 
-                         label=f'Seuil y={self._y_split:.2f}')
-            plt.xlabel('X')
-            plt.ylabel('Y')
-            plt.title('Vue XY')
-            plt.legend()
-            plt.colorbar(label='Partition ID')
-            
-            # Vue YZ
-            plt.subplot(122)
-            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
-            plt.xlabel('Y')
-            plt.ylabel('Z')
-            plt.title('Vue YZ')
-            plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
-            plt.close()
-        
         return image_data
+    def _plot_filled_partitions_with_points(self, ax, x, y, z, states, view='xy', 
+                                        method="decision_boundary", resolution=300,
+                                        show_hulls=True, show_fill=True, 
+                                        fill_alpha=0.4, points_alpha=0.8):
+        """
+        Remplissage 2D basé sur les CONTOURS DÉLIMITÉS (comme en 3D)
+        """
+        import matplotlib.cm as cm
+        from scipy.spatial import ConvexHull
+        import matplotlib.patches as patches
+        
+        # Préparer les coordonnées selon la vue
+        if view == 'xy':
+            coords_2d = np.column_stack([x, y])
+            x_min, x_max = x.min(), x.max()
+            y_min, y_max = y.min(), y.max()
+        elif view == 'yz':
+            coords_2d = np.column_stack([y, z])
+            x_min, x_max = y.min(), y.max()
+            y_min, y_max = z.min(), z.max()
+        
+        cmap = cm.get_cmap('tab20')
+        unique_states = np.unique(states)
+        
+        # 1. ✅ REMPLISSAGE basé sur les ENVELOPPES CONVEXES (comme en 3D)
+        if show_fill:
+            for state_id in unique_states:
+                mask = states == state_id
+                points_partition = coords_2d[mask]
+                
+                if len(points_partition) < 3:
+                    continue
+                
+                try:
+                    # Calculer l'enveloppe convexe
+                    hull = ConvexHull(points_partition)
+                    hull_points = points_partition[hull.vertices]
+                    
+                    # ✅ REMPLIR l'intérieur de l'enveloppe (comme les faces 3D)
+                    color = cmap(state_id / max(unique_states.max(), 1))
+                    polygon = patches.Polygon(hull_points, closed=True, 
+                                            facecolor=color, alpha=fill_alpha, 
+                                            edgecolor='none', zorder=1)
+                    ax.add_patch(polygon)
+                    
+                except Exception as e:
+                    print(f"   Remplissage impossible pour partition {state_id}: {e}")
+                    continue
+        
+        # 2. ✅ CONTOURS des enveloppes (bordures nettes)
+        if show_hulls:
+            for state_id in unique_states:
+                mask = states == state_id
+                points_partition = coords_2d[mask]
+                
+                if len(points_partition) < 3:
+                    continue
+                
+                try:
+                    hull = ConvexHull(points_partition)
+                    hull_points = points_partition[hull.vertices]
+                    hull_points = np.vstack([hull_points, hull_points[0]])  # Fermer le polygone
+                    
+                    # Contour noir épais
+                    ax.plot(hull_points[:, 0], hull_points[:, 1], 
+                        color='black', linewidth=2.5, alpha=0.9, zorder=3)
+                        
+                except Exception as e:
+                    continue
+        
+        # 3. ✅ POINTS par-dessus (comme en 3D)
+        if view == 'xy':
+            scatter = ax.scatter(x, y, c=states, cmap='tab20', s=15, 
+                                alpha=points_alpha, edgecolors='black', linewidth=0.4, zorder=5)
+        elif view == 'yz':
+            scatter = ax.scatter(y, z, c=states, cmap='tab20', s=15, 
+                                alpha=points_alpha, edgecolors='black', linewidth=0.4, zorder=5)
+
+
+    # ✅ VERSION AVANCÉE avec Alpha Shapes (contours plus précis)
+    def _plot_filled_partitions_alpha_shapes(self, ax, x, y, z, states, view='xy', 
+                                            alpha_value=0.1, show_fill=True, 
+                                            fill_alpha=0.4, points_alpha=0.8):
+        """
+        Remplissage basé sur les Alpha Shapes (plus précis que convex hull)
+        """
+        try:
+            import alphashape
+            from shapely.geometry import Polygon as ShapelyPolygon
+        except ImportError:
+            print("   Alpha shapes non disponibles. Utilisation des enveloppes convexes.")
+            return self._plot_filled_partitions_with_points(ax, x, y, z, states, view, 
+                                                            show_fill=show_fill, 
+                                                            fill_alpha=fill_alpha, 
+                                                            points_alpha=points_alpha)
+        
+        import matplotlib.cm as cm
+        import matplotlib.patches as patches
+        
+        # Coordonnées 2D
+        if view == 'xy':
+            coords_2d = np.column_stack([x, y])
+        elif view == 'yz':
+            coords_2d = np.column_stack([y, z])
+        
+        cmap = cm.get_cmap('tab20')
+        unique_states = np.unique(states)
+        
+        # 1. ✅ REMPLISSAGE basé sur ALPHA SHAPES
+        if show_fill:
+            for state_id in unique_states:
+                mask = states == state_id
+                points_partition = coords_2d[mask]
+                
+                if len(points_partition) < 3:
+                    continue
+                
+                try:
+                    # Calculer l'alpha shape (contour précis)
+                    alpha_shape = alphashape.alphashape(points_partition, alpha=alpha_value)
+                    
+                    if alpha_shape and hasattr(alpha_shape, 'exterior'):
+                        # Extraire les coordonnées du contour
+                        if isinstance(alpha_shape, ShapelyPolygon):
+                            xx, yy = alpha_shape.exterior.xy
+                            polygon_coords = np.column_stack([xx[:-1], yy[:-1]])  # Enlever le dernier point dupliqué
+                            
+                            # ✅ REMPLIR l'alpha shape
+                            color = cmap(state_id / max(unique_states.max(), 1))
+                            polygon = patches.Polygon(polygon_coords, closed=True, 
+                                                    facecolor=color, alpha=fill_alpha, 
+                                                    edgecolor='none', zorder=1)
+                            ax.add_patch(polygon)
+                            
+                            # Contour noir
+                            ax.plot(xx, yy, color='black', linewidth=2.0, alpha=0.9, zorder=3)
+                    
+                except Exception as e:
+                    print(f"   Alpha shape impossible pour partition {state_id}: {e}")
+                    continue
+        
+        # 2. ✅ POINTS
+        if view == 'xy':
+            scatter = ax.scatter(x, y, c=states, cmap='tab20', s=15, 
+                                alpha=points_alpha, edgecolors='black', linewidth=0.4, zorder=5)
+        elif view == 'yz':
+            scatter = ax.scatter(y, z, c=states, cmap='tab20', s=15, 
+                                alpha=points_alpha, edgecolors='black', linewidth=0.4, zorder=5)
+
+
+    def _plot_3d_filled_surfaces(self, ax, x, y, z, states, alpha=0.4):
+        """
+        Surfaces 3D remplies pour chaque partition
+        """
+        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+        from scipy.spatial import ConvexHull
+        import matplotlib.cm as cm
+        
+        cmap = cm.get_cmap('tab20')
+        unique_states = np.unique(states)
+        
+        for state_id in unique_states:
+            mask = states == state_id
+            points_3d = np.column_stack([x[mask], y[mask], z[mask]])
+            
+            if len(points_3d) < 4:
+                continue
+            
+            try:
+                hull = ConvexHull(points_3d)
+                
+                # Créer les faces de l'enveloppe
+                faces = []
+                for simplex in hull.simplices:
+                    faces.append(points_3d[simplex])
+                
+                color = cmap(state_id / max(unique_states.max(), 1))
+                
+                # Surface remplie semi-transparente
+                collection = Poly3DCollection(faces, alpha=alpha, 
+                                            facecolor=color, edgecolor='none', 
+                                            zorder=1)
+                ax.add_collection3d(collection)
+                
+            except Exception:
+                continue
+
+
+    def _plot_3d_hull_edges(self, ax, x, y, z, states):
+        """
+        Arêtes des enveloppes convexes 3D (contours)
+        """
+        from scipy.spatial import ConvexHull
+        import matplotlib.cm as cm
+        
+        cmap = cm.get_cmap('tab20')
+        unique_states = np.unique(states)
+        
+        for state_id in unique_states:
+            mask = states == state_id
+            points_3d = np.column_stack([x[mask], y[mask], z[mask]])
+            
+            if len(points_3d) < 4:
+                continue
+            
+            try:
+                hull = ConvexHull(points_3d)
+                color = cmap(state_id / max(unique_states.max(), 1))
+                
+                # Tracer les arêtes de l'enveloppe
+                for simplex in hull.simplices:
+                    triangle = points_3d[simplex]
+                    # Tracer les 3 arêtes du triangle
+                    for i in range(3):
+                        start = triangle[i]
+                        end = triangle[(i+1) % 3]
+                        ax.plot([start[0], end[0]], [start[1], end[1]], [start[2], end[2]], 
+                            color=color, linewidth=1.5, alpha=0.7, zorder=4)
+                        
+            except Exception:
+                continue
     def diagnostics(self, coordinates):
             """
             Statistiques de population par cellule pour le partitionneur adaptatif.

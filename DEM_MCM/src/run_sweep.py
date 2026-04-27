@@ -25,12 +25,12 @@ from tqdm import tqdm
 from dataclasses import dataclass, field, asdict
 from huggingface_hub import HfFileSystem
 
-from partitioners import create_partitioner, REGISTRY  
-import partitioners as part     # pour le notebook  .ipynb
-from bucket_io import save_experiment_to_bucket, BUCKET_BASE
-# from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
-# from .partitioners import create_partitioner, REGISTRY            # pour le terminal et fichiers .py
-# from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
+# from partitioners import create_partitioner, REGISTRY  
+# from bucket_io import save_experiment_to_bucket, BUCKET_BASE
+from .import partitioners as part     # pour le notebook  .ipynb
+from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
+from .partitioners import create_partitioner, REGISTRY            # pour le terminal et fichiers .py
+from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
 
 
 
@@ -515,9 +515,9 @@ def sample_coordinates(files, fs, sample_rate=SAMPLE_RATE):
             df = pl.read_csv(fh)
         coords = np.column_stack(
             [
-                df["coordinates:0"].to_numpy(),
-                df["coordinates:1"].to_numpy(),
-                df["coordinates:2"].to_numpy(),
+                df.filter(pl.col("Diameter")==0.008)["coordinates:0"].to_numpy(),
+                df.filter(pl.col("Diameter")==0.008)["coordinates:1"].to_numpy(),
+                df.filter(pl.col("Diameter")==0.008)["coordinates:2"].to_numpy(),
             ]
         )
         all_coords.append(coords)
@@ -536,9 +536,9 @@ def sample_velocities(files, fs, sample_rate=SAMPLE_RATE):
             df = pl.read_csv(fh)
         coords = np.column_stack(
             [
-                df["Velocity:0"].to_numpy(),
-                df["Velocity:1"].to_numpy(),
-                df["Velocity:2"].to_numpy(),
+                df.filter(pl.col("Diameter")==0.008)["Velocity:0"].to_numpy(),
+                df.filter(pl.col("Diameter")==0.008)["Velocity:1"].to_numpy(),
+                df.filter(pl.col("Diameter")==0.008)["Velocity:2"].to_numpy(),
             ]
         )
         all_coords.append(coords)
@@ -551,57 +551,6 @@ def sample_velocities(files, fs, sample_rate=SAMPLE_RATE):
 
 
 
-
-# def phi_particule(state: int, partition: int) -> bool:
-#     """Vérifie si une particule est bien dans une partition"""
-#     return 1 if state == partition else 0
-
-# def phi_sum_partition(states, partition: int) -> int:
-#     """Somme les particules qui sont dans une partition"""
-#     phi_s = 0
-#     for i in range(len(states)):
-#         phi_s += phi_particule(states[i], partition=partition)
-#     return phi_s
-
-# def compute_P_matrix_torch(states_prev, states_curr, n_states, device="cpu"):
-#     """
-#     Calcule P_n pour un timestep en utilisant phi_particule et phi_sum_partition.
-#     Normalisation par colonnes (somme des colonnes = 1).
-#     """
-#     # Conversion en tensor si nécessaire
-#     if isinstance(states_curr, np.ndarray):
-#         states_curr = torch.from_numpy(states_curr)
-#     if isinstance(states_prev, np.ndarray):
-#         states_prev = torch.from_numpy(states_prev)
-    
-#     s_prev = states_prev.to(device).long()
-#     s_curr = states_curr.to(device).long()
-    
-#     # Initialisation de la matrice de transition
-#     P = torch.zeros((n_states, n_states), device=device, dtype=torch.float64)
-    
-#     # Calcul des transitions P[i,j] = probabilité d'aller de i à j
-#     for i in range(n_states):
-#         for j in range(n_states):
-#             # Compte les transitions de i vers j
-#             inter = 0
-#             n = min(len(s_prev), len(s_curr))
-#             for p in range(n):
-#                 inter += phi_particule(state=s_prev[p].item(), partition=i) * phi_particule(state=s_curr[p].item(), partition=j)
-            
-#             # Normalisation par le nombre de particules dans l'état i au temps précédent
-#             denominator = phi_sum_partition(s_prev.cpu().numpy(), i)
-#             P[i, j] = inter / denominator if denominator > 0 else 0.0
-    
-#     # Transposition pour avoir les états courants en lignes, précédents en colonnes
-#     P = P.T
-    
-#     # # Normalisation par colonnes (somme des colonnes = 1) avec torch.sum(dim=0)
-#     # col_sums = torch.sum(P, dim=0)
-    
-#     # P = torch.where(col_sums > 0, P / col_sums, torch.zeros_like(P))
-    
-#     return P
 
 import torch
 
@@ -687,18 +636,18 @@ def run_experiment(config, partitioner, files, fs, device):
             df = pl.read_csv(fh)
         # ✅ Indexation directe plus rapide que select(), et conversion immédiate
         return (
-            df["coordinates:0"].to_numpy(),
-            df["coordinates:1"].to_numpy(),
-            df["coordinates:2"].to_numpy()
+            df.filter(pl.col("Diameter")==0.008)["coordinates:0"].to_numpy(),
+            df.filter(pl.col("Diameter")==0.008)["coordinates:1"].to_numpy(),
+            df.filter(pl.col("Diameter")==0.008)["coordinates:2"].to_numpy()
         )
     def load_velocities(file_path):
         with fs.open(file_path, "rb") as fh:
             df = pl.read_csv(fh)
         # ✅ Indexation directe plus rapide que select(), et conversion immédiate
         return (
-            df["Velocity:0"].to_numpy(),
-            df["Velocity:1"].to_numpy(),
-            df["Velocity:2"].to_numpy()
+            df.filter(pl.col("Diameter")==0.008)["Velocity:0"].to_numpy(),
+            df.filter(pl.col("Diameter")==0.008)["Velocity:1"].to_numpy(),
+            df.filter(pl.col("Diameter")==0.008)["Velocity:2"].to_numpy()
         )
 
 
