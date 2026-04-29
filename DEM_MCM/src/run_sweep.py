@@ -730,8 +730,7 @@ def run_experiment(config, partitioner, files, fs, device):
             # vel_prev = load_velocities(files[idx_prev])
             # vel_curr = load_velocities(files[idx_curr])
 
-            # partitioner.load_dem_snapshots(file_indices=[250])
-            # partitioner.label_species()
+           
             # states_prev = partitioner.compute_states_with_physics(*coords_prev, *vel_prev)
             # states_curr = partitioner.compute_states_with_physics(*coords_curr, *vel_curr)
             states_prev = partitioner.compute_states(*coords_prev)
@@ -741,8 +740,6 @@ def run_experiment(config, partitioner, files, fs, device):
             states_curr_acc = np.concatenate((states_curr_acc, np.asarray(states_curr)))
         else:
         
-            # partitioner.load_dem_snapshots(file_indices=[250])
-            # partitioner.label_species()
             states_prev = partitioner.compute_states(*coords_prev)
             states_curr = partitioner.compute_states(*coords_curr)
 
@@ -905,7 +902,6 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, base_d
             image_data = None
             if hasattr(partitioner, 'visualize'):
                 try:
-                    # x, y, z ,vx,vy,vz= sample_coords[np.tile(partitioner.species_labels,n)][:, 0], sample_coords[np.tile(partitioner.species_labels,n)][:, 1], sample_coords[np.tile(partitioner.species_labels,n)][:, 2],s_velocities[np.tile(partitioner.species_labels,n)][:,0],s_velocities[np.tile(partitioner.species_labels,n)][:,1],s_velocities[np.tile(partitioner.species_labels,n)][:,2]
 
                     x, y, z ,vx,vy,vz= sample_coords[:, 0], sample_coords[:, 1], sample_coords[:, 2],s_velocities[:,0],s_velocities[:,1],s_velocities[:,2]
                     # Créer un nom de fichier sûr
