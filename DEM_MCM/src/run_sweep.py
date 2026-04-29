@@ -25,12 +25,13 @@ from tqdm import tqdm
 from dataclasses import dataclass, field, asdict
 from huggingface_hub import HfFileSystem
 
-# from partitioners import create_partitioner, REGISTRY  
-# from bucket_io import save_experiment_to_bucket, BUCKET_BASE
-from .import partitioners as part     # pour le notebook  .ipynb
-from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
-from .partitioners import create_partitioner, REGISTRY            # pour le terminal et fichiers .py
-from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
+from partitioners import create_partitioner, REGISTRY  
+from bucket_io import save_experiment_to_bucket, BUCKET_BASE
+import partitioners as part
+# from .import partitioners as part     # pour le notebook  .ipynb
+# from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
+# from .partitioners import create_partitioner, REGISTRY            # pour le terminal et fichiers .py
+
 
 
 
@@ -515,9 +516,9 @@ def sample_coordinates(files, fs, sample_rate=SAMPLE_RATE):
             df = pl.read_csv(fh)
         coords = np.column_stack(
             [
-                df.filter(pl.col("Diameter")==0.008)["coordinates:0"].to_numpy(),
-                df.filter(pl.col("Diameter")==0.008)["coordinates:1"].to_numpy(),
-                df.filter(pl.col("Diameter")==0.008)["coordinates:2"].to_numpy(),
+                df["coordinates:0"].to_numpy(),
+                df["coordinates:1"].to_numpy(),
+                df["coordinates:2"].to_numpy(),
             ]
         )
         all_coords.append(coords)
@@ -536,9 +537,9 @@ def sample_velocities(files, fs, sample_rate=SAMPLE_RATE):
             df = pl.read_csv(fh)
         coords = np.column_stack(
             [
-                df.filter(pl.col("Diameter")==0.008)["Velocity:0"].to_numpy(),
-                df.filter(pl.col("Diameter")==0.008)["Velocity:1"].to_numpy(),
-                df.filter(pl.col("Diameter")==0.008)["Velocity:2"].to_numpy(),
+                df["Velocity:0"].to_numpy(),
+                df["Velocity:1"].to_numpy(),
+                df["Velocity:2"].to_numpy(),
             ]
         )
         all_coords.append(coords)
@@ -636,18 +637,18 @@ def run_experiment(config, partitioner, files, fs, device):
             df = pl.read_csv(fh)
         # ✅ Indexation directe plus rapide que select(), et conversion immédiate
         return (
-            df.filter(pl.col("Diameter")==0.008)["coordinates:0"].to_numpy(),
-            df.filter(pl.col("Diameter")==0.008)["coordinates:1"].to_numpy(),
-            df.filter(pl.col("Diameter")==0.008)["coordinates:2"].to_numpy()
+            df["coordinates:0"].to_numpy(),
+            df["coordinates:1"].to_numpy(),
+            df["coordinates:2"].to_numpy()
         )
     def load_velocities(file_path):
         with fs.open(file_path, "rb") as fh:
             df = pl.read_csv(fh)
         # ✅ Indexation directe plus rapide que select(), et conversion immédiate
         return (
-            df.filter(pl.col("Diameter")==0.008)["Velocity:0"].to_numpy(),
-            df.filter(pl.col("Diameter")==0.008)["Velocity:1"].to_numpy(),
-            df.filter(pl.col("Diameter")==0.008)["Velocity:2"].to_numpy()
+            df["Velocity:0"].to_numpy(),
+            df["Velocity:1"].to_numpy(),
+            df["Velocity:2"].to_numpy()
         )
 
 
@@ -729,6 +730,8 @@ def run_experiment(config, partitioner, files, fs, device):
             # vel_prev = load_velocities(files[idx_prev])
             # vel_curr = load_velocities(files[idx_curr])
 
+            # partitioner.load_dem_snapshots(file_indices=[250])
+            # partitioner.label_species()
             # states_prev = partitioner.compute_states_with_physics(*coords_prev, *vel_prev)
             # states_curr = partitioner.compute_states_with_physics(*coords_curr, *vel_curr)
             states_prev = partitioner.compute_states(*coords_prev)
@@ -737,6 +740,9 @@ def run_experiment(config, partitioner, files, fs, device):
             states_prev_acc = np.concatenate((states_prev_acc, np.asarray(states_prev)))
             states_curr_acc = np.concatenate((states_curr_acc, np.asarray(states_curr)))
         else:
+        
+            # partitioner.load_dem_snapshots(file_indices=[250])
+            # partitioner.label_species()
             states_prev = partitioner.compute_states(*coords_prev)
             states_curr = partitioner.compute_states(*coords_curr)
 
@@ -845,6 +851,7 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, base_d
     # ── Coordonnées pour fit ──
     print("\n🔍 Échantillonnage des coordonnées pour le fit...")
     sample_coords = sample_coordinates(files, fs)
+    n=int(6000/50)
     s_velocities=sample_velocities(files,fs)
     print(f"   {len(sample_coords)} points échantillonnés")
 
@@ -898,6 +905,8 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, base_d
             image_data = None
             if hasattr(partitioner, 'visualize'):
                 try:
+                    # x, y, z ,vx,vy,vz= sample_coords[np.tile(partitioner.species_labels,n)][:, 0], sample_coords[np.tile(partitioner.species_labels,n)][:, 1], sample_coords[np.tile(partitioner.species_labels,n)][:, 2],s_velocities[np.tile(partitioner.species_labels,n)][:,0],s_velocities[np.tile(partitioner.species_labels,n)][:,1],s_velocities[np.tile(partitioner.species_labels,n)][:,2]
+
                     x, y, z ,vx,vy,vz= sample_coords[:, 0], sample_coords[:, 1], sample_coords[:, 2],s_velocities[:,0],s_velocities[:,1],s_velocities[:,2]
                     # Créer un nom de fichier sûr
                     safe_label = partitioner.label.replace('=', '_').replace(' ', '_').replace('/', '_')
