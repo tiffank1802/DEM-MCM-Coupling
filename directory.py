@@ -37,6 +37,7 @@ if __name__=="__main__":
     Time=250
     # folder_name ="physics_400cells_pos_NLT10_step10_dt2_tau50_start250"
     folder_name ="cylindrical_nr1_nth10_nz1_equal_area_NLT10_step10_dt2_tau50_start250"
+    # folder_name ="cartesian_nx3_ny2_nz3_NLT10_step50_dt2_tau50_start250"
     # folder_name ="cartesian_nx3_ny3_nz3_NLT10_step100_dt2_tau50_start250"
     # folder_name ="voronoi_600cells_NLT10_step10_dt2_tau50_start250"
     # folder_name ="voronoi_1000cells_NLT10_step10_dt2_tau50_start250"
@@ -67,7 +68,7 @@ if __name__=="__main__":
     # })
     #     part = create_partitioner(method="physics",n_cells=400
     # )
-        # part = create_partitioner(method="cartesian",nx=3,ny=3,nz=3
+    #     part = create_partitioner(method="cartesian",nx=3,ny=2,nz=3
     # )
         part = create_partitioner(method="cylindrical",nr=1,ntheta=10,nz=1
     )
@@ -100,7 +101,8 @@ if __name__=="__main__":
         # print(f"RSD final: {rsd['rsd_final']:.3f}")
         # print(f"t_50%: {rsd['mixing_time_50']}")
         # print(f"t_90%: {rsd['mixing_time_90']}")
-        # print(analyzer.concentration_history.sum(1))
+        print(analyzer.concentration_history)
+        print(rsd_DEM["concentrations"])
         # print(analyzer.concentration_history.sum(1).shape)
         # print(analyzer.rsd)
         plt.plot(t_MCM,analyzer.rsd,"*",label="MCM")

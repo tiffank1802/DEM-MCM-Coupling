@@ -25,8 +25,8 @@ import json
 import io
 from collections import defaultdict
 from huggingface_hub import HfFileSystem
-# import bucket_io as b_io
-from .import bucket_io as b_io
+import bucket_io as b_io
+# from .import bucket_io as b_io
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -891,6 +891,7 @@ class MarkovAnalyzer:
         ntotal = np.bincount(states0, minlength=n_states).astype(float)
         # ntotal = self.species_labels.sum() # est le nombre de total de particules de l'espèce considérée
         nA = np.bincount(states0[species_labels], minlength=n_states).astype(float) # nombre de particules de type species_labels dans chaque partition
+        # nA = np.bincount(states0[:], minlength=n_states).astype(float) # nombre de particules de type species_labels dans chaque partition
 
         # Condition initiale réelle : C0 = nA / ntotal
         C = np.zeros(n_states)
@@ -913,8 +914,8 @@ class MarkovAnalyzer:
 
             visited = C > 1e-12
             if visited.sum() > 1:
-                mean_c = C[visited].mean()
-                std_c = C[visited].std()
+                mean_c = C[visited][4:5].mean()
+                std_c = C[visited][4:5].std()
                 rsd[t] = std_c / mean_c if mean_c > 0 else 0
             else:
                 rsd[t] = 0
@@ -1035,8 +1036,8 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
             print(f"✅ Labels custom: {n_a} A / {len(self.species_labels) - n_a} B")
             return self.species_labels
 
-        if not hasattr(self, 'dem_diameters'):
-            raise AttributeError("Les diamètres DEM n'ont pas été chargés. Exécutez load_dem_snapshots() d'abord.")
+        # if not hasattr(self, 'dem_diameters'):
+        #     raise AttributeError("Les diamètres DEM n'ont pas été chargés. Exécutez load_dem_snapshots() d'abord.")
 
         diameters = self.dem_diameters
 
@@ -1104,7 +1105,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         À chaque instant t:
         1. Assigner chaque particule à sa cellule
         2. Pour chaque cellule i:
-            C_i(t) = n_A(i,t) / n_total(i,t)
+            C_i(t) = n_A(i,t) / n_total(i,t) 
             (concentration de l'espèce A dans la cellule i)
         3. RSD(t) = std(C_i) / mean(C_i)  sur les cellules non-vides
 
@@ -1127,6 +1128,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
             species_labels = self.species_labels
 
         n_states = partitioner.n_cells
+        # Par defaut charge les snapshots d'indice 250 à 6000 par pas de 50 si pas de snapshots (pas de loadsnapshots)
         n_snaps = len(self.dem_snapshots) if len(self.dem_snapshots)>0 else len(self.load_dem_snapshots(file_indices=list(range(250,6000,50))))
 
         times = np.zeros(n_snaps)
@@ -1144,12 +1146,24 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
             states = partitioner.compute_states(
                 coords[:, 0], coords[:, 1], coords[:, 2]
             )
-
+            """ ### Cette opération consiste à construire le vecteur d'état qui est faite selon une espèce donnée
+            #je pense que cela est correct car nous comptons le nombre de particules d'une espèce donnée dans une partition(ici grande ) sur le nombre de total de particules
+            dans cette partition
+            
+            La question est de savoir comment faire pareil avec la construction de la matrice de transition
+            Comment construire cette matrice de sorte que l'on compte dans chaque partition non plus le nombre de particules qui se déplacent d'une partition à une autre 
+            mais le nombre particules d'une espèce donnée qui se déplace d'une partition à une autre et l'on divise par le nombre total de particules de l'espèce en question
+            
+            je pense que le challenge sera d'intégrer cette classe dans la classe de partitioner pour synchroniser les variables comme loadsnapshot et labels_species
+            
+            """
+            
             # # Compter par cellule: total et espèce A
             n_total = np.bincount(states, minlength=n_states).astype(float)
             # n_A = np.bincount(states[species_labels], minlength=n_states).astype(float)
             # n_total = self.species_labels.sum() # est le nombre de total de particules de l'espèce considérée
             n_A = np.bincount(states[species_labels], minlength=n_states).astype(float) # nombre de particules de type species_labels dans chaque partition
+            # n_A = np.bincount(states[:], minlength=n_states).astype(float) # nombre de particules de type species_labels dans chaque partition
 
 
             # Concentration C_i = n_A / n_total

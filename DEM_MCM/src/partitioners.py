@@ -28,7 +28,8 @@ from abc import ABC, abstractmethod
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.spatial import ConvexHull
-from . import analyze_results as ar
+# from . import analyze_results as ar
+import analyze_results as ar
 
 __all__ = [
  
@@ -52,9 +53,14 @@ __all__ = [
 # =============================================================================
 
 
-class BasePartitioner(ABC):
+class BasePartitioner(ABC,ar.MarkovAnalyzer):
     """Interface commune pour tous les partitionneurs."""
-    _y_split=0
+    def __init__(self):
+        self._y_split=0
+        self.load_dem_snapshots(file_indices=[250])
+        self.label_species()
+        self.PARTICLE_NUMBER=1030
+        
     # analyzer=ar.MarkovAnalyzer()
 
     @property
@@ -211,6 +217,7 @@ class CartesianPartitioner(BasePartitioner):
     """
 
     def __init__(self, nx=5, ny=5, nz=5):
+        super().__init__()
         self.nx, self.ny, self.nz = nx, ny, nz
         self._bounds = None
 
@@ -248,7 +255,9 @@ class CartesianPartitioner(BasePartitioner):
         iz = np.clip(
             ((z - zmin) * self.nz / (zmax - zmin)).astype(np.int64), 0, self.nz - 1
         )
-        return ix + iy * self.nx + iz * self.nx * self.ny
+        n=int(len(x)/self.PARTICLE_NUMBER)
+        self.states=ix + iy * self.nx + iz * self.nx * self.ny
+        return self.states[np.tile(self.species_labels,n)]
 
     def _save_data(self, path):
         np.save(os.path.join(path, "bounds.npy"), np.array(self._bounds))
@@ -262,7 +271,8 @@ class CartesianPartitioner(BasePartitioner):
         Génère des visualisations avec adaptation pour l'axe y
         """
         self.fit(np.column_stack([x,y,z]))
-        states = self.compute_states(x, y, z)
+        # states = self.compute_states(x, y, z)
+        states = self.states
         
         image_data = {}
         
@@ -354,6 +364,7 @@ class CylindricalPartitioner(BasePartitioner):
     """
 
     def __init__(self, nr=5, ntheta=8, nz=5, radial_mode="equal_area"):
+        super().__init__()
         self.nr = nr
         self.ntheta = ntheta
         self.nz = nz
@@ -364,6 +375,8 @@ class CylindricalPartitioner(BasePartitioner):
         self._z_min = None
         self._z_max = None
         self._r_edges = None
+        
+        # self.species_labels=self.label_species()
 
     @property
     def n_cells(self):
@@ -405,8 +418,7 @@ class CylindricalPartitioner(BasePartitioner):
         x = np.asarray(x, dtype=np.float64)
         y = np.asarray(y, dtype=np.float64)
         z = np.asarray(z, dtype=np.float64)
-        # self.load_dem_snapshots(file_indices=[250])
-        # self.label_species()
+        # analyzer=ar.MarkovAnalyzer()
 
         dx = x - self._x_center
         dy = y - self._y_center
@@ -416,7 +428,7 @@ class CylindricalPartitioner(BasePartitioner):
 
         ir = np.clip(
             np.searchsorted(self._r_edges, r, side="right") - 1, # renvoit la liste d'indices  de la liste des partitions(selon le rayon) dans laquelle les rayons des particules ont été insérés 
-            # le vecteur que renvoir la fonction searchsorted est de dimension de r (nombres de particules)
+            # le vecteur que renvoir la fonction  searchsorted est de dimension de r (nombres de particules)
             0, self.nr - 1  # les particules sont raménées dans l'intervalle des partitions suivant le rayon
         )
         itheta = np.clip(
@@ -427,8 +439,9 @@ class CylindricalPartitioner(BasePartitioner):
         iz = np.clip(
             ((z - self._z_min) / dz).astype(np.int64), 0, self.nz - 1
         )
-
-        return  ir + itheta * self.nr + iz * self.nr * self.ntheta # la numérotation des partitons se fait partant des rayons, puis les angles et enfin les hauteurs z
+        n=int(len(x)/self.PARTICLE_NUMBER)
+        self.states=ir + itheta * self.nr + iz * self.nr * self.ntheta
+        return  self.states[np.tile(self.species_labels,n)] # la numérotation des partitons se fait partant des rayons, puis les angles et enfin les hauteurs z
 
     def _save_data(self, path):
         params = {
@@ -468,7 +481,7 @@ class CylindricalPartitioner(BasePartitioner):
             show_hulls: afficher les contours des enveloppes
         """
         self.fit(np.column_stack([x, y, z]))
-        states = self.compute_states(x, y, z)
+        states = self.states
         
         image_data = {}
     
@@ -817,6 +830,7 @@ class VoronoiPartitioner(BasePartitioner):
     """
 
     def __init__(self, n_cells=125, random_state=42):
+        super().__init__()
         self._n_cells = n_cells
         self.random_state = random_state
         self.centroids = None
@@ -858,8 +872,11 @@ class VoronoiPartitioner(BasePartitioner):
         coords = np.column_stack(
             [np.asarray(x), np.asarray(y), np.asarray(z)]
         )
+        n=int(len(x)/self.PARTICLE_NUMBER)
+
         _, indices = self._tree.query(coords)
-        return indices.astype(np.int64)
+        self.states=indices.astype(np.int64)
+        return self.states[np.tile(self.species_labels,n)]
 
     def _save_data(self, path):
         np.save(os.path.join(path, "centroids.npy"), self.centroids)
@@ -876,7 +893,8 @@ class VoronoiPartitioner(BasePartitioner):
         Génère des visualisations avec adaptation pour l'axe y
         """
         self.fit(np.column_stack([x,y,z]))
-        states = self.compute_states(x, y, z)
+        # states = self.compute_states(x, y, z)
+        states = self.states
         
         image_data = {}
         
@@ -965,6 +983,7 @@ class QuantileGridPartitioner(BasePartitioner):
     """
 
     def __init__(self, nx=5, ny=5, nz=5):
+        super().__init__()
         self.nx, self.ny, self.nz = nx, ny, nz
         self._x_edges = None
         self._y_edges = None
@@ -1011,7 +1030,9 @@ class QuantileGridPartitioner(BasePartitioner):
         iz = np.clip(
             np.searchsorted(self._z_edges, z, side="right") - 1, 0, self.nz - 1
         )
-        return ix + iy * self.nx + iz * self.nx * self.ny
+        n=int(len(x)/self.PARTICLE_NUMBER)
+        self.states= ix + iy * self.nx + iz * self.nx * self.ny
+        return self.states[np.tile(self.species_labels,n)]
 
     def _save_data(self, path):
         np.savez(
@@ -1032,7 +1053,8 @@ class QuantileGridPartitioner(BasePartitioner):
         Génère des visualisations avec adaptation pour l'axe y
         """
         self.fit(np.column_stack([x,y,z]))
-        states = self.compute_states(x, y, z)
+        # states = self.compute_states(x, y, z)
+        states = self.states
         
         image_data = {}
         
@@ -1121,6 +1143,7 @@ class OctreePartitioner(BasePartitioner):
     """
 
     def __init__(self, max_particles=100, max_depth=5):
+        super().__init__()
         self.max_particles = max_particles
         self.max_depth = max_depth
         self._leaves = []  # liste de tuples (xmin, xmax, ymin, ymax, zmin, zmax)
@@ -1221,8 +1244,10 @@ class OctreePartitioner(BasePartitioner):
             tree = cKDTree(centers)
             _, idx = tree.query(coords[unassigned])
             states[unassigned] = idx
+            nn=int(len(x)/self.PARTICLE_NUMBER)
 
-        return states
+        self.states= states
+        return self.states[np.tile(self.species_labels,nn)]
 
     def _save_data(self, path):
         leaves_arr = np.array(self._leaves)
@@ -1242,7 +1267,8 @@ class OctreePartitioner(BasePartitioner):
         Génère des visualisations avec adaptation pour l'axe y
         """
         self.fit(np.column_stack([x,y,z]))
-        states = self.compute_states(x, y, z)
+        # states = self.compute_states(x, y, z)
+        states = self.states
         
         image_data = {}
         
@@ -1334,6 +1360,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
     """
 
     def __init__(self, n_cells=125, velocity_weight=0.0, random_state=42):
+        super().__init__()
         self._n_cells = n_cells
         self.velocity_weight = velocity_weight
         self.random_state = random_state
@@ -1413,7 +1440,9 @@ class PhysicsAwarePartitioner(BasePartitioner):
 
         X = (coords - self._mean) / self._std
         _, indices = self._tree.query(X)
-        return indices.astype(np.int64)
+        n=int(len(x)/self.PARTICLE_NUMBER)
+        self.states=indices.astype(np.int64)
+        return self.states[np.tile(self.species_labels,n)]
 
     def compute_states_with_physics(self, x, y, z, vx, vy, vz):
         """Assigne les états avec vitesse."""
@@ -1424,7 +1453,9 @@ class PhysicsAwarePartitioner(BasePartitioner):
 
         X = (features - self._mean) / self._std
         _, indices = self._tree.query(X)
-        return indices.astype(np.int64)
+        n=int(len(x)/self.PARTICLE_NUMBER)
+        self.states=indices.astype(np.int64)
+        return self.states[np.tile(self.species_labels,n)]
 
     def _save_data(self, path):
         np.save(os.path.join(path, "centroids.npy"), self._centroids)
@@ -1448,7 +1479,8 @@ class PhysicsAwarePartitioner(BasePartitioner):
         Génère des visualisations avec adaptation pour l'axe y
         """
         self.fit_with_physics(np.column_stack([x,y,z]),np.column_stack([vx,vy,vz]))
-        states = self.compute_states_with_physics(x, y, z,vx,vy,vz)
+        # states = self.compute_states_with_physics(x, y, z,vx,vy,vz)
+        states = self.states
         
         
         image_data = {}
@@ -1612,6 +1644,7 @@ class AdaptivePartitioner(BasePartitioner):
         bottom_method: str = "cylindrical",
         bottom_kwargs: dict = None,
     ):
+        super().__init__()
         self.y_split_input = y_split
         self.y_split_mode = y_split_mode
         self.n_cells_top_target = n_cells_top
@@ -1717,14 +1750,16 @@ class AdaptivePartitioner(BasePartitioner):
                     x[mask_top], y[mask_top], z[mask_top]
                 )
                 states[mask_top] = top_states + self._n_cells_bottom
-        
-        return states
+        n=int(len(x)/self.PARTICLE_NUMBER)
+        self.states= states
+        return self.states[np.tile(self.species_labels,n)]
     def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
         """
         Génère des visualisations avec adaptation pour l'axe y
         """
         self.fit(np.column_stack([x,y,z]))
-        states = self.compute_states(x, y, z)
+        # states = self.compute_states(x, y, z)
+        states = self.states
         
         image_data = {}
         
@@ -1823,6 +1858,7 @@ class MultiZonePartitioner(BasePartitioner):
         zones: list,
         y_mode: str = "absolute"
     ):
+        super().__init__()
         self.zones_config = zones
         self.y_mode = y_mode
         self._zones = []  # [(y_min, y_max, partitioner), ...]
@@ -1907,8 +1943,9 @@ class MultiZonePartitioner(BasePartitioner):
                 )
                 states[mask] = zone_states + self._cell_offsets[i]
                 assigned[mask] = True
-        
-        return states
+        n=int(len(x)/self.PARTICLE_NUMBER)
+        self.states= states
+        return self.states[np.tile(self.species_labels,n)]
     
     def _save_data(self, path):
         config = {
@@ -1953,7 +1990,8 @@ class MultiZonePartitioner(BasePartitioner):
         Génère des visualisations avec adaptation pour l'axe y
         """
         self.fit(np.column_stack([x,y,z]))
-        states = self.compute_states(x, y, z)
+        # states = self.compute_states(x, y, z)
+        states = self.states
         
         image_data = {}
         
@@ -2043,13 +2081,15 @@ class SingleCellPartitioner(BasePartitioner):
         return self
 
     def compute_states(self, x, y, z):
-        return np.zeros(len(np.asarray(x)), dtype=np.int64)
+        self.states= np.zeros(len(np.asarray(x)), dtype=np.int64)
+        return self.states
     def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
         """
         Génère des visualisations avec adaptation pour l'axe y
         """
         self.fit(np.column_stack([x,y,z]))
-        states = self.compute_states(x, y, z)
+        # states = self.compute_states(x, y, z)
+        states = self.states
         
         image_data = {}
         
