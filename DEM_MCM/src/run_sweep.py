@@ -28,9 +28,19 @@ from huggingface_hub import HfFileSystem
 # from partitioners import create_partitioner, REGISTRY  
 # from bucket_io import save_experiment_to_bucket, BUCKET_BASE
 # import partitioners as part
-from .import partitioners as part     # pour le notebook  .ipynb
-from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
-from .partitioners import create_partitioner, REGISTRY            # pour le terminal et fichiers .py
+
+# Imports relatifs (notebooks) vs absolus (script direct)
+try:
+    from .import partitioners as part     # pour le notebook  .ipynb
+    from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
+    from .partitioners import create_partitioner, REGISTRY            # pour le terminal et fichiers .py
+    from .utils import apply_species_mask
+except ImportError:
+    # Imports absolus quand lancé directement comme script
+    import partitioners as part
+    from bucket_io import save_experiment_to_bucket, BUCKET_BASE
+    from partitioners import create_partitioner, REGISTRY
+    from utils import apply_species_mask
 
 
 
@@ -670,7 +680,6 @@ def run_experiment(config, partitioner, files, fs, device):
         # Charger les données DEM et récupérer les espèces
         print(f"   🔬 Chargement des espèces (diamètres) depuis DEM...")
         # Charger juste le premier fichier pour récupérer les diamètres
-        coords_first = load_coords(files[start_base])
         with fs.open(files[start_base], "rb") as fh:
             df = pl.read_csv(fh)
             diameters = df["Diameter"].to_numpy() if "Diameter" in df.columns else None

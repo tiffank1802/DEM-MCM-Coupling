@@ -25,8 +25,14 @@ import json
 import io
 from collections import defaultdict
 from huggingface_hub import HfFileSystem
-# import bucket_io as b_io
-from .import bucket_io as b_io
+
+# Imports relatifs (notebooks) vs absolus (script direct)
+try:
+    from .import bucket_io as b_io
+    from .utils import apply_species_mask
+except ImportError:
+    import bucket_io as b_io
+    from utils import apply_species_mask
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
