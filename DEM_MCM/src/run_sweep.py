@@ -555,10 +555,17 @@ def sample_velocities(files, fs, sample_rate=SAMPLE_RATE):
 
 import torch
 
-def compute_P_matrix_torch(states_prev, states_curr, n_states, device="cpu"):
+def compute_P_matrix_torch(states_prev, states_curr, n_states, device="cpu", species_labels=None):
     """
     Calcule P_n pour un timestep - version entièrement vectorisée.
     P[j,i] = probabilité de transition de l'état i vers l'état j
+    
+    Args:
+        states_prev: états des particules au temps t (array ou tensor)
+        states_curr: états des particules au temps t+dt (array ou tensor)
+        n_states: nombre total d'états
+        device: "cpu" ou "cuda"
+        species_labels: masque booléen optionnel pour filtrer les particules [1030]
     """
     # Conversion en tensor si nécessaire
     if isinstance(states_prev, np.ndarray):
@@ -572,6 +579,28 @@ def compute_P_matrix_torch(states_prev, states_curr, n_states, device="cpu"):
     n = min(len(s_prev), len(s_curr))
     s_prev = s_prev[:n]
     s_curr = s_curr[:n]
+    
+    # ════════════════════════════════════════════════════════════════════
+    # APPLIQUER LE MASQUE species_labels
+    # ════════════════════════════════════════════════════════════════════
+    if species_labels is not None:
+        # Convertir species_labels en tensor si nécessaire
+        if isinstance(species_labels, np.ndarray):
+            mask = torch.from_numpy(species_labels[:n]).to(device).bool()
+        else:
+            mask = species_labels[:n].to(device).bool()
+        
+        # Filtrer les états par le masque
+        s_prev = s_prev[mask]
+        s_curr = s_curr[mask]
+        
+        n_filtered = len(s_prev)
+        if n_filtered == 0:
+            # Si toutes les particules sont filtrées, retourner une matrice zéro
+            print(f"   ⚠️  Masque species_labels a filtré TOUTES les particules! Matrice zéro retournée.")
+            return torch.zeros((n_states, n_states), dtype=torch.float64, device=device)
+        
+        print(f"   🎭 Masque appliqué: {n_filtered}/{n} particules conservées")
     
     # Création des masques one-hot pour chaque particule
     # phi_prev[p, i] = 1 si particule p était dans état i
@@ -632,6 +661,37 @@ def run_experiment(config, partitioner, files, fs, device):
     idx_curr = start_base+tau
 
     print(f"   📐 Configuration: NLT={config.nlt}, step={step}, dt={dt}, tau={tau}")
+    
+    # ════════════════════════════════════════════════════════════════════
+    # CHARGER SPECIES_LABELS POUR LE MASQUE
+    # ════════════════════════════════════════════════════════════════════
+    species_labels = None
+    try:
+        # Charger les données DEM et récupérer les espèces
+        print(f"   🔬 Chargement des espèces (diamètres) depuis DEM...")
+        # Charger juste le premier fichier pour récupérer les diamètres
+        coords_first = load_coords(files[start_base])
+        with fs.open(files[start_base], "rb") as fh:
+            df = pl.read_csv(fh)
+            diameters = df["Diameter"].to_numpy() if "Diameter" in df.columns else None
+        
+        if diameters is not None:
+            # Déterminer automatiquement les deux tailles
+            unique_vals = np.unique(diameters)
+            if len(unique_vals) == 2:
+                large_val = unique_vals[-1]  # Plus grande taille
+                species_labels = (diameters == large_val)  # True pour les grosses particules
+                n_large = species_labels.sum()
+                n_small = len(diameters) - n_large
+                print(f"   ✅ Espèces détectées: {n_large} grandes / {n_small} petites particules")
+            else:
+                print(f"   ⚠️  {len(unique_vals)} diamètres trouvés (attendu 2) - masque non appliqué")
+        else:
+            print(f"   ⚠️  Colonne 'Diameter' non trouvée - masque non appliqué")
+    except Exception as e:
+        print(f"   ⚠️  Erreur lors du chargement des espèces: {e}")
+        species_labels = None
+    
     def load_coords(file_path):
         with fs.open(file_path, "rb") as fh:
             df = pl.read_csv(fh)
@@ -746,8 +806,8 @@ def run_experiment(config, partitioner, files, fs, device):
             states_prev_acc = np.concatenate((states_prev_acc, np.asarray(states_prev)))
             states_curr_acc = np.concatenate((states_curr_acc, np.asarray(states_curr)))
 
-        # Calcul de la matrice de transition
-    P_acc = compute_P_matrix_torch(states_prev_acc, states_curr_acc, n_states, device)
+         # Calcul de la matrice de transition
+    P_acc = compute_P_matrix_torch(states_prev_acc, states_curr_acc, n_states, device, species_labels=species_labels)
 
     # ── Moyenne ──
     P = P_acc 
