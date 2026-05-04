@@ -28,8 +28,12 @@ from abc import ABC, abstractmethod
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.spatial import ConvexHull
-from . import analyze_results as ar
-# import analyze_results as ar
+
+# Imports relatifs (notebooks) vs absolus (script direct)
+try:
+    from . import analyze_results as ar
+except ImportError:
+    import analyze_results as ar
 
 __all__ = [
  
