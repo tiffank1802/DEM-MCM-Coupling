@@ -36,7 +36,7 @@ if __name__=="__main__":
     rsd_history={}
     Time=250
     # folder_name ="physics_400cells_pos_NLT10_step10_dt2_tau50_start250"
-    folder_name ="cylindrical_nr1_nth10_nz1_equal_area_NLT10_step10_dt2_tau50_start250"
+    folder_name ="cylindrical_nr5_nth1_nz1_equal_area_NLT10_step10_dt2_tau50_start250"
     # folder_name ="cartesian_nx3_ny2_nz3_NLT10_step50_dt2_tau50_start250"
     # folder_name ="cartesian_nx3_ny3_nz3_NLT10_step100_dt2_tau50_start250"
     # folder_name ="voronoi_600cells_NLT10_step10_dt2_tau50_start250"
@@ -70,7 +70,7 @@ if __name__=="__main__":
     # )
     #     part = create_partitioner(method="cartesian",nx=3,ny=2,nz=3
     # )
-        part = create_partitioner(method="cylindrical",nr=1,ntheta=10,nz=1
+        part = create_partitioner(method="cylindrical",nr=5,ntheta=1,nz=1
     )
     #     part = create_partitioner(method="voronoi",n_cells=600
     # )
