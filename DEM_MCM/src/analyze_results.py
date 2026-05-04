@@ -1807,9 +1807,13 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         return {"dem": dem_rsd, "markov": markov_rsd, "partitioner": partitioner, "P": P}
 
 
-    def _compute_P_from_dem(self, partitioner):
+    def _compute_P_from_dem(self, partitioner, species_labels=None):
         """
         Calcule la matrice P directement depuis les snapshots DEM chargés.
+        
+        Si species_labels est fourni (bool array), filtre les particules et
+        construit une P-matrice réduite pour le sous-ensemble spécifié.
+        Sinon, construit la P-matrice complète [1030 x 1030].
         """
         n_states = partitioner.n_cells
         T = np.zeros((n_states, n_states))
@@ -1824,6 +1828,12 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
             states_curr = partitioner.compute_states(
                 coords_curr[:, 0], coords_curr[:, 1], coords_curr[:, 2]
             )
+            
+            # Appliquer le filtre espèce si fourni
+            if species_labels is not None:
+                # species_labels est un masque bool [1030]
+                states_prev = states_prev[species_labels]
+                states_curr = states_curr[species_labels]
 
             n = min(len(states_prev), len(states_curr))
             for i in range(n):
@@ -1833,7 +1843,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         row_sums = T.sum(axis=1, keepdims=True)
         P = np.divide(T, row_sums, where=row_sums > 0, out=np.zeros_like(T))
 
-        print(f"   P calculée: {n_states}×{n_states}, diag_mean={np.diag(P).mean():.3f}")
+        print(f"   P calculée: {T.shape[0]}×{T.shape[1]}, diag_mean={np.diag(P).mean():.3f}")
         return P
 
 

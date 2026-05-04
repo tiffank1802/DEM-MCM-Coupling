@@ -575,7 +575,8 @@ def compute_P_matrix_torch(states_prev, states_curr, n_states, device="cpu", spe
         states_curr: états des particules au temps t+dt (array ou tensor)
         n_states: nombre total d'états
         device: "cpu" ou "cuda"
-        species_labels: masque booléen optionnel pour filtrer les particules [1030]
+        species_labels: (DÉPRÉCIÉ) masque booléen optionnel - le filtrage doit être 
+                        appliqué AVANT d'appeler cette fonction
     """
     # Conversion en tensor si nécessaire
     if isinstance(states_prev, np.ndarray):
@@ -589,28 +590,6 @@ def compute_P_matrix_torch(states_prev, states_curr, n_states, device="cpu", spe
     n = min(len(s_prev), len(s_curr))
     s_prev = s_prev[:n]
     s_curr = s_curr[:n]
-    
-    # ════════════════════════════════════════════════════════════════════
-    # APPLIQUER LE MASQUE species_labels
-    # ════════════════════════════════════════════════════════════════════
-    if species_labels is not None:
-        # Convertir species_labels en tensor si nécessaire
-        if isinstance(species_labels, np.ndarray):
-            mask = torch.from_numpy(species_labels[:n]).to(device).bool()
-        else:
-            mask = species_labels[:n].to(device).bool()
-        
-        # Filtrer les états par le masque
-        s_prev = s_prev[mask]
-        s_curr = s_curr[mask]
-        
-        n_filtered = len(s_prev)
-        if n_filtered == 0:
-            # Si toutes les particules sont filtrées, retourner une matrice zéro
-            print(f"   ⚠️  Masque species_labels a filtré TOUTES les particules! Matrice zéro retournée.")
-            return torch.zeros((n_states, n_states), dtype=torch.float64, device=device)
-        
-        print(f"   🎭 Masque appliqué: {n_filtered}/{n} particules conservées")
     
     # Création des masques one-hot pour chaque particule
     # phi_prev[p, i] = 1 si particule p était dans état i
@@ -782,7 +761,7 @@ def run_experiment(config, partitioner, files, fs, device):
     states_prev_acc=np.array([])
     states_curr_acc=np.array([])
 
-    # ── Traitement des paires ──
+     # ── Traitement des paires ──
     for i, (idx_prev, idx_curr) in enumerate(tqdm(all_pairs, desc="   Paires", leave=False)):
         # ✅ Charger les coordonnées pour cette paire
         coords_prev = load_coords(files[idx_prev])
@@ -804,19 +783,21 @@ def run_experiment(config, partitioner, files, fs, device):
             # states_curr = partitioner.compute_states_with_physics(*coords_curr, *vel_curr)
             states_prev = partitioner.compute_states(*coords_prev)
             states_curr = partitioner.compute_states(*coords_curr)
-
-            states_prev_acc = np.concatenate((states_prev_acc, np.asarray(states_prev)))
-            states_curr_acc = np.concatenate((states_curr_acc, np.asarray(states_curr)))
         else:
         
             states_prev = partitioner.compute_states(*coords_prev)
             states_curr = partitioner.compute_states(*coords_curr)
 
-            states_prev_acc = np.concatenate((states_prev_acc, np.asarray(states_prev)))
-            states_curr_acc = np.concatenate((states_curr_acc, np.asarray(states_curr)))
+        # ✅ Appliquer le filtre espèce AVANT accumulation (si fourni)
+        if species_labels is not None:
+            states_prev = states_prev[species_labels]
+            states_curr = states_curr[species_labels]
 
-         # Calcul de la matrice de transition
-    P_acc = compute_P_matrix_torch(states_prev_acc, states_curr_acc, n_states, device, species_labels=species_labels)
+        states_prev_acc = np.concatenate((states_prev_acc, np.asarray(states_prev)))
+        states_curr_acc = np.concatenate((states_curr_acc, np.asarray(states_curr)))
+
+         # Calcul de la matrice de transition (species_labels=None car masque déjà appliqué)
+    P_acc = compute_P_matrix_torch(states_prev_acc, states_curr_acc, n_states, device, species_labels=None)
 
     # ── Moyenne ──
     P = P_acc 
