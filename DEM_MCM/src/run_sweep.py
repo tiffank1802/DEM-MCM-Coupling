@@ -25,12 +25,12 @@ from tqdm import tqdm
 from dataclasses import dataclass, field, asdict
 from huggingface_hub import HfFileSystem
 
-from partitioners import create_partitioner, REGISTRY  
-from bucket_io import save_experiment_to_bucket, BUCKET_BASE
-import partitioners as part
-# from .import partitioners as part     # pour le notebook  .ipynb
-# from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
-# from .partitioners import create_partitioner, REGISTRY            # pour le terminal et fichiers .py
+# from partitioners import create_partitioner, REGISTRY  
+# from bucket_io import save_experiment_to_bucket, BUCKET_BASE
+# import partitioners as part
+from .import partitioners as part     # pour le notebook  .ipynb
+from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
+from .partitioners import create_partitioner, REGISTRY            # pour le terminal et fichiers .py
 
 
 

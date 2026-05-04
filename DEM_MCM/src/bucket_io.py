@@ -18,9 +18,9 @@ BUCKET_ID = "ktongue/DEM_MCM"
 # BUCKET_PREFIX = "ResultsDtMCM"
 # BUCKET_PREFIX = "NewResultsMCM"
 # BUCKET_PREFIX = "RaffinageTemporel"
-# BUCKET_PREFIX = "Experiments"
+BUCKET_PREFIX = "Experiments"
 # BUCKET_PREFIX = "BIG"
-BUCKET_PREFIX = "SMALL"
+# BUCKET_PREFIX = "SMALL"
 BUCKET_BASE = f"hf://buckets/{BUCKET_ID}/{BUCKET_PREFIX}"
 
 _fs = None

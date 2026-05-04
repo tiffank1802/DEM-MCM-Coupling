@@ -28,8 +28,8 @@ from abc import ABC, abstractmethod
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.spatial import ConvexHull
-# from . import analyze_results as ar
-import analyze_results as ar
+from . import analyze_results as ar
+# import analyze_results as ar
 
 __all__ = [
  
@@ -57,8 +57,8 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
     """Interface commune pour tous les partitionneurs."""
     def __init__(self):
         self._y_split=0
-        self.load_dem_snapshots(file_indices=[250])
-        self.label_species()
+        # self.load_dem_snapshots(file_indices=[250])
+        # self.label_species()
         self.PARTICLE_NUMBER=1030
         
     # analyzer=ar.MarkovAnalyzer()
@@ -257,7 +257,7 @@ class CartesianPartitioner(BasePartitioner):
         )
         n=int(len(x)/self.PARTICLE_NUMBER)
         self.states=ix + iy * self.nx + iz * self.nx * self.ny
-        return self.states[np.tile(self.species_labels,n)]
+        return self.states#[np.tile(self.species_labels,n)]
 
     def _save_data(self, path):
         np.save(os.path.join(path, "bounds.npy"), np.array(self._bounds))
