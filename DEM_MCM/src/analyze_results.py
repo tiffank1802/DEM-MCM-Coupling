@@ -1020,7 +1020,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         return self.dem_snapshots
 
 
-    def label_species(self, criterion="large", custom_labels=None):
+    def label_species(self, criterion="small", custom_labels=None):
         """
         Étiquette chaque particule comme espèce A (True) ou B (False) à t=0.
         L'étiquette est PERMANENTE.

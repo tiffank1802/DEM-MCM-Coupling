@@ -1142,12 +1142,14 @@ class OctreePartitioner(BasePartitioner):
     Inconvénient : nombre de cellules non contrôlé a priori.
     """
 
-    def __init__(self, max_particles=100, max_depth=5):
+    def __init__(self, max_particles=100, max_depth=5,transform_type=None):
         super().__init__()
         self.max_particles = max_particles
         self.max_depth = max_depth
+        self.transform_type=transform_type
         self._leaves = []  # liste de tuples (xmin, xmax, ymin, ymax, zmin, zmax)
         self._bounds = None
+        self._stats={}
 
     @property
     def n_cells(self):
@@ -1156,20 +1158,33 @@ class OctreePartitioner(BasePartitioner):
     @property
     def label(self):
         return f"octree_mp{self.max_particles}_md{self.max_depth}"
+    
+    def _apply_transform(self,coords):
+        if self.transform_type=='normalize':
+            return (coords-self._stats["min"])/self._stats["max"]-self._stats["min"]
+        return coords 
 
     def fit(self, coordinates):
         coordinates=np.asarray(coordinates)
         eps = 0.001
+        self._stats["min"]=coordinates.min(axis=0)-eps
+        self._stats["max"]=coordinates.max(axis=0)+eps
+        # 2. Application de la transformation (si définie)
+        if self.transform_type is not None:
+            transformed_coords = self._apply_transform(coordinates)
+        else:
+            # Sécurité : si pas de transform, on utilise les coordonnées brutes
+            transformed_coords = coordinates
         self._bounds = (
-            coordinates[:, 0].min() - eps,
-            coordinates[:, 0].max() + eps,
-            coordinates[:, 1].min() - eps,
-            coordinates[:, 1].max() + eps,
-            coordinates[:, 2].min() - eps,
-            coordinates[:, 2].max() + eps,
+            transformed_coords[:, 0].min() - eps,
+            transformed_coords[:, 0].max() + eps,
+            transformed_coords[:, 1].min() - eps,
+            transformed_coords[:, 1].max() + eps,
+            transformed_coords[:, 2].min() - eps,
+            transformed_coords[:, 2].max() + eps,
         )
         self._leaves = []
-        self._subdivide(coordinates, self._bounds, depth=0)
+        self._subdivide(transformed_coords, self._bounds, depth=0)
         return self
 
     def _subdivide(self, coords, bounds, depth):
@@ -1183,9 +1198,12 @@ class OctreePartitioner(BasePartitioner):
             return
 
         # Point de coupe = milieu
-        xmid = (xmin + xmax) / 2
-        ymid = (ymin + ymax) / 2
-        zmid = (zmin + zmax) / 2
+        # xmid = (xmin + xmax) / 2
+        # ymid = (ymin + ymax) / 2
+        # zmid = (zmin + zmax) / 2
+        xmid = np.median(coords[:,0])
+        ymid = np.median(coords[:,1])
+        zmid = np.median(coords[:,2])
 
         # Assigner chaque particule à un octant (0-7)
         octant = (
@@ -1244,10 +1262,10 @@ class OctreePartitioner(BasePartitioner):
             tree = cKDTree(centers)
             _, idx = tree.query(coords[unassigned])
             states[unassigned] = idx
-            nn=int(len(x)/self.PARTICLE_NUMBER)
+        n_n=int(len(x)/self.PARTICLE_NUMBER)
 
         self.states= states
-        return self.states[np.tile(self.species_labels,nn)]
+        return self.states[np.tile(self.species_labels,n_n)]
 
     def _save_data(self, path):
         leaves_arr = np.array(self._leaves)
@@ -1644,7 +1662,7 @@ class AdaptivePartitioner(BasePartitioner):
         bottom_method: str = "cylindrical",
         bottom_kwargs: dict = None,
     ):
-        super().__init__()
+        # super().__init__()
         self.y_split_input = y_split
         self.y_split_mode = y_split_mode
         self.n_cells_top_target = n_cells_top
@@ -1750,9 +1768,10 @@ class AdaptivePartitioner(BasePartitioner):
                     x[mask_top], y[mask_top], z[mask_top]
                 )
                 states[mask_top] = top_states + self._n_cells_bottom
-        n=int(len(x)/self.PARTICLE_NUMBER)
-        self.states= states
-        return self.states[np.tile(self.species_labels,n)]
+        # n=int(len(x)/self.PARTICLE_NUMBER)
+        self.states= states # Les méthode de découpage hybrides comme le adaptive et le multizone ne necessite pas l'application de masque car
+        # elles appellent déjà d'autres méthode de computestate des classes de découpage qu'elle instancient.
+        return self.states
     def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
         """
         Génère des visualisations avec adaptation pour l'axe y
@@ -1858,7 +1877,7 @@ class MultiZonePartitioner(BasePartitioner):
         zones: list,
         y_mode: str = "absolute"
     ):
-        super().__init__()
+        # super().__init__()
         self.zones_config = zones
         self.y_mode = y_mode
         self._zones = []  # [(y_min, y_max, partitioner), ...]
@@ -1943,9 +1962,9 @@ class MultiZonePartitioner(BasePartitioner):
                 )
                 states[mask] = zone_states + self._cell_offsets[i]
                 assigned[mask] = True
-        n=int(len(x)/self.PARTICLE_NUMBER)
+        # n=int(len(x)/self.PARTICLE_NUMBER)
         self.states= states
-        return self.states[np.tile(self.species_labels,n)]
+        return self.states
     
     def _save_data(self, path):
         config = {
