@@ -36,8 +36,8 @@ if __name__=="__main__":
     rsd_history={}
     Time=250
     # folder_name ="physics_400cells_pos_NLT10_step10_dt2_tau50_start250"
-    # folder_name ="cylindrical_nr5_nth1_nz1_equal_area_NLT10_step10_dt2_tau50_start250"
-    folder_name ="cartesian_nx3_ny2_nz3_NLT10_step50_dt2_tau50_start250"
+    folder_name ="cylindrical_nr1_nth10_nz1_equal_area_NLT10_step10_dt2_tau50_start250"
+    # folder_name ="cartesian_nx3_ny2_nz3_NLT10_step50_dt2_tau50_start250"
     # folder_name ="cartesian_nx3_ny3_nz3_NLT10_step100_dt2_tau50_start250"
     # folder_name ="voronoi_600cells_NLT10_step10_dt2_tau50_start250"
     # folder_name ="voronoi_1000cells_NLT10_step10_dt2_tau50_start250"
@@ -68,10 +68,10 @@ if __name__=="__main__":
     # })
     #     part = create_partitioner(method="physics",n_cells=400
     # )
-        part = create_partitioner(method="cartesian",nx=3,ny=2,nz=3
-    )
-    #     part = create_partitioner(method="cylindrical",nr=5,ntheta=1,nz=1
+    #     part = create_partitioner(method="cartesian",nx=3,ny=2,nz=3
     # )
+        part = create_partitioner(method="cylindrical",nr=5,ntheta=1,nz=1
+    )
     #     part = create_partitioner(method="voronoi",n_cells=600
     # )
     #     part = create_partitioner(method="octree",max_particles=200,max_depth=2
@@ -88,30 +88,50 @@ if __name__=="__main__":
         tau=50
         tt=step+tau
         analyzer.label_species()
-        rsd = analyzer.compute_rsd(folder_name=folder_name, partitioner=part,initial_time=Time,n_steps=39)
-        rsd_history[f"init={Time}"]=analyzer.rsd
+        # rsd = analyzer.compute_rsd(folder_name=folder_name, partitioner=part,initial_time=Time,n_steps=39)
+        # rsd_history[f"init={Time}"]=analyzer.rsd
         
-        analyzer.load_dem_snapshots(file_indices=list(range(250,6000,100)))
-        rsd_DEM=analyzer.compute_dem_rsd(partitioner=part)
-        start=(250/6000)*60
-        t_DEM=np.linspace(start,60,len(rsd_DEM['rsd']))
-        t_MCM=np.linspace(start,60,len(analyzer.rsd))
-        # analyzer.compare_dem_vs_markov(method='cartesian',folder_name=folder_name,file_indices=[250],method_kwargs={"nx":3,"ny":2,"nz":3})
+        # analyzer.load_dem_snapshots(file_indices=list(range(250,6000,100)))
+        # rsd_DEM=analyzer.compute_dem_rsd(partitioner=part)
+        # start=(250/6000)*60
+        # t_DEM=np.linspace(start,60,len(rsd_DEM['rsd']))
+        # t_MCM=np.linspace(start,60,len(analyzer.rsd))
+        # # analyzer.compare_dem_vs_markov(method='cartesian',folder_name=folder_name,file_indices=[250],method_kwargs={"nx":3,"ny":2,"nz":3})
     
-        print(f"RSD initial: {rsd['rsd_initial']:.3f}")
-        print(f"RSD final: {rsd['rsd_final']:.3f}")
-        print(f"t_50%: {rsd['mixing_time_50']}")
-        print(f"t_90%: {rsd['mixing_time_90']}")
-        print(f"Historique des concentrations\n{analyzer.concentration_history}")
-        print(f" concentrations\n{rsd_DEM["concentrations"]}")
-        # print(analyzer.concentration_history.sum(1).shape)
-        # print(analyzer.rsd)
-        plt.plot(t_MCM,analyzer.rsd,"*",label="MCM")
-        plt.plot(t_DEM,rsd_DEM["concentrations"].std(axis=1)/rsd_DEM["concentrations"].mean(axis=1),".",label="DEM")
-        plt.title("RSD découpage 400 particules méthode physique")
-        plt.xlabel("t(s)")
-        plt.ylabel("RSD")
-        plt.legend()
-        plt.savefig('rsd.png')
+        # print(f"RSD initial: {rsd['rsd_initial']:.3f}")
+        # print(f"RSD final: {rsd['rsd_final']:.3f}")
+        # print(f"t_50%: {rsd['mixing_time_50']}")
+        # print(f"t_90%: {rsd['mixing_time_90']}")
+        # print(f"Historique des concentrations\n{analyzer.concentration_history}")
+        # print(f" concentrations\n{rsd_DEM["concentrations"]}")
+        # # print(analyzer.concentration_history.sum(1).shape)
+        # # print(analyzer.rsd)
+        # plt.plot(t_MCM,analyzer.rsd,"*",label="MCM")
+        # plt.plot(t_DEM,rsd_DEM["concentrations"].std(axis=1)/rsd_DEM["concentrations"].mean(axis=1),".",label="DEM")
+        # plt.title("RSD découpage 400 particules méthode physique")
+        # plt.xlabel("t(s)")
+        # plt.ylabel("RSD")
+        # plt.legend()
+        # plt.savefig('rsd.png')
+        # analyzer.plot_experiment(folder_name=folder_name,partitioner=part)
+
+    # Fit sur les données DEM (charge automatiquement les snapshots)
+    analyzer.load_dem_snapshots(file_indices=list(range(250, 2000, 50)))
+    all_coords = np.vstack([s["coords"] for s in analyzer.dem_snapshots])
+    part.fit(all_coords)
+
+    # Comparaison synchronisée
+    results = analyzer.compare_rsd_synchronized(
+        folder_name=folder_name,
+        partitioner=part,
+        n_steps=200,
+        initial_time=250,
+        species_criterion="large"
+    )
+
+    # Accès aux résultats stockés
+    print(f"RSD DEM stocké: {list(analyzer.dem_rsd_results.keys())}")
+    print(f"RSD Markov stocké: {list(analyzer.markov_rsd_results.keys())}")
+    print(f"Conditions initiales partagées disponibles: C0.shape = {analyzer.C0.shape}")
 
         

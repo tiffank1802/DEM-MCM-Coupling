@@ -441,7 +441,7 @@ class CylindricalPartitioner(BasePartitioner):
         )
         n=int(len(x)/self.PARTICLE_NUMBER)
         self.states=ir + itheta * self.nr + iz * self.nr * self.ntheta
-        return  self.states[np.tile(self.species_labels,n)] # la numérotation des partitons se fait partant des rayons, puis les angles et enfin les hauteurs z
+        return  self.states#[np.tile(self.species_labels,n)] # la numérotation des partitons se fait partant des rayons, puis les angles et enfin les hauteurs z
 
     def _save_data(self, path):
         params = {
