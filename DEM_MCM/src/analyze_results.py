@@ -91,10 +91,30 @@ class MarkovAnalyzer:
     
     def __init__(self):
         self.fs = HfFileSystem()
-        self.results = {}           # {folder_name: {matrix, params, stats, method}}
-        self.by_method = defaultdict(dict)  # {method: {folder_name: data}}
-        self.concentration_history=None
-        self.rsd=None
+        self.results = {}           
+        self.by_method = defaultdict(dict)  
+        
+        # ═══ NOUVEAUX ATTRIBUTS PARTAGÉS ═══
+        # Données DEM
+        self.dem_snapshots = []
+        self.dem_file_indices = []
+        self.n_particles = 0
+        self.dem_diameters = None
+        self.species_labels = None
+        
+        # Partitionneurs
+        self.current_partitioner = None
+        self.partitioners = {}  # {name: partitioner}
+        
+        # Résultats RSD (stockage centralisé)
+        self.dem_rsd_results = {}      # {partitioner_name: rsd_data}
+        self.markov_rsd_results = {}   # {experiment_name: rsd_data}
+        
+        # Conditions initiales partagées
+        self.initial_time = 250        # Temps de départ par défaut
+        self.C0 = None                 # Concentration initiale de référence
+        self.phi_A_0 = None            # Distribution espèce A initiale
+        self.phi_total_0 = None        # Distribution totale initiale
     
     # ─────────────────────────────────────────────────────────────────────
     # DÉTECTION DE MÉTHODE
@@ -818,108 +838,115 @@ class MarkovAnalyzer:
     self,
     folder_name,
     n_steps=200,
-    initial_time=250,
+    initial_time=None,
     partitioner=None,
     species_labels=None,
+    use_dem_initial_conditions=True,  # ← NOUVEAU paramètre
 ):
         """
-        Calcule le RSD (Relative Standard Deviation) des particules
-        dans chaque partition au cours du temps, à partir d'une
-        condition initiale réelle mesurée sur un snapshot DEM.
-
-        Le calcul de C0 suit la même logique que compute_dem_rsd :
-            C_i(0) = n_A,i / n_total,i
-
+        Calcule le RSD prédit par Markov.
+        
+        **NOUVEAU** : Peut maintenant utiliser les mêmes conditions initiales que la DEM
+        pour une comparaison cohérente.
+        
         Args:
             folder_name: nom de l'expérience
-            n_steps: nombre de pas de simulation Markov
-            initial_time: instant DEM utilisé pour construire C0
-            partitioner: partitionneur déjà fitté, obligatoire pour projeter les particules en cellules
-            species_labels: labels booléens des particules (True = espèce A)
-
+            n_steps: nombre de pas de simulation
+            initial_time: instant DEM pour C0 (None = self.initial_time)
+            partitioner: partitionneur fitté
+            species_labels: labels des espèces (None = self.species_labels)
+            use_dem_initial_conditions: si True, calcule C0 depuis les données DEM
+            
         Returns:
-            dict avec:
-                - rsd: array (n_steps,)
-                - rsd_percent: array (n_steps,)
-                - concentration_history: array (n_steps, n_states)
-                - entropy: array (n_steps,)
-                - rsd_initial: float
-                - rsd_final: float
-                - mixing_time_50: int ou None
-                - mixing_time_90: int ou None
-                - n_states: int
-                - C0: array (n_states,) — condition initiale réelle
-                - initial_time: int
+            dict avec rsd, concentration_history, entropy, etc.
         """
         M = self.get_matrix(folder_name)
         n_states = M.shape[0]
-        # print(f"matrice de transition {M}")
-        print(f"vérification de la condition de normalisation {M.sum(0)}")
-
-        if partitioner is None:
-            raise ValueError(
-                "partitioner est requis pour calculer C0 depuis un snapshot DEM."
-            )
-
-        if species_labels is None:
-            if not hasattr(self, "species_labels"):
+        
+        # Temps de départ
+        if initial_time is None:
+            initial_time = self.initial_time
+        
+        # ══════════════════════════════════════════════════════════════
+        # CONDITION INITIALE
+        # ══════════════════════════════════════════════════════════════
+        
+        if use_dem_initial_conditions:
+            # ── Utiliser les données DEM (synchronisé avec compute_dem_rsd) ──
+            if partitioner is None:
                 raise ValueError(
-                    "species_labels est requis (ou self.species_labels doit exister)."
+                    "partitioner requis pour calculer les conditions initiales DEM"
                 )
-            species_labels = self.species_labels
-
-        if not hasattr(self, "dem_snapshots") or not self.dem_snapshots:
-            raise ValueError(
-                "Aucun snapshot DEM chargé. Appelez load_dem_snapshots(...) avant compute_rsd."
+            
+            if species_labels is None:
+                if self.species_labels is None:
+                    raise ValueError("species_labels requis (appelez label_species())")
+                species_labels = self.species_labels
+            
+            # Charger le snapshot à initial_time
+            if not self.dem_snapshots or self.dem_snapshots[0]["t"] != initial_time:
+                print(f"🔄 Chargement du snapshot DEM à t={initial_time}...")
+                self.load_dem_snapshots(file_indices=[initial_time])
+            
+            snap0 = self.dem_snapshots[0]
+            coords0 = snap0["coords"]
+            actual_time = int(snap0["t"])
+            
+            # États des particules
+            states0 = partitioner.compute_states(
+                coords0[:, 0], coords0[:, 1], coords0[:, 2]
             )
-
-        # Trouver le snapshot le plus proche de initial_time
-        # times = np.array([snap["t"] for snap in self.dem_snapshots])
-        # k0 = int(np.argmin(np.abs(times - initial_time)))
-        # k0 = initial_time
-        self.load_dem_snapshots(file_indices=[initial_time])
-        snap0 = self.dem_snapshots[0]
-        coords0 = snap0["coords"]
-        actual_time = int(snap0["t"])
-
-        # États des particules dans le partitionnement
-        states0 = partitioner.compute_states(
-            coords0[:, 0], coords0[:, 1], coords0[:, 2]
-        )
-
-        # Comptage par cellule
-        ntotal = np.bincount(states0, minlength=n_states).astype(float)
-        # ntotal = self.species_labels.sum() # est le nombre de total de particules de l'espèce considérée
-        nA = np.bincount(states0[species_labels], minlength=n_states).astype(float) # nombre de particules de type species_labels dans chaque partition
-        # nA = np.bincount(states0[:], minlength=n_states).astype(float) # nombre de particules de type species_labels dans chaque partition
-
-        # Condition initiale réelle : C0 = nA / ntotal
-        C = np.zeros(n_states)
-        mask = ntotal > 0
-        C[mask] = nA[mask] / ntotal[mask]
-        # C[mask] = nA[mask] 
-        # C[mask] = nA[mask] # en nombre de particules de 
-        print(f"concetration initiale \n{C.sum()}")
-
-        # Simulation Markov
+            
+            # Comptage par cellule
+            ntotal = np.bincount(states0, minlength=n_states).astype(float)
+            nA = np.bincount(states0[species_labels], minlength=n_states).astype(float)
+            
+            # Concentration initiale : C0 = nA / ntotal
+            C = np.zeros(n_states)
+            mask = ntotal > 0
+            C[mask] = nA[mask] / ntotal[mask]
+            
+            # ── Stocker pour réutilisation ──
+            self.C0 = C.copy()
+            self.phi_A_0 = nA.copy()
+            self.phi_total_0 = ntotal.copy()
+            self.initial_time = actual_time
+            
+            print(f"✅ Conditions initiales DEM à t={actual_time}")
+            print(f"   Concentration totale: {C.sum():.4f}")
+            print(f"   Cellules actives: {mask.sum()}/{n_states}")
+            
+        else:
+            # ── Condition initiale artificielle (ancienne méthode) ──
+            C = np.zeros(n_states)
+            mid = n_states // 2
+            C[:mid] = 1.0
+            C[mid:] = 0.0
+            C = C / C.sum() if C.sum() > 0 else C
+            
+            print("⚠️  Utilisation d'une condition initiale artificielle (moitié/moitié)")
+        
+        # ══════════════════════════════════════════════════════════════
+        # SIMULATION MARKOV
+        # ══════════════════════════════════════════════════════════════
+        
         concentration_history = np.zeros((n_steps, n_states))
         rsd = np.zeros(n_steps)
         entropy = np.zeros(n_steps)
-
+        
         for t in range(n_steps):
-            C = C @ M
-            # C = np.clip(C, 0, 1) # cette ligne de code ne change rien car normalement les C sont toujours dans l'intervalle [0 1]
-
-            concentration_history[t] = C
-
+            
             visited = C > 1e-12
             if visited.sum() > 1:
-                mean_c = C[visited][4:5].mean()
-                std_c = C[visited][4:5].std()
+                mean_c = C[visited].mean()
+                std_c = C[visited].std()
                 rsd[t] = std_c / mean_c if mean_c > 0 else 0
             else:
                 rsd[t] = 0
-
+            concentration_history[t] = C
+            C = C @ M
+            
+            # Entropie
             C_active = C[visited]
             if len(C_active) > 0:
                 C_clip = np.clip(C_active, 1e-10, 1 - 1e-10)
@@ -929,12 +956,13 @@ class MarkovAnalyzer:
                 entropy[t] = H / np.log(2)
             else:
                 entropy[t] = 0
-
-        print(f"concentration finale \n{C.sum()}")
+        
+        # ══════════════════════════════════════════════════════════════
+        # MÉTRIQUES
+        # ══════════════════════════════════════════════════════════════
+        
         rsd_0 = rsd[0] if rsd[0] > 0 else 1.0
-        self.concentration_history=concentration_history
-        self.rsd=rsd
-
+        
         mixing_time_50 = None
         mixing_time_90 = None
         for t in range(n_steps):
@@ -942,8 +970,8 @@ class MarkovAnalyzer:
                 mixing_time_50 = t
             if mixing_time_90 is None and rsd[t] < 0.1 * rsd_0:
                 mixing_time_90 = t
-
-        return {
+        
+        result = {
             "rsd": rsd,
             "rsd_percent": rsd * 100,
             "concentration_history": concentration_history,
@@ -953,9 +981,17 @@ class MarkovAnalyzer:
             "mixing_time_50": mixing_time_50,
             "mixing_time_90": mixing_time_90,
             "n_states": n_states,
-            "C0": concentration_history[0] * 0 + C,  # ou stocker une copie avant la boucle
-            "initial_time": actual_time,
+            "C0": self.C0 if use_dem_initial_conditions else concentration_history[0],
+            "initial_time": self.initial_time if use_dem_initial_conditions else 0,
+            "source": "Markov (DEM IC)" if use_dem_initial_conditions else "Markov (artificial IC)",
         }
+        
+        # ── Stocker dans l'attribut de classe ──
+        self.markov_rsd_results[folder_name] = result
+        self.concentration_history = concentration_history
+        self.rsd = rsd
+        
+        return result
     """
 Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
 """
@@ -1099,119 +1135,196 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
     # CALCUL DU RSD — DONNÉES DEM RÉELLES
     # ═══════════════════════════════════════════════════════════════════
 
-    def compute_dem_rsd(self, partitioner, species_labels=None):
+    def compute_dem_rsd(self, partitioner, species_labels=None, partitioner_name=None):
         """
-        Calcule le RSD à partir des données DEM réelles.
+        Calcule le RSD (Relative Standard Deviation) à partir des données DEM réelles.
 
         À chaque instant t:
-        1. Assigner chaque particule à sa cellule
+        1. Assigner chaque particule à sa cellule via le partitionneur
         2. Pour chaque cellule i:
             C_i(t) = n_A(i,t) / n_total(i,t) 
             (concentration de l'espèce A dans la cellule i)
         3. RSD(t) = std(C_i) / mean(C_i)  sur les cellules non-vides
 
+        **NOUVEAU** :
+        - Stocke les résultats dans self.dem_rsd_results pour accès global
+        - Stocke les conditions initiales (C0, phi_A_0, phi_total_0) pour synchronisation Markov
+        - Gère automatiquement le chargement des snapshots si absent
+
         Args:
-            partitioner: partitionneur fitté
+            partitioner: partitionneur fitté (obligatoire)
             species_labels: array bool (None = self.species_labels)
+            partitioner_name: nom pour stockage (None = partitioner.label)
 
         Returns:
             dict avec:
-                - times: array des temps
+                - times: array des temps (indices des fichiers DEM)
                 - rsd: array des RSD
                 - rsd_percent: idem en %
-                - concentrations: list de arrays C_i(t)
-                - n_particles_per_cell: list de arrays
-                - entropy: entropie normalisée
+                - concentrations: array (n_snaps, n_states) des concentrations C_i(t)
+                - populations: list de arrays (nombre de particules par cellule)
+                - entropy: entropie normalisée H(t) / log(2)
                 - intensity_of_segregation: I(t) = σ²(C) / (C̄(1-C̄))
+                - rsd_initial: float
+                - rsd_final: float
+                - mixing_time_50: int ou None (temps pour RSD = 0.5 * RSD_0)
+                - mixing_time_90: int ou None (temps pour RSD = 0.1 * RSD_0)
+                - n_states: int (nombre de cellules)
+                - source: "DEM"
         """
-        if species_labels is None:
-            self.label_species()
-            species_labels = self.species_labels
-
+        
+        # ══════════════════════════════════════════════════════════════
+        # 1. VALIDATION ET PRÉPARATION
+        # ══════════════════════════════════════════════════════════════
+        
+        # Vérifier le partitionneur
+        if partitioner is None:
+            raise ValueError("❌ partitioner est obligatoire pour compute_dem_rsd()")
+        
         n_states = partitioner.n_cells
-        # Par defaut charge les snapshots d'indice 250 à 6000 par pas de 50 si pas de snapshots (pas de loadsnapshots)
-        n_snaps = len(self.dem_snapshots) if len(self.dem_snapshots)>0 else len(self.load_dem_snapshots(file_indices=list(range(250,6000,50))))
-
+        
+        # Labels des espèces
+        if species_labels is None:
+            if self.species_labels is None:
+                print("⚠️  species_labels non fourni, appel automatique de label_species()")
+                self.label_species()
+            species_labels = self.species_labels
+        
+        # Vérifier les snapshots DEM
+        if not hasattr(self, 'dem_snapshots') or not self.dem_snapshots:
+            print("⚠️  Aucun snapshot DEM chargé, chargement automatique...")
+            # Charger par défaut de t=250 à t=6000 par pas de 50
+            self.load_dem_snapshots(file_indices=list(range(250, 6000, 50)))
+        
+        n_snaps = len(self.dem_snapshots)
+        
+        if n_snaps == 0:
+            raise ValueError("❌ Aucun snapshot DEM disponible après chargement")
+        
+        # Nom du partitionneur pour stockage
+        if partitioner_name is None:
+            partitioner_name = partitioner.label
+        
+        print(f"\n{'═'*70}")
+        print(f"📊 CALCUL DU RSD DEM")
+        print(f"{'═'*70}")
+        print(f"Partitionneur   : {partitioner_name}")
+        print(f"Nombre d'états  : {n_states}")
+        print(f"Snapshots DEM   : {n_snaps} (t={self.dem_snapshots[0]['t']} → {self.dem_snapshots[-1]['t']})")
+        print(f"Espèce A        : {species_labels.sum()} particules / {len(species_labels)} total")
+        print(f"{'─'*70}")
+        
+        # ══════════════════════════════════════════════════════════════
+        # 2. INITIALISATION DES TABLEAUX DE RÉSULTATS
+        # ══════════════════════════════════════════════════════════════
+        
         times = np.zeros(n_snaps)
         rsd = np.zeros(n_snaps)
         entropy = np.zeros(n_snaps)
         intensity_seg = np.zeros(n_snaps)
-        concentrations = []
-        populations = []
-
+        concentrations = []  # Liste de arrays C_i(t)
+        populations = []     # Liste de arrays n_total(i,t)
+        
+        # ══════════════════════════════════════════════════════════════
+        # 3. BOUCLE SUR LES SNAPSHOTS DEM
+        # ══════════════════════════════════════════════════════════════
+        
         for k, snap in enumerate(self.dem_snapshots):
             coords = snap["coords"]
             times[k] = snap["t"]
-
-            # Assigner les particules aux cellules
+            
+            # ── 3.1 Assigner les particules aux cellules ──
             states = partitioner.compute_states(
                 coords[:, 0], coords[:, 1], coords[:, 2]
             )
-            """ ### Cette opération consiste à construire le vecteur d'état qui est faite selon une espèce donnée
-            #je pense que cela est correct car nous comptons le nombre de particules d'une espèce donnée dans une partition(ici grande ) sur le nombre de total de particules
-            dans cette partition
             
-            La question est de savoir comment faire pareil avec la construction de la matrice de transition
-            Comment construire cette matrice de sorte que l'on compte dans chaque partition non plus le nombre de particules qui se déplacent d'une partition à une autre 
-            mais le nombre particules d'une espèce donnée qui se déplace d'une partition à une autre et l'on divise par le nombre total de particules de l'espèce en question
-            
-            je pense que le challenge sera d'intégrer cette classe dans la classe de partitioner pour synchroniser les variables comme loadsnapshot et labels_species
-            
-            """
-            
-            # # Compter par cellule: total et espèce A
+            # ── 3.2 Compter par cellule: total et espèce A ──
             n_total = np.bincount(states, minlength=n_states).astype(float)
-            # n_A = np.bincount(states[species_labels], minlength=n_states).astype(float)
-            # n_total = self.species_labels.sum() # est le nombre de total de particules de l'espèce considérée
-            n_A = np.bincount(states[species_labels], minlength=n_states).astype(float) # nombre de particules de type species_labels dans chaque partition
-            # n_A = np.bincount(states[:], minlength=n_states).astype(float) # nombre de particules de type species_labels dans chaque partition
-
-
-            # Concentration C_i = n_A / n_total
+            n_A = np.bincount(states[species_labels], minlength=n_states).astype(float)
+            
+            # ── 3.3 Concentration C_i = n_A / n_total ──
             C = np.zeros(n_states)
             mask = n_total > 0
             C[mask] = n_A[mask] / n_total[mask]
-            # C[mask] = n_A[mask] 
-
+            
+            # Stocker
             concentrations.append(C.copy())
             populations.append(n_total.copy())
-
-            # RSD sur cellules non-vides
+            
+            # ── 3.4 RSD sur cellules non-vides ──
             C_active = C[mask]
             if len(C_active) > 1 and C_active.mean() > 0:
                 rsd[k] = C_active.std() / C_active.mean()
             else:
                 rsd[k] = 0
-
-            # Entropie de mélange normalisée
-            # H = -Σ [C_i ln(C_i) + (1-C_i) ln(1-C_i)] / N_cells
-            C_clip = np.clip(C_active, 1e-10, 1 - 1e-10)
-            H = -np.mean(C_clip * np.log(C_clip) + (1 - C_clip) * np.log(1 - C_clip))
-            H_max = np.log(2)  # entropie max pour distribution binaire
-            entropy[k] = H / H_max if H_max > 0 else 0
-
-            # Intensité de ségrégation: I = σ²(C) / (C̄(1-C̄))
+            
+            # ── 3.5 Entropie de mélange normalisée ──
+            # H = -Σ [C_i ln(C_i) + (1-C_i) ln(1-C_i)] / N_cells_actives
+            # Normalisé par log(2) (entropie max pour distribution binaire)
+            if len(C_active) > 0:
+                C_clip = np.clip(C_active, 1e-10, 1 - 1e-10)
+                H = -np.mean(C_clip * np.log(C_clip) + (1 - C_clip) * np.log(1 - C_clip))
+                H_max = np.log(2)
+                entropy[k] = H / H_max if H_max > 0 else 0
+            else:
+                entropy[k] = 0
+            
+            # ── 3.6 Intensité de ségrégation: I = σ²(C) / (C̄(1-C̄)) ──
             C_bar = C_active.mean()
-            if C_bar > 0 and C_bar < 1:
+            if 0 < C_bar < 1 and len(C_active) > 1:
                 intensity_seg[k] = C_active.var() / (C_bar * (1 - C_bar))
             else:
                 intensity_seg[k] = 0
-
-        # Temps de mélange
+            
+            # Affichage progression
+            if (k + 1) % 10 == 0 or k == 0 or k == n_snaps - 1:
+                print(f"   [{k+1:4d}/{n_snaps}] t={int(times[k]):5d} | "
+                    f"RSD={rsd[k]*100:6.2f}% | "
+                    f"Entropy={entropy[k]:.4f} | "
+                    f"Cellules actives={mask.sum():3d}/{n_states}")
+        
+        # ══════════════════════════════════════════════════════════════
+        # 4. CALCUL DES TEMPS DE MÉLANGE
+        # ══════════════════════════════════════════════════════════════
+        
         rsd_0 = rsd[0] if rsd[0] > 0 else 1.0
+        
         mixing_time_50 = None
         mixing_time_90 = None
+        
         for k in range(n_snaps):
             if mixing_time_50 is None and rsd[k] < 0.5 * rsd_0:
                 mixing_time_50 = int(times[k])
             if mixing_time_90 is None and rsd[k] < 0.1 * rsd_0:
                 mixing_time_90 = int(times[k])
-
-        return {
+        
+        # ══════════════════════════════════════════════════════════════
+        # 5. STOCKAGE DES CONDITIONS INITIALES (pour synchronisation Markov)
+        # ══════════════════════════════════════════════════════════════
+        
+        coords0 = self.dem_snapshots[0]["coords"]
+        states0 = partitioner.compute_states(
+            coords0[:, 0], coords0[:, 1], coords0[:, 2]
+        )
+        
+        self.phi_total_0 = np.bincount(states0, minlength=n_states).astype(float)
+        self.phi_A_0 = np.bincount(states0[species_labels], minlength=n_states).astype(float)
+        
+        mask0 = self.phi_total_0 > 0
+        self.C0 = np.zeros(n_states)
+        self.C0[mask0] = self.phi_A_0[mask0] / self.phi_total_0[mask0]
+        
+        self.initial_time = int(times[0])
+        
+        # ══════════════════════════════════════════════════════════════
+        # 6. CONSTRUCTION DU RÉSULTAT
+        # ══════════════════════════════════════════════════════════════
+        
+        result = {
             "times": times,
             "rsd": rsd,
             "rsd_percent": rsd * 100,
-            "concentrations": np.array(concentrations),
+            "concentrations": np.array(concentrations),  # shape: (n_snaps, n_states)
             "populations": populations,
             "entropy": entropy,
             "intensity_of_segregation": intensity_seg,
@@ -1221,8 +1334,287 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
             "mixing_time_90": mixing_time_90,
             "n_states": n_states,
             "source": "DEM",
+            "partitioner_name": partitioner_name,
+            "n_snapshots": n_snaps,
+        }
+    
+        # ══════════════════════════════════════════════════════════════
+        # 7. STOCKAGE DANS L'ATTRIBUT DE CLASSE
+        # ══════════════════════════════════════════════════════════════
+        
+        self.dem_rsd_results[partitioner_name] = result
+        
+        # Stocker aussi le partitionneur pour accès ultérieur
+        self.partitioners[partitioner_name] = partitioner
+        self.current_partitioner = partitioner
+        
+        # ══════════════════════════════════════════════════════════════
+        # 8. AFFICHAGE DU RÉSUMÉ
+        # ══════════════════════════════════════════════════════════════
+        
+        print(f"{'─'*70}")
+        print(f"✅ RÉSULTATS DU CALCUL RSD DEM")
+        print(f"{'─'*70}")
+        print(f"RSD initial     : {result['rsd_initial']*100:6.2f}%")
+        print(f"RSD final       : {result['rsd_final']*100:6.2f}%")
+        print(f"Réduction RSD   : {(1 - result['rsd_final']/max(result['rsd_initial'], 1e-10))*100:6.2f}%")
+        print(f"Entropie finale : {entropy[-1]:.4f} / 1.000 (max)")
+        print(f"t₅₀ (RSD ÷ 2)  : {mixing_time_50 or 'Non atteint'}")
+        print(f"t₉₀ (RSD ÷ 10) : {mixing_time_90 or 'Non atteint'}")
+        print(f"{'─'*70}")
+        print(f"Stocké dans     : self.dem_rsd_results['{partitioner_name}']")
+        print(f"Conditions init : self.C0 (shape={self.C0.shape}) à t={self.initial_time}")
+        print(f"{'═'*70}\n")
+        
+        return result
+
+    def compare_rsd_synchronized(
+    self,
+    folder_name,
+    partitioner,
+    n_steps=200,
+    initial_time=250,
+    species_criterion="large",
+    figsize=(16, 8),
+):
+        """
+        Compare le RSD DEM vs Markov avec conditions initiales SYNCHRONISÉES.
+        
+        Cette méthode garantit que :
+        1. Les deux calculs partent du même instant t=initial_time
+        2. Les mêmes conditions initiales C0 sont utilisées
+        3. Les résultats sont stockés pour accès ultérieur
+        
+        Args:
+            folder_name: nom de l'expérience Markov
+            partitioner: partitionneur fitté
+            n_steps: nombre de pas Markov
+            initial_time: instant DEM de départ
+            species_criterion: critère de labeling
+            
+        Returns:
+            dict avec {"dem": rsd_data, "markov": rsd_data, "comparison": metrics}
+        """
+        # ══════════════════════════════════════════════════════════════
+        # 1. PRÉPARATION DES DONNÉES
+        # ══════════════════════════════════════════════════════════════
+        
+        # Charger snapshots si nécessaire
+        if not self.dem_snapshots:
+            print("📂 Chargement des snapshots DEM...")
+            self.load_dem_snapshots(file_indices=list(range(initial_time, 6000, 50)))
+        
+        # Labeler espèces si nécessaire
+        if self.species_labels is None:
+            print(f"🏷️  Labeling des espèces ({species_criterion})...")
+            self.label_species(species_criterion)
+        
+        # Stocker le temps initial
+        self.initial_time = initial_time
+        
+        # ══════════════════════════════════════════════════════════════
+        # 2. CALCUL RSD DEM
+        # ══════════════════════════════════════════════════════════════
+        
+        print(f"\n📊 Calcul RSD DEM (partitionneur: {partitioner.label})...")
+        dem_rsd = self.compute_dem_rsd(
+            partitioner, 
+            partitioner_name=f"{partitioner.label}_t{initial_time}"
+        )
+        print(f"   RSD DEM: {dem_rsd['rsd_initial']*100:.2f}% → {dem_rsd['rsd_final']*100:.2f}%")
+        
+        # ══════════════════════════════════════════════════════════════
+        # 3. CALCUL RSD MARKOV (mêmes conditions initiales)
+        # ══════════════════════════════════════════════════════════════
+        
+        print(f"\n📊 Calcul RSD Markov ({folder_name})...")
+        markov_rsd = self.compute_rsd(
+            folder_name,
+            n_steps=n_steps,
+            initial_time=initial_time,
+            partitioner=partitioner,
+            species_labels=self.species_labels,
+            use_dem_initial_conditions=True,  # ← ESSENTIEL
+        )
+        print(f"   RSD Markov: {markov_rsd['rsd_initial']*100:.2f}% → {markov_rsd['rsd_final']*100:.2f}%")
+        
+        # ══════════════════════════════════════════════════════════════
+        # 4. VÉRIFICATION DE LA SYNCHRONISATION
+        # ══════════════════════════════════════════════════════════════
+        
+        c0_diff = np.abs(self.C0 - markov_rsd['C0']).max()
+        print(f"\n✅ Vérification synchronisation:")
+        print(f"   Temps initial: DEM={dem_rsd['times'][0]}, Markov={markov_rsd['initial_time']}")
+        print(f"   Différence C0 (max): {c0_diff:.2e}")
+        print(f"   RSD initial: DEM={dem_rsd['rsd_initial']:.6f}, Markov={markov_rsd['rsd_initial']:.6f}")
+        
+        # ══════════════════════════════════════════════════════════════
+        # 5. MÉTRIQUES DE COMPARAISON
+        # ══════════════════════════════════════════════════════════════
+        
+        n = min(len(dem_rsd["rsd"]), len(markov_rsd["rsd"]))
+        
+        # Corrélation
+        corr = np.corrcoef(dem_rsd["rsd"][:n], markov_rsd["rsd"][:n])[0, 1]
+        
+        # Erreurs
+        abs_error = np.abs(dem_rsd["rsd"][:n] - markov_rsd["rsd"][:n]) * 100
+        rel_error = np.abs(dem_rsd["rsd"][:n] - markov_rsd["rsd"][:n]) / (dem_rsd["rsd"][:n] + 1e-10) * 100
+        rmse = np.sqrt(np.mean((dem_rsd["rsd"][:n] - markov_rsd["rsd"][:n])**2)) * 100
+        
+        comparison = {
+            "correlation": corr,
+            "rmse_percent": rmse,
+            "mean_abs_error_percent": abs_error.mean(),
+            "max_abs_error_percent": abs_error.max(),
+            "mean_rel_error_percent": rel_error.mean(),
+            "c0_max_diff": c0_diff,
+            "synchronized": c0_diff < 1e-6,
+        }
+        
+        # ══════════════════════════════════════════════════════════════
+        # 6. VISUALISATION
+        # ══════════════════════════════════════════════════════════════
+        
+        self._plot_synchronized_comparison(
+            dem_rsd, markov_rsd, comparison, partitioner, folder_name, figsize
+        )
+        
+        return {
+            "dem": dem_rsd,
+            "markov": markov_rsd,
+            "comparison": comparison,
         }
 
+
+    def _plot_synchronized_comparison(
+        self, dem_rsd, markov_rsd, comparison, partitioner, experiment_name, figsize
+    ):
+        """Visualisation de la comparaison synchronisée."""
+        import matplotlib.gridspec as gridspec
+        
+        fig = plt.figure(figsize=figsize)
+        fig.suptitle(
+            f"COMPARAISON SYNCHRONISÉE DEM vs MARKOV\n"
+            f"{partitioner.label} | Expérience: {experiment_name}\n"
+            f"Corrélation: {comparison['correlation']:.4f} | RMSE: {comparison['rmse_percent']:.2f}%",
+            fontsize=14, fontweight="bold",
+        )
+        gs = gridspec.GridSpec(2, 3, figure=fig, hspace=0.35, wspace=0.35)
+        
+        times_dem = dem_rsd["times"]
+        times_mkv = np.arange(len(markov_rsd["rsd"])) + dem_rsd["times"][0]
+        
+        # ── 1. RSD comparaison ──
+        ax = fig.add_subplot(gs[0, 0])
+        ax.plot(times_dem, dem_rsd["rsd_percent"], "o-", color="#1f77b4",
+                lw=2.5, markersize=5, label="DEM (réel)", alpha=0.8)
+        ax.plot(times_mkv, markov_rsd["rsd_percent"], "s--", color="#ff7f0e",
+                lw=2.5, markersize=5, label="Markov (prédit)", alpha=0.8)
+        
+        # Vérification point de départ
+        ax.plot(times_dem[0], dem_rsd["rsd_percent"][0], "o", 
+                color="green", markersize=12, alpha=0.5, label="Départ synchronisé")
+        
+        ax.set_xlabel("Temps (index fichier DEM)")
+        ax.set_ylabel("RSD (%)")
+        ax.set_title("RSD: DEM vs Markov")
+        ax.legend(fontsize=9)
+        ax.grid(True, alpha=0.3)
+        
+        # ── 2. Échelle log ──
+        ax = fig.add_subplot(gs[0, 1])
+        rsd_dem_pos = np.clip(dem_rsd["rsd_percent"], 1e-3, None)
+        rsd_mkv_pos = np.clip(markov_rsd["rsd_percent"], 1e-3, None)
+        ax.semilogy(times_dem, rsd_dem_pos, "o-", color="#1f77b4", lw=2, label="DEM")
+        ax.semilogy(times_mkv, rsd_mkv_pos, "s--", color="#ff7f0e", lw=2, label="Markov")
+        ax.set_xlabel("Temps")
+        ax.set_ylabel("RSD (%) — log")
+        ax.set_title("RSD (échelle logarithmique)")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        
+        # ── 3. Erreur absolue ──
+        ax = fig.add_subplot(gs[0, 2])
+        n = min(len(dem_rsd["rsd"]), len(markov_rsd["rsd"]))
+        abs_error = np.abs(dem_rsd["rsd"][:n] - markov_rsd["rsd"][:n]) * 100
+        
+        ax.bar(times_dem[:n], abs_error, 
+            width=(times_dem[1]-times_dem[0]) if n > 1 else 1,
+            color="#d62728", alpha=0.7)
+        ax.axhline(abs_error.mean(), color="black", ls="--", 
+                label=f"Moyenne={abs_error.mean():.2f}%")
+        ax.set_xlabel("Temps")
+        ax.set_ylabel("Erreur absolue (%)")
+        ax.set_title("Erreur |RSD_DEM - RSD_Markov|")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        
+        # ── 4. Concentrations initiales ──
+        ax = fig.add_subplot(gs[1, 0])
+        states = np.arange(len(self.C0))
+        ax.bar(states, self.C0, alpha=0.7, color="#2ca02c", label="C0 (DEM)")
+        if markov_rsd["C0"] is not None:
+            ax.scatter(states, markov_rsd["C0"], color="red", s=50, 
+                    marker="x", label="C0 (Markov)", zorder=10)
+        ax.set_xlabel("État")
+        ax.set_ylabel("Concentration")
+        ax.set_title(f"Conditions initiales (t={self.initial_time})")
+        ax.legend()
+        ax.grid(True, alpha=0.3, axis="y")
+        
+        # ── 5. Entropie ──
+        ax = fig.add_subplot(gs[1, 1])
+        ax.plot(times_dem, dem_rsd["entropy"], "o-", color="#1f77b4", 
+                lw=2, label="DEM")
+        ax.plot(times_mkv, markov_rsd["entropy"], "s--", color="#ff7f0e",
+                lw=2, label="Markov")
+        ax.axhline(1.0, color="gray", ls=":", alpha=0.5, label="Parfait")
+        ax.set_xlabel("Temps")
+        ax.set_ylabel("Entropie normalisée")
+        ax.set_title("Entropie de mélange")
+        ax.set_ylim(0, 1.1)
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        
+        # ── 6. Tableau récapitulatif ──
+        ax = fig.add_subplot(gs[1, 2])
+        ax.axis("off")
+        
+        table_data = [
+            ["Métrique", "DEM", "Markov"],
+            ["RSD initial (%)", f"{dem_rsd['rsd_initial']*100:.2f}", f"{markov_rsd['rsd_initial']*100:.2f}"],
+            ["RSD final (%)", f"{dem_rsd['rsd_final']*100:.2f}", f"{markov_rsd['rsd_final']*100:.2f}"],
+            ["t₅₀", f"{dem_rsd['mixing_time_50'] or 'N/A'}", f"{markov_rsd['mixing_time_50'] or 'N/A'}"],
+            ["t₉₀", f"{dem_rsd['mixing_time_90'] or 'N/A'}", f"{markov_rsd['mixing_time_90'] or 'N/A'}"],
+            ["", "", ""],
+            ["Corrélation", f"{comparison['correlation']:.4f}", ""],
+            ["RMSE (%)", f"{comparison['rmse_percent']:.2f}", ""],
+            ["Erreur moy (%)", f"{comparison['mean_abs_error_percent']:.2f}", ""],
+            ["Erreur max (%)", f"{comparison['max_abs_error_percent']:.2f}", ""],
+            ["C0 sync", "✅" if comparison["synchronized"] else "❌", ""],
+        ]
+        
+        table = ax.table(cellText=table_data, loc="center", cellLoc="center",
+                        colWidths=[0.45, 0.275, 0.275])
+        table.auto_set_font_size(False)
+        table.set_fontsize(9)
+        table.scale(1.2, 1.8)
+        
+        # Style
+        for j in range(3):
+            table[0, j].set_facecolor("#4472C4")
+            table[0, j].set_text_props(color="white", fontweight="bold")
+        
+        if comparison["synchronized"]:
+            latest_row=len(table_data)-1
+            table[latest_row, 0].set_facecolor("#C6E0B4")
+            table[latest_row, 1].set_facecolor("#C6E0B4")
+        
+        ax.set_title("Résumé", fontsize=12, fontweight="bold", pad=20)
+        
+        plt.savefig(f"sync_comparison_{experiment_name}.png", dpi=200, bbox_inches="tight")
+        plt.show()
 
 # ═══════════════════════════════════════════════════════════════════
 # CALCUL DU RSD — PRÉDICTION MARKOV
@@ -1660,7 +2052,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
 
         return all_results
         
-    def plot_experiment(self, folder_name, n_steps=200, figsize=(20, 16)):
+    def plot_experiment(self, folder_name, n_steps=200, figsize=(20, 16),partitioner=None):
         """
         Visualisation complète d'une expérience incluant le RSD.
 
@@ -1681,7 +2073,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         n_states = M.shape[0]
 
         # ── Calcul du RSD ──
-        rsd_data = self.compute_rsd(folder_name, n_steps)
+        rsd_data = self.compute_rsd(folder_name, n_steps,partitioner=partitioner)
         C_history = rsd_data["concentration_history"]
         rsd_vals = rsd_data["rsd_percent"]
         entropy_vals = rsd_data["entropy"]
@@ -2156,1249 +2548,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         plt.tight_layout()
         plt.savefig("eigenvalues_comparison.png", dpi=150, bbox_inches="tight")
         plt.show()
-        
-    def visualize_partitioner(self, experiment_name=None, size=700):
-        """
-        Visualise le partitionnement d'une expérience chargée.
-        
-        1. Essaie d'utiliser les données du partitionneur chargées depuis HF
-        2. Si absent, le recrée depuis les paramètres de l'expérience
-        
-        Args:
-            experiment_name: nom du dossier d'expérience (None = le premier chargé)
-            size: taille du canvas
-        
-        Returns:
-            HTML object pour affichage Jupyter
-        """
-        # Sélectionner l'expérience
-        if experiment_name is None:
-            if not self.results:
-                raise ValueError("❌ Aucune expérience chargée. Utilisez load_all() d'abord.")
-            experiment_name = list(self.results.keys())[0]
-        
-        if experiment_name not in self.results:
-            raise ValueError(f"❌ Expérience '{experiment_name}' non trouvée. "
-                            f"Disponibles : {list(self.results.keys())[:5]}...")
-        
-        exp_data = self.results[experiment_name]
-        method = exp_data.get("method", "unknown")
-        params = exp_data.get("params", {})
-        partitioner_data = exp_data.get("partitioner_data")
-        
-        print(f"🔍 Visualisation du partitionnement pour '{experiment_name}'...")
-        print(f"   Méthode: {method}")
-        
-        # ══════════════════════════════════════════════════════════════
-        # ÉTAPE 1 : Utiliser les données du partitionneur si disponibles
-        # ══════════════════════════════════════════════════════════════
-        
-        if partitioner_data is not None:
-            print(f"   ✅ Données du partitionneur chargées: {partitioner_data.get('type')}")
-            partitioner_type = partitioner_data.get("type")
-            n_cells = partitioner_data.get("n_cells")
-            print(f"      Type : {partitioner_type} | Cellules : {n_cells}")
-            
-            # Visualiser directement avec les données chargées
-            if partitioner_type == "AdaptiveZPartitioner":
-                # Récréer l'objet pour la visualisation
-                partitioner = self._recreate_partitioner_from_params(exp_data)
-                return partitioner.visualize_profile(size=size)
-            elif partitioner_type == "CylindricalPartitioner":
-                return self._visualize_cylindrical_with_data(partitioner_data, size=size)
-            elif partitioner_type == "CartesianPartitioner":
-                return self._visualize_cartesian_with_data(partitioner_data, size=size)
-            elif partitioner_type == "MultiZonePartitioner":
-                partitioner = self._recreate_partitioner_from_params(exp_data)
-                return self._visualize_multizone(partitioner, size=size)
-            elif partitioner_type == "VoronoiPartitioner":
-                return self._visualize_voronoi_with_data(partitioner_data, size=size)
-        
-        # ══════════════════════════════════════════════════════════════
-        # ÉTAPE 2 : Recréer depuis les paramètres
-        # ══════════════════════════════════════════════════════════════
-        
-        print(f"   🔧 Recréation depuis les paramètres...")
-        partitioner = self._recreate_partitioner_from_params(exp_data)
-        
-        # ══════════════════════════════════════════════════════════════
-        # VISUALISATION
-        # ══════════════════════════════════════════════════════════════
-        
-        partitioner_type = type(partitioner).__name__
-        
-        if partitioner_type == "AdaptiveZPartitioner":
-            return self._visualize_adaptive(partitioner, size=size)
-        elif partitioner_type == "MultiZonePartitioner":
-            return self._visualize_multizone(partitioner, size=size)
-        elif partitioner_type == "CylindricalPartitioner":
-            return self._visualize_cylindrical(partitioner, size=size)
-        elif partitioner_type == "CartesianPartitioner":
-            return self._visualize_cartesian(partitioner, size=size)
-        elif partitioner_type == "VoronoiPartitioner":
-            return self._visualize_voronoi(partitioner, size=size)
-        elif partitioner_type == "SingleCellPartitioner":
-            return self._visualize_single(partitioner, size=size)
-        else:
-            return self._visualize_generic(partitioner, size=size)
-
-
-    def _recreate_partitioner_from_params(self, exp_data):
-        """
-        Recrée un partitionneur depuis les paramètres de l'expérience.
-        
-        Args:
-            exp_data: données de l'expérience depuis self.results
-        
-        Returns:
-            partitioner configuré avec les bons paramètres
-        """
-        from src.partitioners import create_partitioner
-        
-        method = exp_data["method"]
-        params = exp_data.get("params", {})
-        matrix = exp_data["matrix"]
-        n_states = matrix.shape[0]
-        
-        print(f"   🔧 Recréation du partitionneur {method}:")
-        
-        # ── Extraire les paramètres selon le format ──
-        if "method_kwargs" in params:
-            # Nouveau format
-            method_kwargs = params["method_kwargs"]
-            print(f"      Paramètres (nouveau format): {method_kwargs}")
-        else:
-            # Ancien format : déduire les paramètres
-            method_kwargs = self._deduce_old_format_params(method, params, n_states)
-            print(f"      Paramètres (déduits): {method_kwargs}")
-        
-        # ── Créer le partitionneur ──
-        partitioner = create_partitioner(method, **method_kwargs)
-        
-        # ── Simuler un fit basique pour adaptive/multizone ──
-        if method in ["adaptive", "multizone"]:
-            # Ces méthodes ont besoin de z_min, z_max pour la visualisation
-            # On utilise des valeurs par défaut raisonnables
-            partitioner = self._simulate_basic_fit(partitioner, method_kwargs)
-        
-        print(f"      ✅ Partitionneur recréé: {partitioner.n_cells} cellules")
-        
-        return partitioner
-
-
-    def _deduce_old_format_params(self, method, params, n_states):
-        """
-        Déduit les paramètres depuis l'ancien format ou les infos disponibles.
-        
-        Args:
-            method: nom de la méthode
-            params: paramètres de l'expérience
-            n_states: nombre d'états depuis la matrice
-        
-        Returns:
-            dict de paramètres pour create_partitioner
-        """
-        if method == "cartesian":
-            # Ancien format : nx, ny, nz directement dans params
-            nx = params.get("nx", 5)
-            ny = params.get("ny", 5) 
-            nz = params.get("nz", 5)
-            
-            # Vérifier cohérence avec n_states
-            if nx * ny * nz != n_states:
-                # Essayer de déduire depuis n_states (supposer cube)
-                cube_root = round(n_states ** (1/3))
-                if cube_root ** 3 == n_states:
-                    nx = ny = nz = cube_root
-                    print(f"      ⚠️  Paramètres incohérents, déduit cube {cube_root}³")
-            
-            return {"nx": nx, "ny": ny, "nz": nz}
-        
-        elif method == "cylindrical":
-            # Essayer de déduire nr, ntheta, nz depuis n_states
-            # Supposer nz=1 par défaut (cas fréquent)
-            nz = 1
-            remaining = n_states // nz
-            
-            # Essayer quelques combinaisons courantes
-            for nr in [3, 4, 5, 6, 8, 10]:
-                if remaining % nr == 0:
-                    ntheta = remaining // nr
-                    if ntheta >= 1 and ntheta <= 16:  # valeurs raisonnables
-                        return {"nr": nr, "ntheta": ntheta, "nz": nz, "radial_mode": "equal_area"}
-            
-            # Fallback
-            return {"nr": 5, "ntheta": 8, "nz": 1, "radial_mode": "equal_area"}
-        
-        elif method == "voronoi":
-            return {"n_cells": n_states}
-        
-        elif method == "quantile":
-            # Supposer cube
-            cube_root = round(n_states ** (1/3))
-            if cube_root ** 3 == n_states:
-                return {"nx": cube_root, "ny": cube_root, "nz": cube_root}
-            else:
-                return {"nx": 5, "ny": 5, "nz": 5}
-        
-        elif method == "octree":
-            return {"max_particles": 100, "max_depth": 5}
-        
-        elif method == "physics":
-            return {"n_cells": n_states}
-        
-        elif method == "adaptive":
-            # Paramètres par défaut
-            return {
-                "z_split": 0.75,
-                "z_split_mode": "quantile",
-                "n_cells_top": 1,
-                "top_method": "single",
-                "top_kwargs": {},
-                "bottom_method": "cylindrical", 
-                "bottom_kwargs": {"nr": 3, "ntheta": 4, "nz": 1, "radial_mode": "equal_area"}
-            }
-        
-        elif method == "single":
-            return {}
-        
-        else:
-            print(f"      ⚠️  Méthode {method} inconnue, paramètres par défaut")
-            return {}
-
-
-    def _simulate_basic_fit(self, partitioner, method_kwargs):
-        """
-        Simule un fit basique pour les partitionneurs qui en ont besoin.
-        
-        Args:
-            partitioner: instance du partitionneur
-            method_kwargs: paramètres utilisés
-        
-        Returns:
-            partitioner avec attributs basiques remplis
-        """
-        if type(partitioner).__name__ == "AdaptiveZPartitioner":
-            # Remplir les attributs nécessaires pour la visualisation
-            partitioner._z_min = 0.0
-            partitioner._z_max = 1.0
-            
-            if partitioner.z_split_mode == "quantile":
-                partitioner._z_split = partitioner.z_split_input or 0.75
-            else:
-                partitioner._z_split = partitioner.z_split_input or 0.5
-            
-            # Créer les sous-partitionneurs
-            from src.partitioners import create_partitioner
-            
-            partitioner._bottom_partitioner = create_partitioner(
-                partitioner.bottom_method, 
-                **partitioner.bottom_kwargs
-            )
-            partitioner._n_cells_bottom = partitioner._bottom_partitioner.n_cells
-            
-            if partitioner.top_method == "single":
-                partitioner._top_partitioner = None
-                partitioner._n_cells_top = 1
-            else:
-                partitioner._top_partitioner = create_partitioner(
-                    partitioner.top_method,
-                    **partitioner.top_kwargs
-                )
-                partitioner._n_cells_top = partitioner._top_partitioner.n_cells
-            
-            print(f"      Zone basse: {partitioner._n_cells_bottom} cellules")
-            print(f"      Zone haute: {partitioner._n_cells_top} cellules")
-            print(f"      Z-split: {partitioner._z_split}")
-        
-        return partitioner
-
-
-    def _visualize_cylindrical_with_data(self, partitioner_data, size=700):
-        """
-        Visualise un partitionnement cylindrique : le mélangeur vu de dessus.
-        Le cercle représente le mélangeur qui est complètement partitionné.
-        
-        Args:
-            partitioner_data: dict avec type, n_cells, r_max, r_edges, etc.
-            size: taille du canvas
-        
-        Returns:
-            HTML object pour Jupyter
-        """
-        import uuid
-        from IPython.display import HTML
-        
-        cid = f"cyl_data_viz_{uuid.uuid4().hex}"
-        
-        # Extraire les données
-        n_cells = partitioner_data.get("n_cells", 0)
-        r_max = partitioner_data.get("r_max", 1.0)
-        r_edges = partitioner_data.get("r_edges")
-        
-        if r_edges is None:
-            print("⚠️  r_edges non disponibles")
-            return self._visualize_generic(None, size=size)
-        
-        # Convertir en liste
-        r_edges_list = r_edges.tolist() if hasattr(r_edges, 'tolist') else list(r_edges)
-        nr = len(r_edges_list) - 1
-        nz = 1
-        ntheta = max(1, n_cells // nr)
-        
-        # Palette de couleurs
-        colors = [f"hsl({360 * i / max(1, n_cells)}, 75%, 50%)" for i in range(n_cells)]
-        
-        html = f"""
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-        
-        <h3 style="margin-bottom:12px; color:#2c3e50;">
-            🔍 Partitionnement Cylindrique — Vue de dessus du mélangeur
-        </h3>
-        
-        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    border-radius:8px; color:white; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
-            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
-                <div>
-                    <div style="font-size:13px; opacity:0.9;">Rayons (nr)</div>
-                    <div style="font-size:18px; font-weight:bold;">{nr}</div>
-                </div>
-                <div>
-                    <div style="font-size:13px; opacity:0.9;">Angles (nθ)</div>
-                    <div style="font-size:18px; font-weight:bold;">{ntheta}</div>
-                </div>
-                <div>
-                    <div style="font-size:13px; opacity:0.9;">Hauteurs (nz)</div>
-                    <div style="font-size:18px; font-weight:bold;">{nz}</div>
-                </div>
-            </div>
-            <div style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.3); 
-                        text-align:center; font-size:16px; font-weight:bold;">
-                Total : {n_cells} cellules | Rayon : {r_max:.4f}
-            </div>
-        </div>
-        
-        <canvas id="{cid}" width="{size}" height="{size}"
-                style="border:2px solid #555; border-radius:10px; 
-                    box-shadow:0 8px 16px rgba(0,0,0,0.15); display:block; margin:20px auto;
-                    background:#f5f5f5;"></canvas>
-        
-        <script>
-        (function() {{
-            const canvas = document.getElementById("{cid}");
-            const ctx = canvas.getContext("2d");
-            
-            const W = canvas.width;
-            const H = canvas.height;
-            const cx = W / 2;
-            const cy = H / 2;
-            const R_display = Math.min(W, H) * 0.35;
-            
-            const nr = {nr};
-            const ntheta = {ntheta};
-            const r_max_real = {r_max};
-            const r_edges = {json.dumps(r_edges_list)};
-            const colors = {json.dumps(colors)};
-            
-            // Normaliser les rayons pour l'affichage
-            const r_edges_norm = r_edges.map(r => (r / r_max_real) * R_display);
-            
-            // ═════════════════════════════════════════════════════════
-            // FONCTION POUR DESSINER UN SECTEUR ANNULAIRE
-            // ═════════════════════════════════════════════════════════
-            function drawAnnularSector(r_inner, r_outer, theta_start, theta_end, fillColor, strokeColor, lineWidth = 1) {{
-                ctx.beginPath();
-                
-                // Arc intérieur
-                ctx.arc(cx, cy, r_inner, theta_start, theta_end);
-                
-                // Ligne radiale de fin
-                ctx.lineTo(cx + r_outer * Math.cos(theta_end), cy + r_outer * Math.sin(theta_end));
-                
-                // Arc extérieur (inverse)
-                ctx.arc(cx, cy, r_outer, theta_end, theta_start, true);
-                
-                // Fermer le chemin
-                ctx.closePath();
-                
-                // Remplir et tracer
-                ctx.fillStyle = fillColor;
-                ctx.fill();
-                ctx.strokeStyle = strokeColor;
-                ctx.lineWidth = lineWidth;
-                ctx.stroke();
-            }}
-            
-            // ═════════════════════════════════════════════════════════
-            // DESSINER TOUTES LES PARTITIONS
-            // ═════════════════════════════════════════════════════════
-            for (let ir = 0; ir < nr; ir++) {{
-                for (let itheta = 0; itheta < ntheta; itheta++) {{
-                    const cell_id = ir + itheta * nr;
-                    
-                    const r_inner = r_edges_norm[ir];
-                    const r_outer = r_edges_norm[ir + 1];
-                    
-                    // IMPORTANT: Couvrir 360° complètement
-                    const theta_start = (2 * Math.PI * itheta) / ntheta;
-                    const theta_end = (2 * Math.PI * (itheta + 1)) / ntheta;
-                    
-                    // Dessiner le secteur
-                    drawAnnularSector(
-                        r_inner, 
-                        r_outer, 
-                        theta_start, 
-                        theta_end,
-                        colors[cell_id],    // Couleur de remplissage
-                        "#333",              // Couleur de bordure
-                        0.5                  // Épaisseur bordure
-                    );
-                }}
-            }}
-            
-            // ═════════════════════════════════════════════════════════
-            // CONTOUR CIRCULAIRE DU MÉLANGEUR
-            // ═════════════════════════════════════════════════════════
-            ctx.strokeStyle = "#000";
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.arc(cx, cy, r_edges_norm[nr], 0, 2 * Math.PI);
-            ctx.stroke();
-            
-            // ═════════════════════════════════════════════════════════
-            // CERCLES RADIAUX (séparateurs de rayons)
-            // ═════════════════════════════════════════════════════════
-            ctx.strokeStyle = "rgba(0, 0, 0, 0.4)";
-            ctx.lineWidth = 1;
-            for (let ir = 1; ir < nr; ir++) {{
-                ctx.beginPath();
-                ctx.arc(cx, cy, r_edges_norm[ir], 0, 2 * Math.PI);
-                ctx.stroke();
-            }}
-            
-            // ═════════════════════════════════════════════════════════
-            // LIGNES ANGULAIRES (séparateurs d'angles)
-            // ═════════════════════════════════════════════════════════
-            ctx.strokeStyle = "rgba(0, 0, 0, 0.4)";
-            ctx.lineWidth = 1;
-            for (let itheta = 0; itheta < ntheta; itheta++) {{
-                const theta = (2 * Math.PI * itheta) / ntheta;
-                const x_start = cx + r_edges_norm[0] * Math.cos(theta);
-                const y_start = cy + r_edges_norm[0] * Math.sin(theta);
-                const x_end = cx + r_edges_norm[nr] * Math.cos(theta);
-                const y_end = cy + r_edges_norm[nr] * Math.sin(theta);
-                
-                ctx.beginPath();
-                ctx.moveTo(x_start, y_start);
-                ctx.lineTo(x_end, y_end);
-                ctx.stroke();
-            }}
-            
-            // ═════════════════════════════════════════════════════════
-            // LABELS DES CELLULES
-            // ═════════════════════════════════════════════════════════
-            ctx.fillStyle = "#000";
-            ctx.font = "bold 11px Arial";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            
-            for (let ir = 0; ir < nr; ir++) {{
-                for (let itheta = 0; itheta < ntheta; itheta++) {{
-                    const cell_id = ir + itheta * nr;
-                    
-                    // Position au centre du secteur
-                    const r_mid = (r_edges_norm[ir] + r_edges_norm[ir + 1]) / 2;
-                    const theta_mid = (2 * Math.PI * (itheta + 0.5)) / ntheta;
-                    
-                    const x = cx + r_mid * Math.cos(theta_mid);
-                    const y = cy + r_mid * Math.sin(theta_mid);
-                    
-                    // Ombre de texte pour lisibilité
-                    ctx.shadowColor = "rgba(255,255,255,0.8)";
-                    ctx.shadowBlur = 3;
-                    ctx.fillText(cell_id, x, y);
-                    ctx.shadowColor = "transparent";
-                }}
-            }}
-            
-            // ═════════════════════════════════════════════════════════
-            // CENTRE DU MÉLANGEUR
-            // ═════════════════════════════════════════════════════════
-            ctx.fillStyle = "#666";
-            ctx.beginPath();
-            ctx.arc(cx, cy, 4, 0, 2 * Math.PI);
-            ctx.fill();
-        }})();
-        </script>
-        
-        <div style="margin-top:16px; padding:12px; background:#ecf0f1; border-radius:6px; font-size:13px; color:#34495e;">
-            <strong>💡 Interprétation :</strong>
-            <ul style="margin:8px 0; padding-left:20px;">
-                <li><strong>Cercle extérieur</strong> : limite du mélangeur (rayon = {r_max:.4f})</li>
-                <li><strong>Anneaux</strong> : {nr} couches radiales (nr = {nr})</li>
-                <li><strong>Secteurs</strong> : {ntheta} divisions angulaires (ntheta = {ntheta})</li>
-                <li><strong>Chaque couleur</strong> = une partition (cellule d'état)</li>
-                <li><strong>Le mélangeur est ENTIÈREMENT partitionné</strong> (pas d'espace vide)</li>
-            </ul>
-        </div>
-        
-        </div>
-        """
-        return HTML(html)
-
-
-    def _visualize_cartesian_with_data(self, partitioner_data, size=700):
-        """
-        Visualise un partitionnement cartésien avec données réelles.
-        
-        Args:
-            partitioner_data: dict avec type, n_cells, nx, ny, nz
-            size: taille du canvas
-        
-        Returns:
-            HTML object pour Jupyter
-        """
-        import uuid
-        from IPython.display import HTML
-        
-        cid = f"cart_data_viz_{uuid.uuid4().hex}"
-        n_cells = partitioner_data.get("n_cells", 0)
-        
-        # Déduire grille
-        nx = partitioner_data.get("nx")
-        ny = partitioner_data.get("ny")
-        nz = partitioner_data.get("nz")
-        
-        if nx is None or ny is None or nz is None:
-            cube_root = round(n_cells ** (1/3))
-            if cube_root ** 3 == n_cells:
-                nx = ny = nz = cube_root
-            else:
-                nx = ny = round(np.sqrt(n_cells))
-                nz = max(1, n_cells // (nx * ny))
-        
-        colors = [f"hsl({360 * i / max(1, n_cells)}, 70%, 50%)" for i in range(n_cells)]
-        display_z = 0
-        
-        html = f"""
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-        <h3 style="margin-bottom:12px; color:#2c3e50;">
-            🔍 Partitionnement Cartésien (Données réelles)
-        </h3>
-        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    border-radius:8px; color:white; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
-            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
-                <div><div style="font-size:13px; opacity:0.9;">X (nx)</div><div style="font-size:18px; font-weight:bold;">{nx}</div></div>
-                <div><div style="font-size:13px; opacity:0.9;">Y (ny)</div><div style="font-size:18px; font-weight:bold;">{ny}</div></div>
-                <div><div style="font-size:13px; opacity:0.9;">Z (nz)</div><div style="font-size:18px; font-weight:bold;">{nz}</div></div>
-            </div>
-            <div style="margin-top:12px; text-align:center; font-weight:bold;">
-                Total : {n_cells} cellules
-            </div>
-        </div>
-        <canvas id="{cid}" width="{size}" height="{size}" style="border:2px solid #bdc3c7; border-radius:10px; 
-                    box-shadow:0 8px 16px rgba(0,0,0,0.15); display:block; margin:20px auto; background:white;"></canvas>
-        <script>
-        (function() {{
-            const canvas = document.getElementById("{cid}");
-            const ctx = canvas.getContext("2d");
-            const W = canvas.width, H = canvas.height, nx = {nx}, ny = {ny};
-            const cell_w = (W - 40) / nx, cell_h = (H - 40) / ny, margin = 20;
-            const colors = {json.dumps(colors)};
-            for (let ix = 0; ix < nx; ix++) {{
-                for (let iy = 0; iy < ny; iy++) {{
-                    const cell_id = ix + iy * nx;
-                    const x = margin + ix * cell_w, y = margin + iy * cell_h;
-                    ctx.fillStyle = colors[cell_id];
-                    ctx.fillRect(x, y, cell_w, cell_h);
-                    ctx.strokeStyle = "#333";
-                    ctx.lineWidth = 1;
-                    ctx.strokeRect(x, y, cell_w, cell_h);
-                    ctx.fillStyle = "#000";
-                    ctx.font = "12px Arial";
-                    ctx.textAlign = "center";
-                    ctx.textBaseline = "middle";
-                    ctx.fillText(cell_id, x + cell_w/2, y + cell_h/2);
-                }}
-            }}
-        }})();
-        </script>
-        </div>
-        """
-        return HTML(html)
-
-
-    def _visualize_voronoi_with_data(self, partitioner_data, size=700):
-        """
-        Visualise un partitionnement Voronoï avec centroids.
-        
-        Args:
-            partitioner_data: dict avec type, n_cells, centroids
-            size: taille du canvas
-        
-        Returns:
-            HTML object pour Jupyter
-        """
-        import uuid
-        from IPython.display import HTML
-        
-        cid = f"vor_data_viz_{uuid.uuid4().hex}"
-        n_cells = partitioner_data.get("n_cells", 0)
-        centroids = partitioner_data.get("centroids")
-        
-        if centroids is None:
-            return self._visualize_generic(None, size=size)
-        
-        # Extraire coordonnées 2D (projection X-Y)
-        if len(centroids.shape) > 1 and centroids.shape[1] >= 2:
-            cents_2d = centroids[:, :2]
-        else:
-            cents_2d = np.array([[i % 10, i // 10] for i in range(n_cells)])
-        
-        colors = [f"hsl({360 * i / max(1, n_cells)}, 70%, 50%)" for i in range(n_cells)]
-        cents_2d_list = cents_2d.tolist()
-        
-        html = f"""
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-        <h3 style="margin-bottom:12px; color:#2c3e50;">
-            🔍 Partitionnement Voronoï (Données réelles)
-        </h3>
-        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    border-radius:8px; color:white; text-align:center; font-weight:bold;">
-            {n_cells} cellules (K-means)
-        </div>
-        <canvas id="{cid}" width="{size}" height="{size}" style="border:2px solid #bdc3c7; border-radius:10px; 
-                    box-shadow:0 8px 16px rgba(0,0,0,0.15); display:block; margin:20px auto; background:white;"></canvas>
-        <script>
-        (function() {{
-            const canvas = document.getElementById("{cid}");
-            const ctx = canvas.getContext("2d");
-            const W = canvas.width, H = canvas.height, margin = 20;
-            const centroids = {json.dumps(cents_2d_list)};
-            const colors = {json.dumps(colors)};
-            
-            let x_min = Math.min(...centroids.map(c => c[0])),
-                x_max = Math.max(...centroids.map(c => c[0])),
-                y_min = Math.min(...centroids.map(c => c[1])),
-                y_max = Math.max(...centroids.map(c => c[1]));
-            
-            const x_range = x_max - x_min || 1, y_range = y_max - y_min || 1;
-            
-            centroids.forEach((c, i) => {{
-                const cx = margin + (c[0] - x_min) / x_range * (W - 2*margin);
-                const cy = margin + (c[1] - y_min) / y_range * (H - 2*margin);
-                ctx.fillStyle = colors[i];
-                ctx.beginPath();
-                ctx.arc(cx, cy, 6, 0, 2*Math.PI);
-                ctx.fill();
-                ctx.strokeStyle = "#333";
-                ctx.lineWidth = 2;
-                ctx.stroke();
-            }});
-        }})();
-        </script>
-        </div>
-        """
-        return HTML(html)
-
-
-    def _visualize_cylindrical(self, partitioner, size=700):
-        """
-        Visualise un partitionnement cylindrique en coordonnées polaires (r, θ).
-        
-        Args:
-            partitioner: CylindricalPartitioner instance
-            size: taille du canvas
-        
-        Returns:
-            HTML object pour Jupyter
-        """
-        import uuid
-        from IPython.display import HTML
-        
-        cid = f"cyl_viz_{uuid.uuid4().hex}"
-        
-        # Paramètres cylindriques
-        nr = partitioner.nr
-        ntheta = partitioner.ntheta
-        nz = partitioner.nz
-        r_max = partitioner._r_max if partitioner._r_max else 1.0
-        r_edges = partitioner._r_edges if partitioner._r_edges is not None else np.linspace(0, r_max, nr + 1)
-        radial_mode = partitioner.radial_mode
-        
-        # Palette de couleurs
-        n_cells = partitioner.n_cells
-        colors = [f"hsl({360 * i / n_cells}, 70%, 50%)" for i in range(n_cells)]
-        
-        html = f"""
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-        
-        <h3 style="margin-bottom:12px; color:#2c3e50;">
-            🔍 Partitionnement Cylindrique (Vue de dessus)
-        </h3>
-        
-        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    border-radius:8px; color:white; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
-            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
-                <div>
-                    <div style="font-size:13px; opacity:0.9;">Rayons (nr)</div>
-                    <div style="font-size:18px; font-weight:bold;">{nr}</div>
-                </div>
-                <div>
-                    <div style="font-size:13px; opacity:0.9;">Angles (nθ)</div>
-                    <div style="font-size:18px; font-weight:bold;">{ntheta}</div>
-                </div>
-                <div>
-                    <div style="font-size:13px; opacity:0.9;">Hauteurs (nz)</div>
-                    <div style="font-size:18px; font-weight:bold;">{nz}</div>
-                </div>
-            </div>
-            <div style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.3); 
-                        text-align:center; font-size:16px; font-weight:bold;">
-                Total : {n_cells} cellules | Mode radial : {radial_mode}
-            </div>
-        </div>
-        
-        <canvas id="{cid}" width="{size}" height="{size}"
-                style="border:2px solid #bdc3c7; border-radius:10px; 
-                    box-shadow:0 8px 16px rgba(0,0,0,0.15); display:block; margin:20px auto;
-                    background:white;"></canvas>
-        
-        <script>
-        (function() {{
-            const canvas = document.getElementById("{cid}");
-            const ctx = canvas.getContext("2d");
-            
-            const W = canvas.width;
-            const H = canvas.height;
-            const cx = W / 2;
-            const cy = H / 2;
-            const R_display = Math.min(W, H) * 0.4;
-            
-            const nr = {nr};
-            const ntheta = {ntheta};
-            const nz = {nz};
-            const r_max = {r_max};
-            const radial_mode = "{radial_mode}";
-            const r_edges = {json.dumps(r_edges.tolist())};
-            const colors = {json.dumps(colors)};
-            
-            // Dessiner les partitions
-            for (let iz = 0; iz < nz; iz++) {{
-                for (let ir = 0; ir < nr; ir++) {{
-                    for (let itheta = 0; itheta < ntheta; itheta++) {{
-                        const cell_id = ir + itheta * nr + iz * nr * ntheta;
-                        
-                        const r_inner = r_edges[ir] / r_max * R_display;
-                        const r_outer = r_edges[ir + 1] / r_max * R_display;
-                        
-                        const theta_start = (2 * Math.PI * itheta) / ntheta;
-                        const theta_end = (2 * Math.PI * (itheta + 1)) / ntheta;
-                        
-                        // Dessiner le secteur annulaire
-                        ctx.fillStyle = colors[cell_id];
-                        ctx.strokeStyle = "#333";
-                        ctx.lineWidth = 1;
-                        
-                        ctx.beginPath();
-                        for (let r = r_inner; r <= r_outer; r += (r_outer - r_inner) / 20) {{
-                            const x = cx + r * Math.cos(theta_start);
-                            const y = cy + r * Math.sin(theta_start);
-                            if (r === r_inner) ctx.moveTo(x, y);
-                            else ctx.lineTo(x, y);
-                        }}
-                        
-                        ctx.arc(cx, cy, r_outer, theta_start, theta_end);
-                        
-                        for (let r = r_outer; r >= r_inner; r -= (r_outer - r_inner) / 20) {{
-                            const x = cx + r * Math.cos(theta_end);
-                            const y = cy + r * Math.sin(theta_end);
-                            ctx.lineTo(x, y);
-                        }}
-                        
-                        ctx.arc(cx, cy, r_inner, theta_end, theta_start, true);
-                        ctx.closePath();
-                        ctx.fill();
-                        ctx.stroke();
-                    }}
-                }}
-            }}
-            
-            // Dessiner les cercles de rayon
-            ctx.strokeStyle = "rgba(0,0,0,0.3)";
-            ctx.lineWidth = 1;
-            for (let ir = 1; ir < nr; ir++) {{
-                const r = r_edges[ir] / r_max * R_display;
-                ctx.beginPath();
-                ctx.arc(cx, cy, r, 0, 2 * Math.PI);
-                ctx.stroke();
-            }}
-            
-            // Labels de cellule
-            ctx.fillStyle = "#000";
-            ctx.font = "12px Arial";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            
-            for (let itheta = 0; itheta < ntheta; itheta++) {{
-                for (let ir = 0; ir < nr; ir++) {{
-                    const cell_id = ir + itheta * nr;
-                    const r_mid = (r_edges[ir] + r_edges[ir + 1]) / 2 / r_max * R_display;
-                    const theta_mid = (2 * Math.PI * (itheta + 0.5)) / ntheta;
-                    const x = cx + r_mid * Math.cos(theta_mid);
-                    const y = cy + r_mid * Math.sin(theta_mid);
-                    ctx.fillText(cell_id, x, y);
-                }}
-            }}
-        }})();
-        </script>
-        
-        </div>
-        """
-        return HTML(html)
-
-
-    def _visualize_cartesian(self, partitioner, size=700):
-        """
-        Visualise un partitionnement cartésien en grille 3D (projection 2D).
-        
-        Args:
-            partitioner: CartesianPartitioner instance
-            size: taille du canvas
-        
-        Returns:
-            HTML object pour Jupyter
-        """
-        import uuid
-        from IPython.display import HTML
-        
-        cid = f"cart_viz_{uuid.uuid4().hex}"
-        
-        nx = partitioner.nx
-        ny = partitioner.ny
-        nz = partitioner.nz
-        n_cells = partitioner.n_cells
-        
-        # Palette de couleurs
-        colors = [f"hsl({360 * i / n_cells}, 70%, 50%)" for i in range(n_cells)]
-        
-        # On affiche une tranche (z=0) en 2D
-        display_z = 0
-        
-        html = f"""
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-        
-        <h3 style="margin-bottom:12px; color:#2c3e50;">
-            🔍 Partitionnement Cartésien (Grille régulière)
-        </h3>
-        
-        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    border-radius:8px; color:white; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
-            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
-                <div>
-                    <div style="font-size:13px; opacity:0.9;">X (nx)</div>
-                    <div style="font-size:18px; font-weight:bold;">{nx}</div>
-                </div>
-                <div>
-                    <div style="font-size:13px; opacity:0.9;">Y (ny)</div>
-                    <div style="font-size:18px; font-weight:bold;">{ny}</div>
-                </div>
-                <div>
-                    <div style="font-size:13px; opacity:0.9;">Z (nz)</div>
-                    <div style="font-size:18px; font-weight:bold;">{nz}</div>
-                </div>
-            </div>
-            <div style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.3); 
-                        text-align:center; font-size:16px; font-weight:bold;">
-                Total : {n_cells} cellules
-            </div>
-        </div>
-        
-        <canvas id="{cid}" width="{size}" height="{size}"
-                style="border:2px solid #bdc3c7; border-radius:10px; 
-                    box-shadow:0 8px 16px rgba(0,0,0,0.15); display:block; margin:20px auto;
-                    background:white;"></canvas>
-        
-        <script>
-        (function() {{
-            const canvas = document.getElementById("{cid}");
-            const ctx = canvas.getContext("2d");
-            
-            const W = canvas.width;
-            const H = canvas.height;
-            const nx = {nx};
-            const ny = {ny};
-            const nz = {nz};
-            const iz_display = {display_z};
-            
-            const cell_w = (W - 40) / nx;
-            const cell_h = (H - 40) / ny;
-            const margin = 20;
-            
-            const colors = {json.dumps(colors)};
-            
-            // Dessiner la grille
-            for (let ix = 0; ix < nx; ix++) {{
-                for (let iy = 0; iy < ny; iy++) {{
-                    const cell_id = ix + iy * nx + iz_display * nx * ny;
-                    const x = margin + ix * cell_w;
-                    const y = margin + iy * cell_h;
-                    
-                    // Rectangle de la cellule
-                    ctx.fillStyle = colors[cell_id];
-                    ctx.fillRect(x, y, cell_w, cell_h);
-                    
-                    // Bordure
-                    ctx.strokeStyle = "#333";
-                    ctx.lineWidth = 1;
-                    ctx.strokeRect(x, y, cell_w, cell_h);
-                    
-                    // Numéro de cellule
-                    ctx.fillStyle = "#000";
-                    ctx.font = "12px Arial";
-                    ctx.textAlign = "center";
-                    ctx.textBaseline = "middle";
-                    ctx.fillText(cell_id, x + cell_w/2, y + cell_h/2);
-                }}
-            }}
-        }})();
-        </script>
-        
-        </div>
-        """
-        return HTML(html)
-
-
-    def _visualize_adaptive(self, partitioner, size=700):
-        """
-        Visualise un partitionnement AdaptiveZPartitioner.
-        
-        Affiche deux zones côte-à-côte:
-        - Zone basse (70-80% du mixer): partitionnement FINE
-        - Zone haute (20-30% du mixer): partitionnement GROSSIER (généralement 1 cellule)
-        """
-        import uuid
-        from IPython.display import HTML
-        
-        cid = f"adapt_viz_{uuid.uuid4().hex}"
-        
-        n_top = partitioner.n_cells_top
-        n_bot = partitioner.n_cells_bottom
-        n_total = partitioner.n_cells
-        z_split = partitioner._z_split
-        z_min = partitioner._z_min
-        z_max = partitioner._z_max
-        
-        if z_max - z_min > 0:
-            pct_bot = 100 * (z_split - z_min) / (z_max - z_min)
-            pct_top = 100 * (z_max - z_split) / (z_max - z_min)
-        else:
-            pct_bot = pct_top = 50
-        
-        colors_bot = [f"hsl({360 * i / max(1, n_bot)}, 70%, 50%)" for i in range(n_bot)]
-        colors_top = [f"hsl(200, 40%, 50%)"] * n_top
-        
-        html = f"""
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-        <h3 style="margin-bottom:12px; color:#2c3e50;">🔍 Partitionnement ADAPTATIF (Zone Haute / Basse)</h3>
-        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius:8px; color:white;">
-            <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:12px;">
-                <div><div style="font-size:13px; opacity:0.9;">Zone Basse</div><div style="font-size:18px; font-weight:bold;">{n_bot} cellules</div></div>
-                <div><div style="font-size:13px; opacity:0.9;">Zone Haute</div><div style="font-size:18px; font-weight:bold;">{n_top} cellule(s)</div></div>
-                <div><div style="font-size:13px; opacity:0.9;">Limite (z)</div><div style="font-size:18px; font-weight:bold;">{z_split:.3f}</div></div>
-                <div><div style="font-size:13px; opacity:0.9;">Total</div><div style="font-size:18px; font-weight:bold;">{n_total} cellules</div></div>
-            </div>
-        </div>
-        <canvas id="{cid}" width="{size}" height="{size}" style="border:2px solid #bdc3c7; border-radius:10px; display:block; margin:20px auto; background:white;"></canvas>
-        <script>
-        (function() {{
-            const canvas = document.getElementById("{cid}");
-            const ctx = canvas.getContext("2d");
-            const W = canvas.width, H = canvas.height;
-            const margin = 40, plot_w = W - 2*margin, plot_h = H - 2*margin;
-            ctx.strokeStyle = "#333"; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(margin, H - margin); ctx.lineTo(margin, margin); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(margin, H - margin); ctx.lineTo(W - margin, H - margin); ctx.stroke();
-            const h_bot = plot_h * {pct_bot} / 100, h_top = plot_h * {pct_top} / 100;
-            const colors_bot = {json.dumps(colors_bot)}, colors_top = {json.dumps(colors_top)};
-            const n_bot = {n_bot}, n_top = {n_top}, w_cell_bot = plot_w / n_bot, w_cell_top = plot_w / n_top;
-            for (let i = 0; i < n_bot; i++) {{
-                const x = margin + i * w_cell_bot, y = margin + h_top;
-                ctx.fillStyle = colors_bot[i]; ctx.fillRect(x, y, w_cell_bot, h_bot);
-                ctx.strokeStyle = "#333"; ctx.lineWidth = 1; ctx.strokeRect(x, y, w_cell_bot, h_bot);
-                ctx.fillStyle = "#000"; ctx.font = "bold 12px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-                ctx.fillText(i, x + w_cell_bot/2, y + h_bot/2);
-            }}
-            for (let i = 0; i < n_top; i++) {{
-                const x = margin + i * w_cell_top, y = margin;
-                ctx.fillStyle = colors_top[i]; ctx.fillRect(x, y, w_cell_top, h_top);
-                ctx.strokeStyle = "#888"; ctx.lineWidth = 2; ctx.strokeRect(x, y, w_cell_top, h_top);
-                ctx.fillStyle = "#fff"; ctx.font = "bold 12px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-                ctx.fillText({n_bot} + i, x + w_cell_top/2, y + h_top/2);
-            }}
-            ctx.strokeStyle = "red"; ctx.lineWidth = 3; ctx.setLineDash([5, 5]);
-            ctx.beginPath(); ctx.moveTo(margin, margin + h_top); ctx.lineTo(W - margin, margin + h_top); ctx.stroke(); ctx.setLineDash([]);
-        }})();
-        </script>
-        <div style="margin-top:16px; padding:12px; background:#ecf0f1; border-radius:6px; font-size:13px; color:#34495e;">
-            <strong>💡 Interprétation :</strong>
-            <ul style="margin:8px 0; padding-left:20px;">
-            <li><strong>Zone BASSE</strong>: {pct_bot:.0f}% du mixer — {n_bot} cellules</li>
-            <li><strong>Zone HAUTE</strong>: {pct_top:.0f}% du mixer — {n_top} cellule(s)</li>
-            <li><strong>Numérotation</strong>: cellules 0···{n_bot-1} en bas, puis {n_bot}···{n_total-1} en haut</li>
-            </ul>
-        </div>
-        </div>
-        """
-        return HTML(html)
-
-    def _visualize_multizone(self, partitioner, size=700):
-        """
-        Visualise un partitionnement MultiZonePartitioner.
-        
-        Affiche N zones horizontales, chaque zone pouvant avoir une architecture différente.
-        """
-        import uuid
-        from IPython.display import HTML
-        
-        cid = f"mz_viz_{uuid.uuid4().hex}"
-        n_zones = len(partitioner._zones)
-        n_total = partitioner.n_cells
-        
-        zones_info = []
-        for i, (z_min, z_max, part) in enumerate(partitioner._zones):
-            zones_info.append({
-                "z_min": z_min,
-                "z_max": z_max,
-                "n_cells": part.n_cells,
-                "method": type(part).__name__,
-            })
-        
-        zone_colors = [f"hsl({360 * i / max(1, n_zones)}, 60%, 40%)" for i in range(n_zones)]
-        
-        all_colors = []
-        for i, info in enumerate(zones_info):
-            n_c = info["n_cells"]
-            hue_base = 360 * i / max(1, n_zones)
-            for j in range(n_c):
-                hue = (hue_base + 360 * j / max(1, n_c)) % 360
-                all_colors.append(f"hsl({hue}, 70%, 50%)")
-        
-        html = f"""
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-        <h3 style="margin-bottom:12px; color:#2c3e50;">🔍 Partitionnement MULTI-ZONE</h3>
-        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius:8px; color:white;">
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap:12px;">
-        """
-        for i in range(n_zones):
-            info = zones_info[i]
-            html += f'<div style="background:rgba(255,255,255,0.2); padding:8px; border-radius:4px;"><div style="font-size:12px;">Zone {i}</div><div style="font-size:14px; font-weight:bold;">{info["n_cells"]} cellules</div></div>'
-        html += f'</div><div style="text-align:center; margin-top:8px; font-weight:bold;">Total : {n_total} cellules</div></div>'
-        html += f'<canvas id="{cid}" width="{size}" height="{size}" style="border:2px solid #bdc3c7; border-radius:10px; display:block; margin:20px auto; background:white;"></canvas>'
-        html += f'''<script>
-        (function() {{
-            const canvas = document.getElementById("{cid}");
-            const ctx = canvas.getContext("2d");
-            const W = canvas.width, H = canvas.height, margin = 40, plot_w = W - 2*margin, plot_h = H - 2*margin;
-            ctx.strokeStyle = "#333"; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(margin, H - margin); ctx.lineTo(margin, margin); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(margin, H - margin); ctx.lineTo(W - margin, H - margin); ctx.stroke();
-            const n_zones = {n_zones}, zones_info = {json.dumps(zones_info)}, all_colors = {json.dumps(all_colors)};
-            let cell_offset = 0, z_offset = 0;
-            for (let zone_idx = 0; zone_idx < n_zones; zone_idx++) {{
-                const info = zones_info[zone_idx];
-                const n_cells_in_zone = info.n_cells;
-                const h_zone = plot_h / n_zones, y_zone = margin + z_offset;
-                const w_cell = plot_w / Math.max(...zones_info.map(z => z.n_cells));
-                for (let i = 0; i < n_cells_in_zone; i++) {{
-                    const x = margin + i * w_cell;
-                    ctx.fillStyle = all_colors[cell_offset]; ctx.fillRect(x, y_zone, w_cell, h_zone);
-                    ctx.strokeStyle = "#333"; ctx.lineWidth = 1; ctx.strokeRect(x, y_zone, w_cell, h_zone);
-                    ctx.fillStyle = "#000"; ctx.font = "bold 11px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-                    ctx.fillText(cell_offset, x + w_cell/2, y_zone + h_zone/2);
-                    cell_offset++;
-                }}
-                ctx.strokeStyle = "rgba(0, 0, 0, 0.4)"; ctx.lineWidth = 1;
-                ctx.beginPath(); ctx.moveTo(margin, y_zone + h_zone); ctx.lineTo(W - margin, y_zone + h_zone); ctx.stroke();
-                z_offset += h_zone;
-            }}
-        }})();
-        </script>'''
-        html += '<div style="margin-top:16px; padding:12px; background:#ecf0f1; border-radius:6px; font-size:12px; color:#34495e;">'
-        html += '<strong>💡 Zone Details:</strong><table style="width:100%; border-collapse:collapse; margin-top:8px; font-size:11px;">'
-        html += '<tr style="background:#d0d0d0; font-weight:bold;"><th style="padding:4px; border:1px solid #999;">Zone</th><th style="padding:4px; border:1px solid #999;">z_min-z_max</th><th style="padding:4px; border:1px solid #999;">Cellules</th><th style="padding:4px; border:1px solid #999;">Méthode</th></tr>'
-        for i, info in enumerate(zones_info):
-            html += f'<tr style="border:1px solid #bbb;"><td style="padding:4px; border:1px solid #999;">Zone {i}</td><td style="padding:4px; border:1px solid #999;">[{info["z_min"]:.3f}, {info["z_max"]:.3f}]</td><td style="padding:4px; border:1px solid #999;">{info["n_cells"]}</td><td style="padding:4px; border:1px solid #999;">{info["method"]}</td></tr>'
-        html += '</table></div></div>'
-        return HTML(html)
-
-
-    def _visualize_voronoi(self, partitioner, size=700):
-        """
-        Visualise un partitionnement Voronoï.
-        
-        Args:
-            partitioner: VoronoiPartitioner instance
-            size: taille du canvas
-        
-        Returns:
-            HTML object pour Jupyter
-        """
-        import uuid
-        from IPython.display import HTML
-        
-        cid = f"vor_viz_{uuid.uuid4().hex}"
-        n_cells = partitioner.n_cells
-        
-        html = f"""
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-        
-        <h3 style="margin-bottom:12px; color:#2c3e50;">
-            🔍 Partitionnement Voronoï
-        </h3>
-        
-        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    border-radius:8px; color:white; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
-            <div style="text-align:center; font-size:16px; font-weight:bold;">
-                Total : {n_cells} cellules (Clustering K-means)
-            </div>
-        </div>
-        
-        <p>Visualisation Voronoï — {n_cells} centroids K-means</p>
-        
-        </div>
-        """
-        return HTML(html)
-
-    def _visualize_single(self, partitioner, size=700):
-        """
-        Visualise un partitionnement SingleCellPartitioner.
-        
-        Trivial: une seule cellule pour tout le domaine.
-        """
-        import uuid
-        from IPython.display import HTML
-        
-        cid = f"single_viz_{uuid.uuid4().hex}"
-        
-        html = f"""
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-        <h3 style="margin-bottom:12px; color:#2c3e50;">🔍 Partitionnement SINGLE CELL</h3>
-        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius:8px; color:white;">
-            <div style="text-align:center; font-size:20px; font-weight:bold;">⚪ 1 SEULE CELLULE</div>
-            <div style="text-align:center; margin-top:8px; font-size:14px; opacity:0.9;">Tout le domaine = une seule partition</div>
-        </div>
-        <canvas id="{cid}" width="{size}" height="300" style="border:2px solid #bdc3c7; border-radius:10px; display:block; margin:20px auto; background:white;"></canvas>
-        <script>
-        (function() {{
-            const canvas = document.getElementById("{cid}");
-            const ctx = canvas.getContext("2d");
-            const W = canvas.width, H = canvas.height, margin = 50, rect_w = W - 2*margin, rect_h = H - 2*margin, x = margin, y = margin;
-            ctx.fillStyle = "#4CAF50"; ctx.fillRect(x, y, rect_w, rect_h);
-            ctx.strokeStyle = "#333"; ctx.lineWidth = 4; ctx.strokeRect(x, y, rect_w, rect_h);
-            ctx.fillStyle = "#fff"; ctx.font = "bold 48px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-            ctx.fillText("Cellule 0", W/2, H/2);
-            ctx.fillStyle = "#333"; ctx.font = "14px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "top";
-            ctx.fillText("Toutes les particules sont assignées à la même partition", W/2, y + rect_h + 20);
-        }})();
-        </script>
-        <div style="margin-top:24px; padding:16px; background:#fff3cd; border-left:4px solid #ffc107; border-radius:6px; font-size:13px; color:#333;">
-            <strong>⚠️ Note :</strong>
-            <p style="margin:8px 0;">Le partitionnement SINGLE CELL n'a pas d'intérêt pour l'étude du mélange:</p>
-            <ul style="margin:8px 0; padding-left:20px;">
-            <li>Toutes les particules sont dans la même cellule</li>
-            <li>Matrice de transition = [[1.0]] triviale</li>
-            <li>Utilisé comme baseline ou pour les zones vides d'un partitionnement adaptatif</li>
-            </ul>
-        </div>
-        </div>
-        """
-        return HTML(html)
-
-
-    def _visualize_generic(self, partitioner, size=700):
-        """
-        Visualise un partitionneur générique.
-        
-        Args:
-            partitioner: BasePartitioner instance
-            size: taille du canvas
-        
-        Returns:
-            HTML object pour Jupyter
-        """
-        import uuid
-        from IPython.display import HTML
-        
-        partitioner_type = type(partitioner).__name__
-        n_cells = partitioner.n_cells
-        label = partitioner.label if hasattr(partitioner, 'label') else "Unknown"
-        
-        html = f"""
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-        
-        <h3 style="margin-bottom:12px; color:#2c3e50;">
-            🔍 Partitionnement: {partitioner_type}
-        </h3>
-        
-        <div style="margin:12px 0; padding:16px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    border-radius:8px; color:white; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
-            <div style="text-align:center;">
-                <div style="font-size:16px; font-weight:bold; margin-bottom:8px;">
-                    {partitioner_type}
-                </div>
-                <div style="font-size:14px; margin-bottom:8px;">
-                    {label}
-                </div>
-                <div style="font-size:16px; font-weight:bold; margin-top:8px;">
-                    Total : {n_cells} cellules
-                </div>
-            </div>
-        </div>
-        
-        </div>
-        """
-        return HTML(html)
-
-
-    def list_available_visualizations(self):
-        """
-        Liste les expériences pour lesquelles on peut faire une visualisation.
-        
-        Returns:
-            dict: {experiment_name: {"method": str, "can_visualize": bool, "reason": str}}
-        """
-        result = {}
-        
-        print("🔍 Vérification des visualisations possibles...")
-        
-        for name, exp_data in self.results.items():
-            method = exp_data.get("method", "unknown")
-            can_viz = True
-            reason = "OK"
-            
-            # Vérifier si la méthode est supportée
-            if method in ["unknown"]:
-                can_viz = False
-                reason = "Méthode inconnue"
-            
-            result[name] = {
-                "method": method,
-                "can_visualize": can_viz, 
-                "reason": reason
-            }
-        
-        # Résumé par méthode
-        by_method = defaultdict(list)
-        for name, info in result.items():
-            by_method[info["method"]].append(name)
-        
-        print(f"\n📊 Résumé par méthode:")
-        for method, names in sorted(by_method.items()):
-            can_viz_count = sum(1 for name in names if result[name]["can_visualize"])
-            print(f"   {method:15s}: {can_viz_count}/{len(names)} visualisables")
-        
-        return result
+ 
 # =============================================================================
 # SCRIPT PRINCIPAL
 # =============================================================================
