@@ -10,17 +10,53 @@ import json
 import io
 import os
 import tempfile # pour la sauvegarde temporaire des fichiers en local avant son tranfert vers le bucket
+import subprocess
 from pathlib import Path
 from huggingface_hub import HfApi, HfFileSystem
 
 # Configuration
 BUCKET_ID = "ktongue/DEM_MCM"
-# BUCKET_PREFIX = "ResultsDtMCM"
-# BUCKET_PREFIX = "NewResultsMCM"
-# BUCKET_PREFIX = "RaffinageTemporel"
-BUCKET_PREFIX = "Experiments"
-# BUCKET_PREFIX = "BIG"
-# BUCKET_PREFIX = "SMALL"
+
+# ============================================================================
+# DÉTECTION DYNAMIQUE DE LA BRANCHE GIT → BUCKET_PREFIX
+# ============================================================================
+def _get_current_branch():
+    """
+    Détecte la branche git actuelle et retourne le BUCKET_PREFIX correspondant.
+    Mappe: ALL → Experiments, BIG → BIG, SMALL → SMALL
+    """
+    try:
+        # Chercher le répertoire .git en remontant les répertoires
+        current_dir = Path(__file__).resolve().parent
+        for _ in range(5):  # Remonter jusqu'à 5 niveaux max
+            if (current_dir / ".git").exists():
+                git_root = current_dir
+                break
+            current_dir = current_dir.parent
+        else:
+            # Si on ne trouve pas .git
+            return "Experiments"
+        
+        branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(git_root),
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
+        
+        branch_to_prefix = {
+            "ALL": "Experiments",
+            "BIG": "BIG",
+            "SMALL": "SMALL"
+        }
+        prefix = branch_to_prefix.get(branch, "Experiments")
+        print(f"🔀 Branche git détectée: '{branch}' → Bucket: '{prefix}'")
+        return prefix
+    except (subprocess.CalledProcessError, FileNotFoundError, Exception) as e:
+        # Fallback si git n'est pas disponible
+        print(f"⚠️ Git non disponible, utilisation du bucket par défaut: 'Experiments'")
+        return "Experiments"
+
+BUCKET_PREFIX = _get_current_branch()
 BUCKET_BASE = f"hf://buckets/{BUCKET_ID}/{BUCKET_PREFIX}"
 
 _fs = None
