@@ -25,8 +25,8 @@ import json
 import io
 from collections import defaultdict
 from huggingface_hub import HfFileSystem
-import bucket_io as b_io
-# from .import bucket_io as b_io
+# import bucket_io as b_io
+from .import bucket_io as b_io
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -899,7 +899,7 @@ class MarkovAnalyzer:
         C[mask] = nA[mask] / ntotal[mask]
         # C[mask] = nA[mask] 
         # C[mask] = nA[mask] # en nombre de particules de 
-        print(f"concetration initiale {C.sum()}")
+        print(f"concetration initiale \n{C.sum()}")
 
         # Simulation Markov
         concentration_history = np.zeros((n_steps, n_states))
@@ -930,7 +930,7 @@ class MarkovAnalyzer:
             else:
                 entropy[t] = 0
 
-        print(f"concentration finale {C.sum()}")
+        print(f"concentration finale \n{C.sum()}")
         rsd_0 = rsd[0] if rsd[0] > 0 else 1.0
         self.concentration_history=concentration_history
         self.rsd=rsd
@@ -1078,7 +1078,8 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         Returns:
             partitioner fitté
         """
-        from src.partitioners import create_partitioner
+        # from src.partitioners import create_partitioner
+        from .partitioners import create_partitioner
 
         # Agréger les données pour le fit
         all_coords = np.vstack([s["coords"] for s in self.dem_snapshots])
@@ -1344,7 +1345,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
 
     def compare_dem_vs_markov(self, method, method_kwargs,
                             folder_name=None,
-                            species_criterion="z_median",
+                            species_criterion="large",
                             file_indices=None,
                             figsize=(20, 16)):
         """
@@ -1367,7 +1368,8 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         Returns:
             dict avec dem_rsd, markov_rsd
         """
-        from src.partitioners import create_partitioner
+        # from src.partitioners import create_partitioner
+        from .partitioners import create_partitioner
 
         # ── 1. Charger les snapshots DEM ──
         if not hasattr(self, 'dem_snapshots') or not self.dem_snapshots:
