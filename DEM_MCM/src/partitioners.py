@@ -61,6 +61,7 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
     """Interface commune pour tous les partitionneurs."""
     def __init__(self):
         self._y_split=0
+        super().__init__()
         # self.load_dem_snapshots(file_indices=[250])
         # self.label_species()
         self.PARTICLE_NUMBER=1030
@@ -880,7 +881,7 @@ class VoronoiPartitioner(BasePartitioner):
 
         _, indices = self._tree.query(coords)
         self.states=indices.astype(np.int64)
-        return self.states[np.tile(self.species_labels,n)]
+        return self.states#[np.tile(self.species_labels,n)]
 
     def _save_data(self, path):
         np.save(os.path.join(path, "centroids.npy"), self.centroids)
@@ -1036,7 +1037,7 @@ class QuantileGridPartitioner(BasePartitioner):
         )
         n=int(len(x)/self.PARTICLE_NUMBER)
         self.states= ix + iy * self.nx + iz * self.nx * self.ny
-        return self.states[np.tile(self.species_labels,n)]
+        return self.states#[np.tile(self.species_labels,n)]
 
     def _save_data(self, path):
         np.savez(
@@ -1146,7 +1147,7 @@ class OctreePartitioner(BasePartitioner):
     Inconvénient : nombre de cellules non contrôlé a priori.
     """
 
-    def __init__(self, max_particles=100, max_depth=5,transform_type=None):
+    def __init__(self, max_particles=100, max_depth=5,transform_type=0):
         super().__init__()
         self.max_particles = max_particles
         self.max_depth = max_depth
@@ -1269,7 +1270,7 @@ class OctreePartitioner(BasePartitioner):
         n_n=int(len(x)/self.PARTICLE_NUMBER)
 
         self.states= states
-        return self.states[np.tile(self.species_labels,n_n)]
+        return self.states#[np.tile(self.species_labels,n_n)]
 
     def _save_data(self, path):
         leaves_arr = np.array(self._leaves)
@@ -1464,7 +1465,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
         _, indices = self._tree.query(X)
         n=int(len(x)/self.PARTICLE_NUMBER)
         self.states=indices.astype(np.int64)
-        return self.states[np.tile(self.species_labels,n)]
+        return self.states#[np.tile(self.species_labels,n)]
 
     def compute_states_with_physics(self, x, y, z, vx, vy, vz):
         """Assigne les états avec vitesse."""
@@ -1477,7 +1478,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
         _, indices = self._tree.query(X)
         n=int(len(x)/self.PARTICLE_NUMBER)
         self.states=indices.astype(np.int64)
-        return self.states[np.tile(self.species_labels,n)]
+        return self.states#[np.tile(self.species_labels,n)]
 
     def _save_data(self, path):
         np.save(os.path.join(path, "centroids.npy"), self._centroids)
