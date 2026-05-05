@@ -18,7 +18,7 @@ from huggingface_hub import HfApi, HfFileSystem
 BUCKET_ID = "ktongue/DEM_MCM"
 
 # ============================================================================
-# DÉTECTION DYNAMIQUE DU BUCKET SELON LE MASQUE APPLIQUÉ
+# DÉTECTION DYNAMIQUE DU BUCKET SELON LE MASQUE APPLIQUÉ (particle_diameter)
 # ============================================================================
 def _get_bucket_prefix_from_particle_diameter(particle_diameter):
     """
@@ -171,6 +171,7 @@ def save_experiment_to_bucket(folder_name, matrix, stats, config,
         if particle_diameter is not None:
             bucket_info += f" (diamètre={particle_diameter})"
         print(f"   ✅ {len(files_to_upload)} fichiers uploadés vers {bucket_info}/{folder_name}/")
+
 # =============================================================================
 # LECTURE
 # =============================================================================
