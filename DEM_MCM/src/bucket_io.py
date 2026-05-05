@@ -18,46 +18,64 @@ from huggingface_hub import HfApi, HfFileSystem
 BUCKET_ID = "ktongue/DEM_MCM"
 
 # ============================================================================
-# DÉTECTION DYNAMIQUE DE LA BRANCHE GIT → BUCKET_PREFIX
+# DÉTECTION DYNAMIQUE DU BUCKET SELON LE MASQUE APPLIQUÉ (particle_diameter)
 # ============================================================================
+def _get_bucket_prefix_from_particle_diameter(particle_diameter):
+    """
+    Détermine le BUCKET_PREFIX selon le type de masque (particle_diameter).
+    
+    Logique:
+    - particle_diameter == 0.008 → "BIG" (grosses particules)
+    - particle_diameter == 0.004 → "SMALL" (petites particules)
+    - particle_diameter == None → "Experiments" (toutes les particules)
+    
+    Args:
+        particle_diameter: Optional[float] - Le diamètre filtré (ou None)
+    
+    Returns:
+        str: Le prefix du bucket ("BIG", "SMALL", ou "Experiments")
+    """
+    if particle_diameter == 0.008:
+        return "BIG"
+    elif particle_diameter == 0.004:
+        return "SMALL"
+    else:
+        return "Experiments"
+
 def _get_current_branch():
     """
-    Détecte la branche git actuelle et retourne le BUCKET_PREFIX correspondant.
-    Mappe: ALL → Experiments, BIG → BIG, SMALL → SMALL
+    Détecte la branche git actuelle (pour information seulement, ne détermine plus le bucket).
+    Utilisé à titre informatif uniquement.
     """
     try:
-        # Chercher le répertoire .git en remontant les répertoires
         current_dir = Path(__file__).resolve().parent
-        for _ in range(5):  # Remonter jusqu'à 5 niveaux max
+        for _ in range(5):
             if (current_dir / ".git").exists():
                 git_root = current_dir
                 break
             current_dir = current_dir.parent
         else:
-            # Si on ne trouve pas .git
-            return "Experiments"
+            return None
         
         branch = subprocess.check_output(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             cwd=str(git_root),
             stderr=subprocess.DEVNULL
         ).decode().strip()
-        
-        branch_to_prefix = {
-            "ALL": "Experiments",
-            "BIG": "BIG",
-            "SMALL": "SMALL"
-        }
-        prefix = branch_to_prefix.get(branch, "Experiments")
-        print(f"🔀 Branche git détectée: '{branch}' → Bucket: '{prefix}'")
-        return prefix
-    except (subprocess.CalledProcessError, FileNotFoundError, Exception) as e:
-        # Fallback si git n'est pas disponible
-        print(f"⚠️ Git non disponible, utilisation du bucket par défaut: 'Experiments'")
-        return "Experiments"
+        return branch
+    except (subprocess.CalledProcessError, FileNotFoundError, Exception):
+        return None
 
-BUCKET_PREFIX = _get_current_branch()
+# ✅ NEW: Initialiser avec le bucket par défaut (sera override selon particle_diameter)
+BUCKET_PREFIX = _get_bucket_prefix_from_particle_diameter(None)  # Par défaut: "Experiments"
 BUCKET_BASE = f"hf://buckets/{BUCKET_ID}/{BUCKET_PREFIX}"
+
+# Afficher la branche git détectée à titre informatif
+_branch = _get_current_branch()
+if _branch:
+    print(f"🔀 Branche git détectée: '{_branch}' (bucket déterminé par masque appliqué)")
+else:
+    print(f"🔀 Branche git: non détectée (bucket déterminé par masque appliqué)")
 
 _fs = None
 _api = None
@@ -81,27 +99,43 @@ def get_api():
 # ÉCRITURE
 # =============================================================================
 def save_experiment_to_bucket(folder_name, matrix, stats, config,
-                              partitioner_data=None, image_data=None):  # ← Changé image_paths en image_data
+                              partitioner_data=None, image_data=None, particle_diameter=None):
+    """
+    Sauvegarde une expérience dans le bucket HuggingFace.
+    
+    Args:
+        folder_name: Nom du dossier de destination
+        matrix: Matrice de transition numpy (n_states × n_states)
+        stats: Dictionnaire des statistiques
+        config: Configuration de l'expérience
+        partitioner_data: Données du partitionneur (optionnel)
+        image_data: Images (optionnel)
+        particle_diameter: Diamètre filtré (optionnel) - détermine le bucket
+    """
+    # ✅ NEW: Déterminer le bucket selon particle_diameter
+    bucket_prefix = _get_bucket_prefix_from_particle_diameter(particle_diameter)
+    bucket_base = f"hf://buckets/{BUCKET_ID}/{bucket_prefix}"
+    
     api = get_api()
 
     with tempfile.TemporaryDirectory() as tmpdir:
         local_folder = Path(tmpdir)
         files_to_upload = []
 
-        # ✅ Corriger les chemins avec / entre BUCKET_PREFIX et folder_name
+        # ✅ Utiliser bucket_prefix dynamique
         matrix_path = local_folder / "transitionmatrix.npy"
         np.save(matrix_path, matrix)
-        files_to_upload.append((str(matrix_path), f"{BUCKET_PREFIX}/{folder_name}/transitionmatrix.npy"))
+        files_to_upload.append((str(matrix_path), f"{bucket_prefix}/{folder_name}/transitionmatrix.npy"))
 
         stats_path = local_folder / "stats.json"
         with open(stats_path, "w") as f:
             json.dump(stats, f, indent=2)
-        files_to_upload.append((str(stats_path), f"{BUCKET_PREFIX}/{folder_name}/stats.json"))
+        files_to_upload.append((str(stats_path), f"{bucket_prefix}/{folder_name}/stats.json"))
 
         config_path = local_folder / "config.json"
         with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
-        files_to_upload.append((str(config_path), f"{BUCKET_PREFIX}/{folder_name}/config.json"))
+        files_to_upload.append((str(config_path), f"{bucket_prefix}/{folder_name}/config.json"))
 
         # données partitionneur
         if partitioner_data:
@@ -109,12 +143,12 @@ def save_experiment_to_bucket(folder_name, matrix, stats, config,
                 if isinstance(value, np.ndarray):
                     p = local_folder / f"{key}.npy"
                     np.save(p, value)
-                    files_to_upload.append((str(p), f"{BUCKET_PREFIX}/{folder_name}/{key}.npy"))
+                    files_to_upload.append((str(p), f"{bucket_prefix}/{folder_name}/{key}.npy"))
                 else:
                     p = local_folder / f"{key}.json"
                     with open(p, "w") as f:
                         json.dump(value, f, indent=2)
-                    files_to_upload.append((str(p), f"{BUCKET_PREFIX}/{folder_name}/{key}.json"))
+                    files_to_upload.append((str(p), f"{bucket_prefix}/{folder_name}/{key}.json"))
 
         # ✅ Images en mémoire → fichiers temporaires → upload
         if image_data:
@@ -123,7 +157,7 @@ def save_experiment_to_bucket(folder_name, matrix, stats, config,
                 with open(img_path, "wb") as f:
                     f.write(img_bytes)
                 files_to_upload.append(
-                    (str(img_path), f"{BUCKET_PREFIX}/{folder_name}/images/{img_name}")
+                    (str(img_path), f"{bucket_prefix}/{folder_name}/images/{img_name}")
                 )
                 
         # Upload batch
@@ -132,7 +166,12 @@ def save_experiment_to_bucket(folder_name, matrix, stats, config,
             add=[(local_path, path_in_bucket) for local_path, path_in_bucket in files_to_upload],
         )
         
-        print(f"   ✅ {len(files_to_upload)} fichiers uploadés vers {BUCKET_PREFIX}/{folder_name}/")
+        # ✅ Afficher le bucket utilisé
+        bucket_info = f"{bucket_prefix}"
+        if particle_diameter is not None:
+            bucket_info += f" (diamètre={particle_diameter})"
+        print(f"   ✅ {len(files_to_upload)} fichiers uploadés vers {bucket_info}/{folder_name}/")
+
 # =============================================================================
 # LECTURE
 # =============================================================================

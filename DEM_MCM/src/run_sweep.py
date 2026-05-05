@@ -861,17 +861,22 @@ def save_results(config, partitioner, P, stats, image_data=None, folder_name=Non
         "n_cells": partitioner.n_cells,
     }
     
-    # ✅ Sauvegarder directement dans le bucket
+    # ✅ Sauvegarder directement dans le bucket avec particle_diameter
     save_experiment_to_bucket(
         folder_name=folder_name,
         matrix=P,
         stats=stats,
         config=asdict(config),
         partitioner_data=partitioner_data,
-        image_data=image_data  # ← Changé
+        image_data=image_data,
+        particle_diameter=config.particle_diameter  # ✅ PASS DIAMETER
     )
     
-    print(f"   💾 Bucket: {BUCKET_BASE}/{folder_name}/")
+    # Afficher le bucket utilisé (déterminé par particle_diameter)
+    bucket_name = "BIG" if config.particle_diameter == 0.008 else \
+                  "SMALL" if config.particle_diameter == 0.004 else \
+                  "Experiments"
+    print(f"   💾 Bucket: {bucket_name}/{folder_name}/")
 # =============================================================================
 # FONCTION PRINCIPALE
 # =============================================================================
