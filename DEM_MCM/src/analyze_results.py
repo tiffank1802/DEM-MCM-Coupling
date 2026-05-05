@@ -45,16 +45,34 @@ BUCKET_ID = b_io.BUCKET_ID
 BUCKET_PREFIX = b_io.BUCKET_PREFIX
 BUCKET_BASE = b_io.BUCKET_BASE
 
-# Anciennes données cartésiennes (dossier séparé)
+# ✅ Option B: Tous les buckets possibles (cherchés dans l'ordre)
+def _get_bucket_prefix_from_particle_diameter(particle_diameter):
+    """
+    Détermine le bucket selon particle_diameter (même logique que bucket_io.py).
+    Utilisé pour charger les expériences du bon bucket (Option A).
+    """
+    if particle_diameter == 0.008:
+        return "BIG"
+    elif particle_diameter == 0.004:
+        return "SMALL"
+    else:
+        return "Experiments"
+
+# ✅ Liste de tous les buckets à chercher (par ordre de priorité)
+# - D'abord les buckets actuels (Experiments, SMALL, BIG)
+# - Ensuite les anciens buckets (OLD_BUCKET_PREFIX)
+ALL_BUCKET_PREFIXES = ["Experiments", "SMALL", "BIG"]
+
+# Anciennes données cartésiennes (dossier séparé) - cherché en dernier
 # OLD_BUCKET_PREFIX = "markov_sweep_results"
 # OLD_BUCKET_PREFIX = "NewResultsMCM"
-OLD_BUCKET_PREFIX = BUCKET_PREFIX
+OLD_BUCKET_PREFIX = "Experiments"  # Par défaut = même que bucket actuel
 OLD_BUCKET_BASE = f"hf://buckets/{BUCKET_ID}/{OLD_BUCKET_PREFIX}"
 
-
-BUCKET_ID=b_io.BUCKET_ID
-BUCKET_PREFIX=b_io.BUCKET_PREFIX
-BUCKET_BASE=b_io.BUCKET_BASE
+# ✅ ALL_BUCKET_BASES pour Option B (cherche dans tous les buckets)
+ALL_BUCKET_BASES = [f"hf://buckets/{BUCKET_ID}/{prefix}" for prefix in ALL_BUCKET_PREFIXES]
+if OLD_BUCKET_BASE not in ALL_BUCKET_BASES:
+    ALL_BUCKET_BASES.append(OLD_BUCKET_BASE)
 # Méthodes connues et leurs préfixes
 METHOD_PREFIXES = {
     "cartesian": ["cartesian_", "NLT_"],   # NLT_ = ancien format cartésien
@@ -279,9 +297,12 @@ class MarkovAnalyzer:
         except FileNotFoundError:
             return []
     
-    def _load_experiment(self, base_path=BUCKET_BASE , folder_name=None):
+    def _load_experiment(self, base_path=BUCKET_BASE, folder_name=None):
         """
         Charge une expérience depuis un dossier du bucket.
+        
+        Option A: Lire particle_diameter depuis stats.json et construire le bon bucket path
+        Option B: Essayer la base_path fournie, puis tous les autres buckets
         
         Gère les deux formats:
         - Ancien: params.json + stats.json + transition_matrix.npy
@@ -289,151 +310,170 @@ class MarkovAnalyzer:
         
         Essaie aussi de charger les données du partitionnement si disponibles.
         """
+        # ✅ Option A: Essayer le bucket principal fourni
         prefix = f"{base_path}/{folder_name}"
         
-        # Matrice (obligatoire)
-        matrix = self._load_npy(f"{prefix}/transitionmatrix.npy")
-        
-        # Params (essayer config.json puis params.json)
-        params = {}
-        for fname in ["config.json", "params.json"]:
-            try:
-                params = self._load_json(f"{prefix}/{fname}")
-                break
-            except:
-                continue
-        
-        # Stats
+        # Essayer de charger stats.json DABORD pour déterminer le bon bucket (Option A)
         stats = {}
         try:
             stats = self._load_json(f"{prefix}/stats.json")
+            # ✅ Extraire particle_diameter et reconstruire le bucket si nécessaire
+            particle_diameter = stats.get("particle_diameter")
+            if particle_diameter is not None:
+                correct_bucket_prefix = _get_bucket_prefix_from_particle_diameter(particle_diameter)
+                correct_base_path = f"hf://buckets/{BUCKET_ID}/{correct_bucket_prefix}"
+                if correct_base_path != base_path:
+                    print(f"     ℹ️  bucket fourni {base_path} → rechargement depuis {correct_bucket_prefix} (particle_diameter={particle_diameter})")
+                    base_path = correct_base_path
+                    prefix = f"{base_path}/{folder_name}"
         except:
-            pass
+            pass  # Stats pas encore chargé, on continue
         
-        # Centroïdes (voronoi)
-        centroids = None
-        try:
-            centroids = self._load_npy(f"{prefix}/centroids.npy")
-        except:
-            pass
+        # ✅ Option B: Lister les buckets à essayer (par ordre de priorité)
+        buckets_to_try = [base_path] + [b for b in ALL_BUCKET_BASES if b != base_path]
         
-        # Données de partitionnement
-        partitioner_data = None
-        try:
-            partitioner_data = self._load_partitioner_data(f"{prefix}/partitioner")
-        except:
-            pass
+        loaded = False
+        last_error = None
         
-        # Méthode
-        method = self._detect_method(folder_name, params)
-        
-        # Infos
-        info = self._parse_experiment_info(folder_name, params, stats)
-        if info["n_states"] is None:
-            info["n_states"] = matrix.shape[0]
-        
-        return {
-            "matrix": matrix,
-            "params": params,
-            "stats": stats,
-            "method": method,
-            "info": info,
-            "centroids": centroids,
-            "partitioner_data": partitioner_data,
-        }
-            
-    def load_single(self, folder_name):
-        """Charge UNIQUEMENT un dossier spécifique (pas de scan automatique)."""
-        print(f"🔍 Chargement ciblé : {folder_name}")
-        
-        for base_path in [BUCKET_BASE, OLD_BUCKET_BASE]:
-            prefix = f"{base_path}/{folder_name}"
-            print(f"  → Test {prefix}")
+        for attempt_path in buckets_to_try:
+            prefix = f"{attempt_path}/{folder_name}"
             
             try:
-                # Test direct sans parsing des métadonnées
-                matrix = self._load_npy(f"{prefix}/transition_matrix.npy")
-                print(f"   ✅ Matrice trouvée : {matrix.shape}")
+                # Matrice (obligatoire)
+                matrix = self._load_npy(f"{prefix}/transitionmatrix.npy")
                 
-                # Charger les métadonnées si disponibles (optionnel)
-                params, stats, method, info = None, {}, {}, "unknown"
+                # Params (essayer config.json puis params.json)
+                params = {}
                 for fname in ["config.json", "params.json"]:
                     try:
                         params = self._load_json(f"{prefix}/{fname}")
-                        print(f"   ✅ {fname} chargé")
                         break
                     except:
                         continue
                 
-                stats = self._load_json(f"{prefix}/stats.json") if self._exists(f"{prefix}/stats.json") else {}
+                # Stats (recharger si première tentative échouée)
+                if not stats:
+                    try:
+                        stats = self._load_json(f"{prefix}/stats.json")
+                    except:
+                        pass
+                
+                # Centroïdes (voronoi)
+                centroids = None
+                try:
+                    centroids = self._load_npy(f"{prefix}/centroids.npy")
+                except:
+                    pass
+                
+                # Données de partitionnement
+                partitioner_data = None
+                try:
+                    partitioner_data = self._load_partitioner_data(f"{prefix}/partitioner")
+                except:
+                    pass
+                
+                # Méthode
                 method = self._detect_method(folder_name, params)
+                
+                # Infos
                 info = self._parse_experiment_info(folder_name, params, stats)
+                if info["n_states"] is None:
+                    info["n_states"] = matrix.shape[0]
+                
+                loaded = True
+                break  # ✅ Succès! Arrêter la boucle
+                
+            except Exception as e:
+                last_error = e
+                continue  # ✅ Essayer le bucket suivant
+        
+        # ✅ Si chargement réussi, retourner les données
+        if loaded:
+            return {
+                "matrix": matrix,
+                "params": params,
+                "stats": stats,
+                "method": method,
+                "info": info,
+                "centroids": centroids,
+                "partitioner_data": partitioner_data,
+            }
+        else:
+            # Lancer une exception avec tous les buckets essayés
+            buckets_str = ", ".join([b.replace("hf://buckets/ktongue/DEM_MCM/", "") for b in buckets_to_try])
+            raise Exception(f"Impossible de charger {folder_name} depuis les buckets: {buckets_str}. Erreur: {last_error}")
+            
+    def load_single(self, folder_name):
+        """
+        Charge UNIQUEMENT un dossier spécifique (pas de scan automatique).
+        ✅ Option B: Cherche dans tous les buckets (ALL_BUCKET_BASES)
+        """
+        print(f"🔍 Chargement ciblé : {folder_name}")
+        
+        # ✅ Option B: Essayer TOUS les buckets
+        for base_path in ALL_BUCKET_BASES:
+            bucket_name = base_path.replace("hf://buckets/ktongue/DEM_MCM/", "")
+            print(f"  → Test bucket {bucket_name}...", end=" ")
+            
+            try:
+                # Utiliser _load_experiment qui gère Option A + fallback
+                data = self._load_experiment(base_path=base_path, folder_name=folder_name)
                 
                 # Stocker
-                self.results = {folder_name: {
-                    'matrix': matrix, 'params': params, 'stats': stats, 
-                    'method': method, 'info': info
-                }}
-                print(f"✅ {folder_name} chargé avec succès")
+                self.results = {folder_name: data}
+                print(f"✅ Trouvé")
                 return True
                 
-            except FileNotFoundError:
-                print(f"   ❌ {prefix}/transition_matrix.npy introuvable")
-                continue
             except Exception as e:
-                print(f"   ⚠️  Erreur {prefix}: {e}")
+                print(f"❌")
                 continue
         
-        print(f"❌ Dossier {folder_name} introuvable dans les buckets")
-        return self.results
+        print(f"\n❌ {folder_name} introuvable dans tous les buckets")
+        return False
+    
     def load_single_folder(self, folder_name):
         """Charge un seul dossier même s'il ne match pas la méthode."""
         self.results = {}
         data = self._load_experiment(BUCKET_BASE, folder_name)
         self.results[folder_name] = data
         print(f"✅ {folder_name} chargé")
+    
     def load_all(self, include_old=True):
         """
         Charge toutes les expériences depuis le bucket.
+        ✅ Option B: Cherche dans TOUS les buckets (BIG, SMALL, Experiments, OLD)
         
         Args:
-            include_old: inclure les anciennes données cartésiennes
+            include_old: inclure les anciennes données (non utilisé car cherche ALL_BUCKET_BASES)
         """
         self.results = {}
         self.by_method = defaultdict(dict)
+        loaded_folders = set()  # ✅ Track dossiers déjà chargés pour éviter les doublons
         
-        # ── Nouveau format ──
-        print(f"📂 Chargement depuis {BUCKET_BASE}...")
-        new_folders = self._list_folders(BUCKET_BASE)
-        print(f"   {len(new_folders)} dossiers trouvés")
-        
-        for folder in new_folders:
-            try:
-                data = self._load_experiment(BUCKET_BASE, folder)
-                self.results[folder] = data
-                self.by_method[data["method"]][folder] = data
-                print(f"   ✅ [{data['method']:12s}] {folder}: "
-                      f"shape={data['matrix'].shape}")
-            except Exception as e:
-                print(f"   ⚠️  {folder}: {e}")
-        
-        # ── Ancien format cartésien ──
-        if include_old:
-            print(f"\n📂 Chargement depuis {OLD_BUCKET_BASE}...")
-            old_folders = self._list_folders(OLD_BUCKET_BASE)
-            print(f"   {len(old_folders)} dossiers trouvés")
+        # ✅ Option B: Chercher dans TOUS les buckets
+        for base_path in ALL_BUCKET_BASES:
+            bucket_name = base_path.replace("hf://buckets/ktongue/DEM_MCM/", "")
+            print(f"📂 Chargement depuis bucket '{bucket_name}'...")
             
-            for folder in old_folders:
-                if folder in self.results:
-                    continue  # déjà chargé
-                try:
-                    data = self._load_experiment(OLD_BUCKET_BASE, folder)
-                    self.results[folder] = data
-                    self.by_method[data["method"]][folder] = data
-                    print(f"   ✅ [{data['method']:12s}] {folder}: "
-                          f"shape={data['matrix'].shape}")
-                except Exception as e:
-                    print(f"   ⚠️  {folder}: {e}")
+            try:
+                folders = self._list_folders(base_path)
+                print(f"   {len(folders)} dossiers trouvés")
+                
+                for folder in folders:
+                    if folder in loaded_folders:
+                        continue  # ✅ Déjà chargé depuis un autre bucket
+                    
+                    try:
+                        data = self._load_experiment(base_path, folder)
+                        self.results[folder] = data
+                        self.by_method[data["method"]][folder] = data
+                        loaded_folders.add(folder)
+                        print(f"   ✅ [{data['method']:12s}] {folder}: "
+                              f"shape={data['matrix'].shape}")
+                    except Exception as e:
+                        print(f"   ⚠️  {folder}: {e}")
+            except Exception as e:
+                print(f"   ⚠️  Impossible de lister le bucket: {e}")
         
         # Résumé
         print(f"\n{'='*60}")
@@ -444,22 +484,36 @@ class MarkovAnalyzer:
         print()
     
     def load_method(self, method):
-        """Charge uniquement les expériences d'une méthode."""
+        """
+        Charge uniquement les expériences d'une méthode.
+        ✅ Option B: Cherche dans TOUS les buckets (BIG, SMALL, Experiments, OLD)
+        """
         self.results = {}
         self.by_method = defaultdict(dict)
+        loaded_folders = set()  # ✅ Track dossiers déjà chargés
         
-        for base_path in [BUCKET_BASE, OLD_BUCKET_BASE]:
-            folders = self._list_folders(base_path)
-            for folder in folders:
-                detected = self._detect_method(folder)
-                if detected == method:
-                    try:
-                        data = self._load_experiment(base_path, folder)
-                        self.results[folder] = data
-                        self.by_method[method][folder] = data
-                        print(f"   ✅ {folder}: shape={data['matrix'].shape}")
-                    except Exception as e:
-                        print(f"   ⚠️  {folder}: {e}")
+        # ✅ Option B: Chercher dans TOUS les buckets
+        for base_path in ALL_BUCKET_BASES:
+            bucket_name = base_path.replace("hf://buckets/ktongue/DEM_MCM/", "")
+            
+            try:
+                folders = self._list_folders(base_path)
+                for folder in folders:
+                    if folder in loaded_folders:
+                        continue  # ✅ Déjà chargé depuis un autre bucket
+                    
+                    detected = self._detect_method(folder)
+                    if detected == method:
+                        try:
+                            data = self._load_experiment(base_path, folder)
+                            self.results[folder] = data
+                            self.by_method[method][folder] = data
+                            loaded_folders.add(folder)
+                            print(f"   ✅ {folder}: shape={data['matrix'].shape}")
+                        except Exception as e:
+                            print(f"   ⚠️  {folder}: {e}")
+            except Exception as e:
+                print(f"   ⚠️  Impossible de lister {bucket_name}: {e}")
         
         print(f"\n{len(self.results)} expériences {method} chargées")
     
