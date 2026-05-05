@@ -22,6 +22,7 @@ import numpy as np
 import polars as pl
 import torch
 from tqdm import tqdm
+from typing import Optional
 from dataclasses import dataclass, field, asdict
 from huggingface_hub import HfFileSystem
 
