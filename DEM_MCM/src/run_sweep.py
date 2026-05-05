@@ -70,6 +70,7 @@ class ExperimentConfig:
     step: int = 10  # Distance entre 2 starts principaux (quand NLT > 1)
     dt: int = None  # Raffinage temporel à l'intérieur de chaque step
     start_index: int = 250
+    particle_diameter: Optional[float] = None  # ✅ NEW: Diamètre de particule (0.004, 0.008, ou None)
 
     def __post_init__(self):
         if self.method_kwargs is None:
@@ -88,6 +89,11 @@ class ExperimentConfig:
             f"{part.label}_NLT{self.nlt}_step{self.step}_"
             f"dt{self.dt}_tau{self.tau}_start{self.start_index}"
         )
+        
+        # ✅ Ajouter le suffixe particle_diameter si spécifié
+        if self.particle_diameter is not None:
+            diameter_str = str(self.particle_diameter).replace(".", "")
+            folder_name += f"_d{diameter_str}"
     
         return folder_name    # ✅ Retourne juste le nom
 # =============================================================================
@@ -95,7 +101,7 @@ class ExperimentConfig:
 # =============================================================================
 
 
-def get_configs(method):
+def get_configs(method, particle_diameter=None):
     """
     Retourne la liste de configs pour une méthode donnée.
     
@@ -103,10 +109,16 @@ def get_configs(method):
     1. Configurations spatiales pures (paramètres temporels par défaut)
     2. Configurations temporelles pures (paramètres spatiaux par défaut) 
     3. Pas de dédoublonnage abusif qui supprime des combinaisons légitimes
+    
+    Args:
+        method: str - La méthode de partitionnement
+        particle_diameter: Optional[float] - Diamètre de particule (0.004, 0.008, ou None)
     """
     configs = []
     
     print(f"   🔍 Génération des configs pour {method}...")
+    if particle_diameter is not None:
+        print(f"   🎯 Filtre diamètre: {particle_diameter}")
 
     # ══════════════════════════════════════════════════════════════════════
     # 1. SWEEP DE DISCRÉTISATION SPATIALE (avec paramètres temporels par défaut)
@@ -118,6 +130,7 @@ def get_configs(method):
                 ExperimentConfig(
                     method="cartesian",
                     method_kwargs={"nx": n, "ny": n, "nz": n},
+                    particle_diameter=particle_diameter,
                 )
             )
 
@@ -131,6 +144,7 @@ def get_configs(method):
                         "nr": nr, "ntheta": 1, "nz": 1,
                         "radial_mode": "equal_area",
                     },
+                    particle_diameter=particle_diameter,
                 )
             )
         # ntheta variable
@@ -142,6 +156,7 @@ def get_configs(method):
                         "nr": 1, "ntheta": nth, "nz": 1,
                         "radial_mode": "equal_area",
                     },
+                    particle_diameter=particle_diameter,
                 )
             )
         # nz variable
@@ -153,6 +168,7 @@ def get_configs(method):
                         "nr": 2, "ntheta": 2, "nz": nz,
                         "radial_mode": "equal_area",
                     },
+                    particle_diameter=particle_diameter,
                 )
             )
         # equal_dr vs equal_area
@@ -164,6 +180,7 @@ def get_configs(method):
                         "nr": 2, "ntheta": 2, "nz": 1,
                         "radial_mode": mode,
                     },
+                    particle_diameter=particle_diameter,
                 )
             )
 
@@ -174,6 +191,7 @@ def get_configs(method):
                 ExperimentConfig(
                     method="voronoi",
                     method_kwargs={"n_cells": nc},
+                    particle_diameter=particle_diameter,
                 )
             )
 
@@ -183,6 +201,7 @@ def get_configs(method):
                 ExperimentConfig(
                     method="quantile",
                     method_kwargs={"nx": n, "ny": n, "nz": 1},
+                    particle_diameter=particle_diameter,
                 )
             )
 
@@ -193,6 +212,7 @@ def get_configs(method):
                 ExperimentConfig(
                     method="octree",
                     method_kwargs={"max_particles": mp, "max_depth": 2},
+                    particle_diameter=particle_diameter,
                 )
             )
         # max_depth variable
@@ -202,6 +222,7 @@ def get_configs(method):
                 ExperimentConfig(
                     method="octree",
                     method_kwargs={"max_particles": 100, "max_depth": md},
+                    particle_diameter=particle_diameter,
                 )
             )
 
@@ -212,6 +233,7 @@ def get_configs(method):
                 ExperimentConfig(
                     method="physics",
                     method_kwargs={"n_cells": nc},
+                    particle_diameter=particle_diameter,
                 )
             )
 
@@ -233,6 +255,7 @@ def get_configs(method):
                             "radial_mode": "equal_area",
                         },
                     },
+                    particle_diameter=particle_diameter,
                 )
             )
 
@@ -253,6 +276,7 @@ def get_configs(method):
                             "radial_mode": "equal_area",
                         },
                     },
+                    particle_diameter=particle_diameter,
                 )
             )
 
@@ -273,6 +297,7 @@ def get_configs(method):
                             "radial_mode": "equal_area",
                         },
                     },
+                    particle_diameter=particle_diameter,
                 )
             )
 
@@ -293,6 +318,7 @@ def get_configs(method):
                             "radial_mode": "equal_area",
                         },
                     },
+                    particle_diameter=particle_diameter,
                 )
             )
 
@@ -318,6 +344,7 @@ def get_configs(method):
                             "radial_mode": "equal_area",
                         },
                     },
+                    particle_diameter=particle_diameter,
                 )
             )
 
@@ -335,6 +362,7 @@ def get_configs(method):
                         "bottom_method": "voronoi",
                         "bottom_kwargs": {"n_cells": nc},
                     },
+                    particle_diameter=particle_diameter,
                 )
             )
 
@@ -347,6 +375,7 @@ def get_configs(method):
             ExperimentConfig(
                 method="single",
                 method_kwargs={},
+                particle_diameter=particle_diameter,
             )
         )
 
@@ -375,6 +404,7 @@ def get_configs(method):
                 method=method,
                 method_kwargs=default_spatial_kwargs,
                 nlt=nlt,
+                particle_diameter=particle_diameter,
             )
         )
 
@@ -385,6 +415,7 @@ def get_configs(method):
                 method=method,
                 method_kwargs=default_spatial_kwargs,
                 step=step,
+                particle_diameter=particle_diameter,
             )
         )
 
@@ -397,6 +428,7 @@ def get_configs(method):
                 method_kwargs=default_spatial_kwargs,
                 step=step_ref,
                 dt=dt,
+                particle_diameter=particle_diameter,
             )
         )
 
@@ -407,6 +439,7 @@ def get_configs(method):
                 method=method,
                 method_kwargs=default_spatial_kwargs,
                 tau=tau,
+                particle_diameter=particle_diameter,
             )
         )
 
@@ -414,15 +447,18 @@ def get_configs(method):
     recommended_configs = [
         ExperimentConfig(
             method=method, method_kwargs=default_spatial_kwargs,
-            nlt=3, step=100, dt=1, tau=50
+            nlt=3, step=100, dt=1, tau=50,
+            particle_diameter=particle_diameter,
         ),
         ExperimentConfig(
             method=method, method_kwargs=default_spatial_kwargs,
-            nlt=5, step=20, dt=2, tau=100
+            nlt=5, step=20, dt=2, tau=100,
+            particle_diameter=particle_diameter,
         ),
         ExperimentConfig(
             method=method, method_kwargs=default_spatial_kwargs,
-            nlt=2, step=20, dt=1, tau=100
+            nlt=2, step=20, dt=1, tau=100,
+            particle_diameter=particle_diameter,
         ),
     ]
     
@@ -882,7 +918,7 @@ def save_results(config, partitioner, P, stats, image_data=None, folder_name=Non
 # =============================================================================
 
 
-def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, base_dir=BASE_OUTPUT_DIR) -> list[dict]:
+def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, particle_diameter: float = None, base_dir=BASE_OUTPUT_DIR) -> list[dict]:
     """
     Lance le sweep Markovien pour une méthode de partitionnement.
     """
@@ -916,7 +952,7 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, base_d
     if configs is None:
         all_configs = []
         for m in methods:
-            all_configs.extend(get_configs(m))
+            all_configs.extend(get_configs(m, particle_diameter=particle_diameter))
     else:
         all_configs = configs
 
@@ -1066,6 +1102,13 @@ def main():
         help=f"Dossier de sortie (default: {BASE_OUTPUT_DIR})",
     )
     parser.add_argument(
+        "--diameter",
+        type=float,
+        choices=[0.004, 0.008],
+        default=None,
+        help="Filtrer par diamètre de particule: 0.004 (SMALL), 0.008 (BIG), ou None (tous)",
+    )
+    parser.add_argument(
         "--list",
         action="store_true",
         help="Lister les configurations sans lancer les calculs",
@@ -1075,20 +1118,20 @@ def main():
     if args.list:
         if args.method == "all":
             for m in REGISTRY:
-                configs = get_configs(m)
+                configs = get_configs(m, particle_diameter=args.diameter)
                 print(f"\n{m.upper()} ({len(configs)} configs):")
                 for c in configs:
                     p = create_partitioner(c.method, **c.method_kwargs)
-                    print(f"  {p.label} NLT={c.nlt} step={c.step} dt={c.dt}")
+                    print(f"  {p.label} NLT={c.nlt} step={c.step} dt={c.dt} diameter={c.particle_diameter}")
         else:
-            configs = get_configs(args.method)
+            configs = get_configs(args.method, particle_diameter=args.diameter)
             print(f"{args.method.upper()} ({len(configs)} configs):")
             for c in configs:
                 p = create_partitioner(c.method, **c.method_kwargs)
-                print(f"  {p.label} NLT={c.nlt} step={c.step} dt={c.dt}")
+                print(f"  {p.label} NLT={c.nlt} step={c.step} dt={c.dt} diameter={c.particle_diameter}")
         return
 
-    run_markov_sweep(args.method, base_dir=args.output)
+    run_markov_sweep(args.method, particle_diameter=args.diameter, base_dir=args.output)
 
 
 if __name__ == "__main__":
