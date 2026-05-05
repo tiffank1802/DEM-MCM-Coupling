@@ -3,6 +3,8 @@ Utilitaires généraux pour le module DEM_MCM.
 """
 
 import numpy as np
+import polars as pl
+from typing import Optional, Tuple
 
 
 def apply_species_mask(states, species_labels):
@@ -44,3 +46,45 @@ def apply_species_mask(states, species_labels):
         mask = np.concatenate([mask, species_labels[:remaining]])
     
     return states[mask]
+
+
+def filter_by_diameter(
+    df: pl.DataFrame, 
+    diameter: float
+) -> Tuple[pl.DataFrame, np.ndarray]:
+    """
+    Filtre les particules par diamètre et retourne le dataframe filtré + IDs conservés.
+    
+    Args:
+        df: DataFrame Polars chargé depuis un fichier CSV (1030 lignes × 24 colonnes)
+        diameter: Diamètre cible en mètres (0.004 ou 0.008)
+    
+    Returns:
+        tuple:
+            - filtered_df: DataFrame avec seulement les particules matchant le diamètre
+            - particle_ids_kept: np.ndarray des valeurs Particle_ID conservées
+    
+    Raises:
+        ValueError: Si le diamètre n'est pas dans [0.004, 0.008]
+    
+    Example:
+        >>> df_filtered, ids = filter_by_diameter(df, diameter=0.004)
+        >>> len(df_filtered)  # ~515 particules (environ la moitié)
+        515
+        >>> len(ids)
+        515
+        >>> assert all(d == 0.004 for d in df_filtered["Diameter"])
+    """
+    # Valider le diamètre
+    valid_diameters = [0.004, 0.008]
+    if diameter not in valid_diameters:
+        raise ValueError(f"diameter doit être dans {valid_diameters}, reçu {diameter}")
+    
+    # Filtrer par diamètre
+    mask = df["Diameter"] == diameter
+    filtered_df = df.filter(mask)
+    
+    # Extraire les Particle_IDs (comme tableau numpy pour les métadonnées)
+    particle_ids_kept = filtered_df["Particle_ID"].to_numpy()
+    
+    return filtered_df, particle_ids_kept
