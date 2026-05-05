@@ -24,7 +24,6 @@ import torch
 from tqdm import tqdm
 from dataclasses import dataclass, field, asdict
 from huggingface_hub import HfFileSystem
-from typing import Optional
 
 # from partitioners import create_partitioner, REGISTRY  
 # from bucket_io import save_experiment_to_bucket, BUCKET_BASE
@@ -71,7 +70,6 @@ class ExperimentConfig:
     step: int = 10  # Distance entre 2 starts principaux (quand NLT > 1)
     dt: int = None  # Raffinage temporel à l'intérieur de chaque step
     start_index: int = 250
-    particle_diameter: Optional[float] = None  # Filtre par diamètre (0.004, 0.008, ou None)
 
     def __post_init__(self):
         if self.method_kwargs is None:
@@ -79,29 +77,16 @@ class ExperimentConfig:
         if self.dt is None:
             # Raffinage par défaut : 5 apprentissages par step
             self.dt = max(1, self.step // 5)
-        
-        # Valider particle_diameter si fourni
-        if self.particle_diameter is not None:
-            valid_diameters = [0.004, 0.008]
-            if self.particle_diameter not in valid_diameters:
-                raise ValueError(f"particle_diameter doit être dans {valid_diameters}, reçu {self.particle_diameter}")
             
     def output_folder(self, base_dir=BASE_OUTPUT_DIR, sample_coords=None):
         part = create_partitioner(self.method, **self.method_kwargs)
         if sample_coords is not None:
             part.fit(sample_coords)
             
-        # ✅ Inclure le diamètre dans le nom du dossier si applicable
-        diameter_suffix = ""
-        if self.particle_diameter is not None:
-            # Convertir 0.004 → "d004", 0.008 → "d008"
-            diameter_str = f"{self.particle_diameter:.3f}".replace("0.", "").replace(".", "")
-            diameter_suffix = f"_d{diameter_str}"
-        
         # ✅ Retourner seulement le nom du dossier, pas un chemin
         folder_name = (
             f"{part.label}_NLT{self.nlt}_step{self.step}_"
-            f"dt{self.dt}_tau{self.tau}_start{self.start_index}{diameter_suffix}"
+            f"dt{self.dt}_tau{self.tau}_start{self.start_index}"
         )
     
         return folder_name    # ✅ Retourne juste le nom
@@ -639,7 +624,7 @@ def compute_P_matrix_torch(states_prev, states_curr, n_states, device="cpu", spe
 # =============================================================================
 # EXPÉRIENCE
 # =============================================================================
-def run_experiment(config, partitioner, files, fs, device, particle_diameter=None):
+def run_experiment(config, partitioner, files, fs, device):
     """
     Exécute une expérience complète avec raffinage temporel.
 
@@ -655,19 +640,6 @@ def run_experiment(config, partitioner, files, fs, device, particle_diameter=Non
         (0,50), (20,70), (40,90), (60,110), (80,130)    # 5 apprentissages
     Bloc 2 (base=100):  
         (100,150), (120,170), (140,190), (160,210), (180,230)
-    
-    Args:
-        config: ExperimentConfig dataclass
-        partitioner: Fitted partitioner instance
-        files: List of file paths
-        fs: HuggingFace FileSystem instance
-        device: torch device ("cpu" or "cuda")
-        particle_diameter: Optional[float] - Filter particles by diameter (0.004 or 0.008)
-    
-    Returns:
-        tuple: (P_matrix, metadata_dict)
-            P_matrix: (n_states, n_states) transition probability matrix
-            metadata_dict: dict with stats and filtering metadata
     """
     n_states = partitioner.n_cells
     tau = config.tau
@@ -683,54 +655,15 @@ def run_experiment(config, partitioner, files, fs, device, particle_diameter=Non
     # CHARGER SPECIES_LABELS POUR LE MASQUE
     # ════════════════════════════════════════════════════════════════════
     species_labels = None
-    filtered_particle_ids = None
-    n_particles_original = 1030
-    n_particles_filtered = 1030
-    
     try:
         # Charger les données DEM et récupérer les espèces
-        if particle_diameter is not None:
-            print(f"   🔬 Filtrage par diamètre: {particle_diameter} m")
-        else:
-            print(f"   🔬 Chargement des espèces (diamètres) depuis DEM...")
-        
+        print(f"   🔬 Chargement des espèces (diamètres) depuis DEM...")
         # Charger juste le premier fichier pour récupérer les diamètres
         with fs.open(files[start_base], "rb") as fh:
             df = pl.read_csv(fh)
             diameters = df["Diameter"].to_numpy() if "Diameter" in df.columns else None
         
-        # ✅ NEW: Si particle_diameter est spécifié, filtrer par ce diamètre
-        if particle_diameter is not None:
-            try:
-                # Essayer import relatif (notebook)
-                from . import utils as util_module
-            except ImportError:
-                # Fallback pour script direct
-                import utils as util_module
-            
-            try:
-                # Ré-charger le dataframe pour le filtrer
-                with fs.open(files[start_base], "rb") as fh:
-                    df_full = pl.read_csv(fh)
-                
-                df_filtered, filtered_particle_ids = util_module.filter_by_diameter(
-                    df_full, particle_diameter
-                )
-                
-                # Créer un masque booléen pour sélectionner ces particules
-                species_labels = np.isin(df_full["Particle_ID"].to_numpy(), filtered_particle_ids)
-                n_particles_original = len(df_full)
-                n_particles_filtered = len(filtered_particle_ids)
-                
-                print(f"   ✅ Filtre appliqué: {n_particles_filtered}/{n_particles_original} particules "
-                      f"(diamètre={particle_diameter})")
-            except Exception as e:
-                print(f"   ⚠️  Erreur lors de l'application du filtre diamètre: {e}")
-                filtered_particle_ids = None
-
-        
-        # ✅ ORIGINAL: Si pas de filtre spécifié, détecter les deux tailles automatiquement
-        elif diameters is not None:
+        if diameters is not None:
             # Déterminer automatiquement les deux tailles
             unique_vals = np.unique(diameters)
             if len(unique_vals) == 2:
@@ -898,11 +831,6 @@ def run_experiment(config, partitioner, files, fs, device, particle_diameter=Non
         "start_index": config.start_index,
         "first_pair": list(all_pairs[0]),
         "last_pair": list(all_pairs[-1]),
-        # ✅ NEW: Métadonnées de filtrage
-        "particle_diameter": particle_diameter,
-        "particle_count_original": n_particles_original,
-        "particle_count_filtered": n_particles_filtered,
-        "filtered_particle_ids": filtered_particle_ids.tolist() if filtered_particle_ids is not None else None,
     }
 
     return P_np, stats
@@ -1044,14 +972,7 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, base_d
                     print(f"   ⚠️  Visualisation échouée: {e}")
 
             # Lancer l'expérience
-            P, stats = run_experiment(
-                config, 
-                partitioner, 
-                files, 
-                fs, 
-                device,
-                particle_diameter=config.particle_diameter  # ✅ PASS THE DIAMETER
-            )
+            P, stats = run_experiment(config, partitioner, files, fs, device)
 
             # Sauvegarder
             save_results(
@@ -1145,13 +1066,6 @@ def main():
         help=f"Dossier de sortie (default: {BASE_OUTPUT_DIR})",
     )
     parser.add_argument(
-        "--diameter",
-        type=float,
-        default=None,
-        choices=[0.004, 0.008],
-        help="Filtrer les particules par diamètre (0.004 ou 0.008 m). Default: None (toutes les particules)",
-    )
-    parser.add_argument(
         "--list",
         action="store_true",
         help="Lister les configurations sans lancer les calculs",
@@ -1165,33 +1079,16 @@ def main():
                 print(f"\n{m.upper()} ({len(configs)} configs):")
                 for c in configs:
                     p = create_partitioner(c.method, **c.method_kwargs)
-                    diameter_info = f" [diamètre={c.particle_diameter}]" if c.particle_diameter else ""
-                    print(f"  {p.label} NLT={c.nlt} step={c.step} dt={c.dt}{diameter_info}")
+                    print(f"  {p.label} NLT={c.nlt} step={c.step} dt={c.dt}")
         else:
             configs = get_configs(args.method)
             print(f"{args.method.upper()} ({len(configs)} configs):")
             for c in configs:
                 p = create_partitioner(c.method, **c.method_kwargs)
-                diameter_info = f" [diamètre={c.particle_diameter}]" if c.particle_diameter else ""
-                print(f"  {p.label} NLT={c.nlt} step={c.step} dt={c.dt}{diameter_info}")
+                print(f"  {p.label} NLT={c.nlt} step={c.step} dt={c.dt}")
         return
 
-    # ✅ Appliquer le filtre diamètre si fourni
-    configs = None
-    if args.diameter is not None:
-        if args.method == "all":
-            methods = list(REGISTRY.keys())
-        else:
-            methods = [args.method]
-        
-        configs = []
-        for m in methods:
-            method_configs = get_configs(m)
-            for config in method_configs:
-                config.particle_diameter = args.diameter  # ← Appliquer le filtre
-            configs.extend(method_configs)
-    
-    run_markov_sweep(args.method, configs=configs, base_dir=args.output)
+    run_markov_sweep(args.method, base_dir=args.output)
 
 
 if __name__ == "__main__":

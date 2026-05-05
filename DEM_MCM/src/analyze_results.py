@@ -73,6 +73,10 @@ OLD_BUCKET_BASE = f"hf://buckets/{BUCKET_ID}/{OLD_BUCKET_PREFIX}"
 ALL_BUCKET_BASES = [f"hf://buckets/{BUCKET_ID}/{prefix}" for prefix in ALL_BUCKET_PREFIXES]
 if OLD_BUCKET_BASE not in ALL_BUCKET_BASES:
     ALL_BUCKET_BASES.append(OLD_BUCKET_BASE)
+
+BUCKET_ID=b_io.BUCKET_ID
+BUCKET_PREFIX=b_io.BUCKET_PREFIX
+BUCKET_BASE=b_io.BUCKET_BASE
 # Méthodes connues et leurs préfixes
 METHOD_PREFIXES = {
     "cartesian": ["cartesian_", "NLT_"],   # NLT_ = ancien format cartésien
@@ -437,7 +441,6 @@ class MarkovAnalyzer:
         data = self._load_experiment(BUCKET_BASE, folder_name)
         self.results[folder_name] = data
         print(f"✅ {folder_name} chargé")
-    
     def load_all(self, include_old=True):
         """
         Charge toutes les expériences depuis le bucket.
