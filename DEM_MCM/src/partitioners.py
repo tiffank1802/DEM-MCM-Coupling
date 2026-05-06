@@ -129,23 +129,41 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
     def _load_data(self, path):
         pass
 
-    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="partition_visualization", **kwargs):
+    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="partition_visualization",
+                  particle_diameters=None, use_diameter=True, **kwargs):
         """
-        Génère des visualisations des particules coloriées par état.
+        Génère des visualisations des particules coloriées par état,
+        avec taille proportionnelle au diamètre si disponible.
         """
         self.fit(np.column_stack([x, y, z]))
         states = self.compute_states(x, y, z)
-        
+
+        diameters = None
+        if use_diameter:
+            if particle_diameters is not None:
+                diameters = np.asarray(particle_diameters)
+            elif hasattr(self, 'particle_diameters') and self.particle_diameters is not None:
+                diameters = np.asarray(self.particle_diameters)
+            elif hasattr(self, 'dem_diameters') and self.dem_diameters is not None:
+                if len(self.dem_diameters) == len(x):
+                    diameters = np.asarray(self.dem_diameters)
+
         image_data = {}
         xmin, xmax = x.min(), x.max()
         ymin, ymax = y.min(), y.max()
         zmin, zmax = z.min(), z.max()
         self._data_bounds = (xmin, xmax, ymin, ymax, zmin, zmax)
-        
+
+        if diameters is not None and diameters.max() > 0:
+            sizes = (diameters / diameters.max()) * 200 + 10
+        else:
+            sizes = 30
+
         if "2d_xy" in plot_types:
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
-            
-            sc1 = ax1.scatter(x, y, c=states, cmap='tab20', s=8, alpha=0.7, edgecolors='none')
+
+            sc1 = ax1.scatter(x, y, c=states, cmap='tab20', s=sizes, alpha=0.7,
+                              edgecolors='black', linewidth=0.3)
             ax1.set_xlim(xmin, xmax)
             ax1.set_ylim(ymin, ymax)
             ax1.set_xlabel('X (m)', fontsize=12, fontweight='bold')
@@ -154,8 +172,9 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
             ax1.grid(True, alpha=0.3, linestyle='--')
             ax1.set_aspect('equal', adjustable='box')
             plt.colorbar(sc1, ax=ax1, label='État', shrink=0.8)
-            
-            sc2 = ax2.scatter(y, z, c=states, cmap='tab20', s=8, alpha=0.7, edgecolors='none')
+
+            sc2 = ax2.scatter(y, z, c=states, cmap='tab20', s=sizes, alpha=0.7,
+                              edgecolors='black', linewidth=0.3)
             ax2.set_xlim(ymin, ymax)
             ax2.set_ylim(zmin, zmax)
             ax2.set_xlabel('Y (m)', fontsize=12, fontweight='bold')
@@ -164,18 +183,19 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
             ax2.grid(True, alpha=0.3, linestyle='--')
             ax2.set_aspect('equal', adjustable='box')
             plt.colorbar(sc2, ax=ax2, label='État', shrink=0.8)
-            
+
             plt.tight_layout()
             buf = io.BytesIO()
             plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
             buf.seek(0)
             image_data[f"{save_prefix}_2d.png"] = buf.getvalue()
             plt.close()
-        
+
         if "3d" in plot_types:
             fig = plt.figure(figsize=(14, 10))
             ax = fig.add_subplot(111, projection='3d')
-            sc = ax.scatter(x, y, z, c=states, cmap='tab20', s=8, alpha=0.7, edgecolors='none')
+            sc = ax.scatter(x, y, z, c=states, cmap='tab20', s=sizes, alpha=0.7,
+                            edgecolors='black', linewidth=0.3)
             ax.set_xlim(xmin, xmax)
             ax.set_ylim(ymin, ymax)
             ax.set_zlim(zmin, zmax)
@@ -188,14 +208,14 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
             ax.zaxis.pane.fill = False
             ax.grid(True, alpha=0.3)
             plt.colorbar(sc, ax=ax, label='État', shrink=0.6)
-            
+
             plt.tight_layout()
             buf = io.BytesIO()
             plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
             buf.seek(0)
             image_data[f"{save_prefix}_3d.png"] = buf.getvalue()
             plt.close()
-        
+
         return image_data
 
     def _visualize_cell_boundaries(self, x, y, z, states, plot_types, save_prefix):
