@@ -8,18 +8,18 @@ configs=[
     # r_s.ExperimentConfig("cylindrical",{"nr":1,"ntheta":10,"nz":1},),
     # r_s.ExperimentConfig(method="octree", method_kwargs={"max_particles": 5, "max_depth": 2}, particle_diameter=0.004),
 
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 200, "velocity_weight": 0.5}, particle_diameter=0.004),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 300, "velocity_weight": 0.5}, particle_diameter=0.004),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 400, "velocity_weight": 0.5}, particle_diameter=0.004),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 500, "velocity_weight": 0.5}, particle_diameter=0.004),
+    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 20, "velocity_weight": 0.5}, particle_diameter=0.004),
+    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, particle_diameter=0.004),
+    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 40, "velocity_weight": 0.5}, particle_diameter=0.004),
+    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 50, "velocity_weight": 0.5}, particle_diameter=0.004),
 
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 200, "velocity_weight": 0.5}, particle_diameter=0.008),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 300, "velocity_weight": 0.5}, particle_diameter=0.008),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 400, "velocity_weight": 0.5}, particle_diameter=0.008),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 500, "velocity_weight": 0.5}, particle_diameter=0.008),
+    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 20, "velocity_weight": 0.5}, particle_diameter=0.008),
+    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, particle_diameter=0.008),
+    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 40, "velocity_weight": 0.5}, particle_diameter=0.008),
+    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 50, "velocity_weight": 0.5}, particle_diameter=0.008),
 
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 200, "velocity_weight": 0.0}, particle_diameter=0.004),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 200, "velocity_weight": 1.0}, particle_diameter=0.004),
+    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 20, "velocity_weight": 0.0}, particle_diameter=0.004),
+    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 20, "velocity_weight": 1.0}, particle_diameter=0.004),
 
 ]
 

@@ -982,7 +982,7 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, partic
             # ✅ Créer et fitter le partitionneur (pas de cache)
             partitioner = create_partitioner(config.method, **config.method_kwargs)
             print(f"   🔧 Fit partitionneur...")
-            if method=='physics':
+            if config.method=='physics':
                 partitioner.fit_with_physics(sample_coords, s_velocities)
             else:
                 partitioner.fit(sample_coords)
@@ -1002,11 +1002,10 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, partic
                 try:
                     x, y, z = sample_coords[:, 0], sample_coords[:, 1], sample_coords[:, 2]
                     safe_label = partitioner.label.replace('=', '_').replace(' ', '_').replace('/', '_')
-                    image_data = partitioner.visualize(
-                        x, y, z,
-                        save_prefix=f"partition_vis_{safe_label}",
-                        particle_diameters=sample_diameters,
-                    )
+                    vis_kwargs = {"x": x, "y": y, "z": z, "save_prefix": f"partition_vis_{safe_label}"}
+                    if sample_diameters is not None and len(sample_diameters) == len(x):
+                        vis_kwargs["particle_diameters"] = sample_diameters
+                    image_data = partitioner.visualize(**vis_kwargs)
                     print(f"   🎨 {len(image_data)} images générées")
                 except Exception as e:
                     print(f"   ⚠️  Visualisation échouée: {e}")
