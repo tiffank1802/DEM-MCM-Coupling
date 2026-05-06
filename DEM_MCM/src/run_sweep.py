@@ -228,12 +228,21 @@ def get_configs(method, particle_diameter=None):
             )
 
     elif method == "physics":
-        # for nc in [2, 4, 8, 16, 32, 64, 100]:
+        # Sweep n_cells avec velocity_weight par défaut
         for nc in [200,300,400,500]:
             configs.append(
                 ExperimentConfig(
                     method="physics",
-                    method_kwargs={"n_cells": nc},
+                    method_kwargs={"n_cells": nc, "velocity_weight": 0.5},
+                    particle_diameter=particle_diameter,
+                )
+            )
+        # Sweep velocity_weight (importance de la vitesse dans le clustering)
+        for vw in [0.0, 0.1, 0.2, 0.3, 0.5, 0.7, 1.0, 1.5, 2.0]:
+            configs.append(
+                ExperimentConfig(
+                    method="physics",
+                    method_kwargs={"n_cells": 300, "velocity_weight": vw},
                     particle_diameter=particle_diameter,
                 )
             )
@@ -508,7 +517,7 @@ def _get_default_kwargs(method):
         "voronoi": {"n_cells": 400},
         "quantile": {"nx": 5, "ny": 5, "nz": 5},
         "octree": {"max_particles": 100, "max_depth": 2},
-        "physics": {"n_cells": 125},
+        "physics": {"n_cells": 125, "velocity_weight": 0.5},
         "adaptive": {
             "y_split": 0.90,
             "y_split_mode": "quantile",
@@ -887,6 +896,17 @@ def save_results(config, partitioner, P, stats, image_data=None, folder_name=Non
         partitioner_data["x_edges"] = partitioner._x_edges
         partitioner_data["y_edges"] = partitioner._y_edges
         partitioner_data["z_edges"] = partitioner._z_edges
+    
+    # Données spécifiques au partitionneur physics-aware
+    if isinstance(partitioner, part.PhysicsAwarePartitioner):
+        if partitioner._mean is not None:
+            partitioner_data["mean"] = partitioner._mean
+        if partitioner._std is not None:
+            partitioner_data["std"] = partitioner._std
+        partitioner_data["physics_params"] = {
+            "n_features": partitioner._n_features,
+            "velocity_weight": partitioner.velocity_weight,
+        }
     
     # Métadonnées du partitionneur
     partitioner_data["partitioner_meta"] = {
