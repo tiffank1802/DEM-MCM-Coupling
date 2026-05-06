@@ -27,7 +27,7 @@ import json
 from abc import ABC, abstractmethod
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-from scipy.spatial import ConvexHull
+from scipy.spatial import ConvexHull, Voronoi
 
 # Imports relatifs (notebooks) vs absolus (script direct)
 try:
@@ -131,18 +131,41 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
 
     def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="partition_visualization", particle_diameters=None, use_diameter=True):
         """
-        Génère des visualisations et retourne les données des images en mémoire.
+        Génère 4 images: particules avec diamètres + limites réelles des partitions.
         
         Args:
             particle_diameters: array de diamètres pour représenter chaque particule avec sa taille
             use_diameter: si True (défaut), utilise les diamètres si disponibles (DEM ou explicites)
             
         Returns:
-            dict: {"filename.png": bytes_data, ...}
+            dict: {
+                "{prefix}_particles_2d.png": bytes,
+                "{prefix}_particles_3d.png": bytes,
+                "{prefix}_boundaries_2d.png": bytes,
+                "{prefix}_boundaries_3d.png": bytes,
+            }
         """
         self.fit(np.column_stack([x,y,z]))
         states = self.compute_states(x, y, z)
         
+        image_data = {}
+        
+        if "2d_xy" not in plot_types and "3d" not in plot_types:
+            return image_data
+        
+        xmin, xmax = x.min(), x.max()
+        ymin, ymax = y.min(), y.max()
+        zmin, zmax = z.min(), z.max()
+        self._data_bounds = (xmin, xmax, ymin, ymax, zmin, zmax)
+        
+        # ════════════ IMAGES LIMITES DE PARTITIONS (toujours) ════════════
+        try:
+            boundary_data = self._visualize_cell_boundaries(x, y, z, states, plot_types, save_prefix)
+            image_data.update(boundary_data)
+        except Exception as e:
+            print(f"⚠️  Visualisation des limites échouée: {e}")
+        
+        # ════════════ IMAGES PARTICULES (si diamètres dispos) ════════════
         diameters = None
         if use_diameter:
             if particle_diameters is not None:
@@ -156,58 +179,141 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
                     print(f"⚠️  dem_diameters ({len(self.dem_diameters)}) != nombre de particules ({len(x)})")
         
         if diameters is not None:
-            return self._visualize_particles_with_diameter(
-                x, y, z, states, diameters, plot_types, save_prefix
-            )
+            try:
+                particle_data = self._visualize_particles_with_diameter(
+                    x, y, z, states, diameters, plot_types, save_prefix
+                )
+                image_data.update(particle_data)
+            except Exception as e:
+                print(f"⚠️  Visualisation des particules échouée: {e}")
+        
+        return image_data
+
+    def _visualize_cell_boundaries(self, x, y, z, states, plot_types, save_prefix):
+        """
+        Visualise les limites réelles des partitions (sans particules).
+        Utilise _get_cell_polygons_2d() et _get_cell_polyhedra_3d() implémentés par chaque sous-classe.
+        """
+        import matplotlib.cm as cm
+        import matplotlib.patches as patches
+        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
         
         image_data = {}
+        cmap = cm.get_cmap('tab20')
+        unique_states = np.unique(states)
+        n_states = len(unique_states)
         
-        if "3d" in plot_types:
-            fig = plt.figure(figsize=(12, 8))
-            ax = fig.add_subplot(111, projection='3d')
-            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            ax.set_title(f'Partitionnement 3D - {self.label}')
-            plt.colorbar(scatter, label='ID de Partition')
-            plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
-            plt.close()
+        xmin, xmax = x.min(), x.max()
+        ymin, ymax = y.min(), y.max()
+        zmin, zmax = z.min(), z.max()
         
         if "2d_xy" in plot_types:
-            plt.figure(figsize=(12, 5))
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
             
-            # Vue XY
-            plt.subplot(121)
-            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.xlabel('X')
-            plt.ylabel('Y')
-            plt.title('Vue XY')
-            plt.colorbar(label='Partition ID')
+            # ════════ Vue XY ════════
+            try:
+                polygons_xy = self._get_cell_polygons_2d(view='xy')
+                for state_id, polygon_pts in polygons_xy:
+                    if len(polygon_pts) < 3:
+                        continue
+                    color = cmap(state_id / max(n_states - 1, 1))
+                    poly = patches.Polygon(polygon_pts, closed=True,
+                                          facecolor=color, alpha=0.6,
+                                          edgecolor='black', linewidth=1.5, zorder=1)
+                    ax1.add_patch(poly)
+            except Exception as e:
+                print(f"⚠️  Limites XY non disponibles: {e}")
+                ax1.text(0.5, 0.5, 'Limites non disponibles', ha='center', va='center',
+                        transform=ax1.transAxes, fontsize=14, color='gray')
             
-            # Vue YZ
-            plt.subplot(122)
-            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.xlabel('Y')
-            plt.ylabel('Z')
-            plt.title('Vue YZ')
-            plt.colorbar(label='Partition ID')
+            ax1.set_xlim(xmin, xmax)
+            ax1.set_ylim(ymin, ymax)
+            ax1.set_xlabel('X (m)', fontsize=12, fontweight='bold')
+            ax1.set_ylabel('Y (m)', fontsize=12, fontweight='bold')
+            ax1.set_title('Vue XY - Limites des partitions', fontsize=14, fontweight='bold')
+            ax1.grid(True, alpha=0.3, linestyle='--')
+            ax1.set_aspect('equal', adjustable='box')
+            
+            # ════════ Vue YZ ════════
+            try:
+                polygons_yz = self._get_cell_polygons_2d(view='yz')
+                for state_id, polygon_pts in polygons_yz:
+                    if len(polygon_pts) < 3:
+                        continue
+                    color = cmap(state_id / max(n_states - 1, 1))
+                    poly = patches.Polygon(polygon_pts, closed=True,
+                                          facecolor=color, alpha=0.6,
+                                          edgecolor='black', linewidth=1.5, zorder=1)
+                    ax2.add_patch(poly)
+            except Exception as e:
+                print(f"⚠️  Limites YZ non disponibles: {e}")
+                ax2.text(0.5, 0.5, 'Limites non disponibles', ha='center', va='center',
+                        transform=ax2.transAxes, fontsize=14, color='gray')
+            
+            ax2.set_xlim(ymin, ymax)
+            ax2.set_ylim(zmin, zmax)
+            ax2.set_xlabel('Y (m)', fontsize=12, fontweight='bold')
+            ax2.set_ylabel('Z (m)', fontsize=12, fontweight='bold')
+            ax2.set_title('Vue YZ - Limites des partitions', fontsize=14, fontweight='bold')
+            ax2.grid(True, alpha=0.3, linestyle='--')
+            ax2.set_aspect('equal', adjustable='box')
+            
             plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
             img_buffer = io.BytesIO()
             plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
             img_buffer.seek(0)
-            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
+            image_data[f"{save_prefix}_boundaries_2d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        if "3d" in plot_types:
+            fig = plt.figure(figsize=(14, 10))
+            ax = fig.add_subplot(111, projection='3d')
+            
+            try:
+                polyhedra = self._get_cell_polyhedra_3d()
+                for state_id, vertices, faces in polyhedra:
+                    if len(vertices) < 4 or len(faces) == 0:
+                        continue
+                    color = cmap(state_id / max(n_states - 1, 1))
+                    face_verts = [vertices[f] for f in faces]
+                    collection = Poly3DCollection(face_verts, alpha=0.5,
+                                                 facecolor=color, edgecolor='black',
+                                                 linewidth=0.8, zorder=1)
+                    ax.add_collection3d(collection)
+            except Exception as e:
+                print(f"⚠️  Limites 3D non disponibles: {e}")
+            
+            ax.set_xlim(xmin, xmax)
+            ax.set_ylim(ymin, ymax)
+            ax.set_zlim(zmin, zmax)
+            ax.set_xlabel('X (m)', fontsize=12, fontweight='bold')
+            ax.set_ylabel('Y (m)', fontsize=12, fontweight='bold')
+            ax.set_zlabel('Z (m)', fontsize=12, fontweight='bold')
+            ax.set_title(f'Limites des partitions 3D - {self.label}',
+                        fontsize=14, fontweight='bold')
+            
+            ax.xaxis.pane.fill = False
+            ax.yaxis.pane.fill = False
+            ax.zaxis.pane.fill = False
+            ax.grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_boundaries_3d.png"] = img_buffer.getvalue()
             plt.close()
         
         return image_data
+
+    def _get_cell_polygons_2d(self, view='xy'):
+        """Retourne une liste de (state_id, polygon_pts_2d). À implémenter par chaque sous-classe."""
+        return []
+
+    def _get_cell_polyhedra_3d(self):
+        """Retourne une liste de (state_id, vertices_3d, faces_3d). À implémenter par chaque sous-classe."""
+        return []
+
     def visualize_enhanced(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="partition_visualization", 
                           particle_diameters=None, show_filled_partitions=True):
         """
@@ -540,85 +646,71 @@ class CartesianPartitioner(BasePartitioner):
     def _load_data(self, path):
         self._bounds = tuple(np.load(os.path.join(path, "bounds.npy")))
 
-    
-    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
-        """
-        Génère des visualisations avec adaptation pour l'axe y
-        """
-        self.fit(np.column_stack([x,y,z]))
-        states = self.compute_states(x, y, z)
-        
-        image_data = {}
-        
-        if "3d" in plot_types:
-            fig = plt.figure(figsize=(12, 8))
-            ax = fig.add_subplot(111, projection='3d')
-            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            # ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
-            plt.colorbar(scatter, label='ID de Partition')
-            plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
-            plt.show()
-            plt.close()
-        
-        if "2d_xy" in plot_types:
-            plt.figure(figsize=(12, 5))
-            
-            # Vue XY
-            plt.subplot(121)
-            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axhline(y=self._y_split, color='r', linestyle='--', 
-                         label=f'Seuil y={self._y_split:.2f}')
-            plt.xlabel('X')
-            plt.ylabel('Y')
-            plt.title('Vue XY')
-            plt.legend()
-            plt.colorbar(label='Partition ID')
-            
-            # Vue YZ
-            plt.subplot(122)
-            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
-            # plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
-            plt.xlabel('Y')
-            plt.ylabel('Z')
-            plt.title('Vue YZ')
-            plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
-            plt.show()
-            
-            plt.close()
-        
-        return image_data
-    def diagnostics(self, coordinates):
-            """
-            Statistiques de population par cellule pour le partitionneur adaptatif.
-            """
-            coordinates = np.asarray(coordinates)
-            x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
-            states = self.compute_states(x, y, z)
-            counts = np.bincount(states, minlength=self.n_cells)
-            return {
-                "pop_min": int(counts.min()),
-                "pop_max": int(counts.max()),
-                "pop_mean": float(counts.mean()),
-                "pop_std": float(counts.std()),
-                "n_empty": int((counts == 0).sum()),
-                "n_visited": int((counts > 0).sum()),
-                "fraction_visited": float((counts > 0).sum() / self.n_cells),
-            }
+    def _get_cell_polygons_2d(self, view='xy'):
+        xmin, xmax, ymin, ymax, zmin, zmax = self._bounds
+        dx = (xmax - xmin) / self.nx
+        dy = (ymax - ymin) / self.ny
+        dz = (zmax - zmin) / self.nz
+        results = []
+
+        if view == 'xy':
+            for iz in range(self.nz):
+                for iy in range(self.ny):
+                    for ix in range(self.nx):
+                        state_id = ix + iy * self.nx + iz * self.nx * self.ny
+                        x0 = xmin + ix * dx
+                        y0 = ymin + iy * dy
+                        x1 = x0 + dx
+                        y1 = y0 + dy
+                        pts = np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]])
+                        results.append((state_id, pts))
+        elif view == 'yz':
+            for iz in range(self.nz):
+                for iy in range(self.ny):
+                    for ix in range(self.nx):
+                        state_id = ix + iy * self.nx + iz * self.nx * self.ny
+                        y0 = ymin + iy * dy
+                        z0 = zmin + iz * dz
+                        y1 = y0 + dy
+                        z1 = z0 + dz
+                        pts = np.array([[y0, z0], [y1, z0], [y1, z1], [y0, z1]])
+                        results.append((state_id, pts))
+        return results
+
+    def _get_cell_polyhedra_3d(self):
+        xmin, xmax, ymin, ymax, zmin, zmax = self._bounds
+        dx = (xmax - xmin) / self.nx
+        dy = (ymax - ymin) / self.ny
+        dz = (zmax - zmin) / self.nz
+        results = []
+
+        face_indices = [
+            [0, 1, 2, 3],  # bottom
+            [4, 5, 6, 7],  # top
+            [0, 1, 5, 4],  # front
+            [2, 3, 7, 6],  # back
+            [0, 3, 7, 4],  # left
+            [1, 2, 6, 5],  # right
+        ]
+
+        for iz in range(self.nz):
+            for iy in range(self.ny):
+                for ix in range(self.nx):
+                    state_id = ix + iy * self.nx + iz * self.nx * self.ny
+                    x0 = xmin + ix * dx
+                    y0 = ymin + iy * dy
+                    z0 = zmin + iz * dz
+                    x1 = x0 + dx
+                    y1 = y0 + dy
+                    z1 = z0 + dz
+                    vertices = np.array([
+                        [x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0],
+                        [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1],
+                    ])
+                    faces = face_indices
+                    results.append((state_id, vertices, faces))
+        return results
+
 
 # =============================================================================
 # 2. CYLINDRIQUE
@@ -738,354 +830,76 @@ class CylindricalPartitioner(BasePartitioner):
         self._z_min = p["z_min"]
         self._z_max = p["z_max"]
         self._r_edges = np.load(os.path.join(path, "r_edges.npy"))
-        
-    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="partition", 
-              use_alpha_shapes=False, alpha_value=0.1, show_fill=True, 
-              fill_alpha=0.4, points_alpha=0.8, show_hulls=True):
-        """
-        Visualisation complète 2D + 3D avec remplissage basé sur contours délimités
-        
-        Args:
-            plot_types: ["3d", "2d_xy"] ou ["3d"] ou ["2d_xy"]
-            use_alpha_shapes: True = alpha shapes (précis), False = convex hulls  
-            alpha_value: finesse des alpha shapes (0.05=très précis, 0.2=plus lisse)
-            show_fill: remplir l'intérieur des contours délimités
-            fill_alpha: transparence du remplissage (0.3-0.6 recommandé)
-            points_alpha: transparence des points (0.7-0.9 recommandé)
-            show_hulls: afficher les contours des enveloppes
-        """
-        self.fit(np.column_stack([x, y, z]))
-        states = self.compute_states(x, y, z)
-        
-        image_data = {}
-    
-        
-        if "2d_xy" in plot_types:
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
-            
-            # Choisir la méthode de remplissage
-            plot_method = (self._plot_filled_partitions_alpha_shapes if use_alpha_shapes 
-                        else self._plot_filled_partitions_with_points)
-            
-            # ========== Vue XY ==========
-            if use_alpha_shapes:
-                plot_method(ax1, x, y, z, states, view='xy', alpha_value=alpha_value,
-                        show_fill=show_fill, fill_alpha=fill_alpha, points_alpha=points_alpha)
-            else:
-                plot_method(ax1, x, y, z, states, view='xy', show_hulls=True,
-                        show_fill=show_fill, fill_alpha=fill_alpha, points_alpha=points_alpha)
-            
-            ax1.set_xlabel('X', fontsize=12, fontweight='bold')
-            ax1.set_ylabel('Y', fontsize=12, fontweight='bold')
-            ax1.set_title('Vue XY - Remplissage par contours', fontsize=14, fontweight='bold')
-            ax1.grid(True, alpha=0.3, linestyle='--')
-            
-            # ========== Vue YZ ==========
-            if use_alpha_shapes:
-                plot_method(ax2, x, y, z, states, view='yz', alpha_value=alpha_value,
-                        show_fill=show_fill, fill_alpha=fill_alpha, points_alpha=points_alpha)
-            else:
-                plot_method(ax2, x, y, z, states, view='yz', show_hulls=True,
-                        show_fill=show_fill, fill_alpha=fill_alpha, points_alpha=points_alpha)
-            
-            if hasattr(self, '_y_split') and self._y_split is not None:
-                ax2.axvline(x=self._y_split, color='red', linestyle='-', 
-                        linewidth=3, label=f'Seuil Y={self._y_split:.3f}', zorder=10)
-                ax2.legend(fontsize=11)
-            
-            # fig.colorbar(scatter, ax=ax1, label="ID Partition", shrink=0.6)
-            ax2.set_xlabel('Y', fontsize=12, fontweight='bold')
-            ax2.set_ylabel('Z', fontsize=12, fontweight='bold')
-            ax2.set_title('Vue YZ - Remplissage par contours', fontsize=14, fontweight='bold')
-            ax2.grid(True, alpha=0.3, linestyle='--')
 
-            
-            
-            plt.tight_layout()
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
-            plt.close()
-        # ========== VUE 3D ==========
-        if "3d" in plot_types:
-            fig = plt.figure(figsize=(14, 10))
-            ax = fig.add_subplot(111, projection='3d')
-            
-            # 1. ✅ REMPLISSAGE 3D basé sur enveloppes convexes
-            if show_fill:
-                self._plot_3d_filled_surfaces(ax, x, y, z, states, alpha=fill_alpha)
-            
-            # 2. ✅ CONTOURS 3D (arêtes des enveloppes)
-            if show_hulls:
-                self._plot_3d_hull_edges(ax, x, y, z, states)
-            
-            # 3. ✅ POINTS par-dessus tout
-            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=18, 
-                                alpha=points_alpha, edgecolors='black', linewidth=0.4, zorder=10)
-            
-            ax.set_xlabel('X', fontsize=12, fontweight='bold')
-            ax.set_ylabel('Y', fontsize=12, fontweight='bold')
-            ax.set_zlabel('Z', fontsize=12, fontweight='bold')
-            ax.set_title(f'{self.label} - Remplissage 3D par contours délimités', 
-                        fontsize=14, fontweight='bold')
-            
-            # Colorbar
-            plt.colorbar(scatter, ax=ax, label='ID Partition', shrink=0.6)
-            
-            # Améliorer l'affichage 3D
-            ax.xaxis.pane.fill = False
-            ax.yaxis.pane.fill = False
-            ax.zaxis.pane.fill = False
-            ax.grid(True, alpha=0.3)
-            
-            plt.tight_layout()
-            
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
-            plt.close()
-        
-        return image_data
-    def _plot_filled_partitions_with_points(self, ax, x, y, z, states, view='xy', 
-                                        method="decision_boundary", resolution=300,
-                                        show_hulls=True, show_fill=True, 
-                                        fill_alpha=0.4, points_alpha=0.8):
-        """
-        Remplissage 2D basé sur les CONTOURS DÉLIMITÉS (comme en 3D)
-        """
-        import matplotlib.cm as cm
-        from scipy.spatial import ConvexHull
-        import matplotlib.patches as patches
-        
-        # Préparer les coordonnées selon la vue
+    def _arc_points(self, r, theta_start, theta_end, n_segments=20):
+        theta_vals = np.linspace(theta_start, theta_end, n_segments)
+        return np.column_stack([r * np.cos(theta_vals), r * np.sin(theta_vals)])
+
+    def _get_cell_polygons_2d(self, view='xy'):
+        results = []
         if view == 'xy':
-            coords_2d = np.column_stack([x, y])
-            x_min, x_max = x.min(), x.max()
-            y_min, y_max = y.min(), y.max()
+            for iz in range(self.nz):
+                for itheta in range(self.ntheta):
+                    for ir in range(self.nr):
+                        state_id = ir + itheta * self.nr + iz * self.nr * self.ntheta
+                        r0 = self._r_edges[ir]
+                        r1 = self._r_edges[ir + 1]
+                        t0 = itheta * 2 * np.pi / self.ntheta
+                        t1 = (itheta + 1) * 2 * np.pi / self.ntheta
+                        pts_inner = self._arc_points(r0, t1, t0, 10)
+                        pts_outer = self._arc_points(r1, t0, t1, 10)
+                        pts = np.vstack([pts_outer, pts_inner])
+                        results.append((state_id, pts))
         elif view == 'yz':
-            coords_2d = np.column_stack([y, z])
-            x_min, x_max = y.min(), y.max()
-            y_min, y_max = z.min(), z.max()
-        
-        cmap = cm.get_cmap('tab20')
-        unique_states = np.unique(states)
-        
-        # 1. ✅ REMPLISSAGE basé sur les ENVELOPPES CONVEXES (comme en 3D)
-        if show_fill:
-            for state_id in unique_states:
-                mask = states == state_id
-                points_partition = coords_2d[mask]
-                
-                if len(points_partition) < 3:
-                    continue
-                
-                try:
-                    # Calculer l'enveloppe convexe
-                    hull = ConvexHull(points_partition)
-                    hull_points = points_partition[hull.vertices]
-                    
-                    # ✅ REMPLIR l'intérieur de l'enveloppe (comme les faces 3D)
-                    color = cmap(state_id / max(unique_states.max(), 1))
-                    polygon = patches.Polygon(hull_points, closed=True, 
-                                            facecolor=color, alpha=fill_alpha, 
-                                            edgecolor='none', zorder=1)
-                    ax.add_patch(polygon)
-                    
-                except Exception as e:
-                    print(f"   Remplissage impossible pour partition {state_id}: {e}")
-                    continue
-        
-        # 2. ✅ CONTOURS des enveloppes (bordures nettes)
-        if show_hulls:
-            for state_id in unique_states:
-                mask = states == state_id
-                points_partition = coords_2d[mask]
-                
-                if len(points_partition) < 3:
-                    continue
-                
-                try:
-                    hull = ConvexHull(points_partition)
-                    hull_points = points_partition[hull.vertices]
-                    hull_points = np.vstack([hull_points, hull_points[0]])  # Fermer le polygone
-                    
-                    # Contour noir épais
-                    ax.plot(hull_points[:, 0], hull_points[:, 1], 
-                        color='black', linewidth=2.5, alpha=0.9, zorder=3)
-                        
-                except Exception as e:
-                    continue
-        
-        # 3. ✅ POINTS par-dessus (comme en 3D)
-        if view == 'xy':
-            scatter = ax.scatter(x, y, c=states, cmap='tab20', s=15, 
-                                alpha=points_alpha, edgecolors='black', linewidth=0.4, zorder=5)
-        elif view == 'yz':
-            scatter = ax.scatter(y, z, c=states, cmap='tab20', s=15, 
-                                alpha=points_alpha, edgecolors='black', linewidth=0.4, zorder=5)
+            for iz in range(self.nz):
+                for ir in range(self.nr):
+                    state_id_base = ir + iz * self.nr * self.ntheta
+                    r0 = self._r_edges[ir]
+                    r1 = self._r_edges[ir + 1]
+                    z0 = self._z_min + iz * (self._z_max - self._z_min) / self.nz
+                    z1 = z0 + (self._z_max - self._z_min) / self.nz
+                    for itheta in range(self.ntheta):
+                        state_id = state_id_base + itheta * self.nr
+                        y0 = -r1 if itheta >= self.ntheta // 2 else r0
+                        y1 = r1
+                        pts = np.array([[y0, z0], [y1, z0], [y1, z1], [y0, z1]])
+                        results.append((state_id, pts))
+        return results
 
+    def _get_cell_polyhedra_3d(self):
+        results = []
+        face_bottom = [0, 1, 2, 3]
+        face_top = [4, 5, 6, 7]
+        face_inner = [0, 3, 7, 4]
+        face_outer = [1, 5, 6, 2]
+        face_left = [0, 4, 5, 1]
+        face_right = [3, 2, 6, 7]
+        face_indices = [face_bottom, face_top, face_inner, face_outer, face_left, face_right]
 
-    # ✅ VERSION AVANCÉE avec Alpha Shapes (contours plus précis)
-    def _plot_filled_partitions_alpha_shapes(self, ax, x, y, z, states, view='xy', 
-                                            alpha_value=0.1, show_fill=True, 
-                                            fill_alpha=0.4, points_alpha=0.8):
-        """
-        Remplissage basé sur les Alpha Shapes (plus précis que convex hull)
-        """
-        try:
-            import alphashape
-            from shapely.geometry import Polygon as ShapelyPolygon
-        except ImportError:
-            print("   Alpha shapes non disponibles. Utilisation des enveloppes convexes.")
-            return self._plot_filled_partitions_with_points(ax, x, y, z, states, view, 
-                                                            show_fill=show_fill, 
-                                                            fill_alpha=fill_alpha, 
-                                                            points_alpha=points_alpha)
-        
-        import matplotlib.cm as cm
-        import matplotlib.patches as patches
-        
-        # Coordonnées 2D
-        if view == 'xy':
-            coords_2d = np.column_stack([x, y])
-        elif view == 'yz':
-            coords_2d = np.column_stack([y, z])
-        
-        cmap = cm.get_cmap('tab20')
-        unique_states = np.unique(states)
-        
-        # 1. ✅ REMPLISSAGE basé sur ALPHA SHAPES
-        if show_fill:
-            for state_id in unique_states:
-                mask = states == state_id
-                points_partition = coords_2d[mask]
-                
-                if len(points_partition) < 3:
-                    continue
-                
-                try:
-                    # Calculer l'alpha shape (contour précis)
-                    alpha_shape = alphashape.alphashape(points_partition, alpha=alpha_value)
-                    
-                    if alpha_shape and hasattr(alpha_shape, 'exterior'):
-                        # Extraire les coordonnées du contour
-                        if isinstance(alpha_shape, ShapelyPolygon):
-                            xx, yy = alpha_shape.exterior.xy
-                            polygon_coords = np.column_stack([xx[:-1], yy[:-1]])  # Enlever le dernier point dupliqué
-                            
-                            # ✅ REMPLIR l'alpha shape
-                            color = cmap(state_id / max(unique_states.max(), 1))
-                            polygon = patches.Polygon(polygon_coords, closed=True, 
-                                                    facecolor=color, alpha=fill_alpha, 
-                                                    edgecolor='none', zorder=1)
-                            ax.add_patch(polygon)
-                            
-                            # Contour noir
-                            ax.plot(xx, yy, color='black', linewidth=2.0, alpha=0.9, zorder=3)
-                    
-                except Exception as e:
-                    print(f"   Alpha shape impossible pour partition {state_id}: {e}")
-                    continue
-        
-        # 2. ✅ POINTS
-        if view == 'xy':
-            scatter = ax.scatter(x, y, c=states, cmap='tab20', s=15, 
-                                alpha=points_alpha, edgecolors='black', linewidth=0.4, zorder=5)
-        elif view == 'yz':
-            scatter = ax.scatter(y, z, c=states, cmap='tab20', s=15, 
-                                alpha=points_alpha, edgecolors='black', linewidth=0.4, zorder=5)
-
-
-    def _plot_3d_filled_surfaces(self, ax, x, y, z, states, alpha=0.4):
-        """
-        Surfaces 3D remplies pour chaque partition
-        """
-        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-        from scipy.spatial import ConvexHull
-        import matplotlib.cm as cm
-        
-        cmap = cm.get_cmap('tab20')
-        unique_states = np.unique(states)
-        
-        for state_id in unique_states:
-            mask = states == state_id
-            points_3d = np.column_stack([x[mask], y[mask], z[mask]])
-            
-            if len(points_3d) < 4:
-                continue
-            
-            try:
-                hull = ConvexHull(points_3d)
-                
-                # Créer les faces de l'enveloppe
-                faces = []
-                for simplex in hull.simplices:
-                    faces.append(points_3d[simplex])
-                
-                color = cmap(state_id / max(unique_states.max(), 1))
-                
-                # Surface remplie semi-transparente
-                collection = Poly3DCollection(faces, alpha=alpha, 
-                                            facecolor=color, edgecolor='none', 
-                                            zorder=1)
-                ax.add_collection3d(collection)
-                
-            except Exception:
-                continue
-
-
-    def _plot_3d_hull_edges(self, ax, x, y, z, states):
-        """
-        Arêtes des enveloppes convexes 3D (contours)
-        """
-        from scipy.spatial import ConvexHull
-        import matplotlib.cm as cm
-        
-        cmap = cm.get_cmap('tab20')
-        unique_states = np.unique(states)
-        
-        for state_id in unique_states:
-            mask = states == state_id
-            points_3d = np.column_stack([x[mask], y[mask], z[mask]])
-            
-            if len(points_3d) < 4:
-                continue
-            
-            try:
-                hull = ConvexHull(points_3d)
-                color = cmap(state_id / max(unique_states.max(), 1))
-                
-                # Tracer les arêtes de l'enveloppe
-                for simplex in hull.simplices:
-                    triangle = points_3d[simplex]
-                    # Tracer les 3 arêtes du triangle
-                    for i in range(3):
-                        start = triangle[i]
-                        end = triangle[(i+1) % 3]
-                        ax.plot([start[0], end[0]], [start[1], end[1]], [start[2], end[2]], 
-                            color=color, linewidth=1.5, alpha=0.7, zorder=4)
-                        
-            except Exception:
-                continue
-    def diagnostics(self, coordinates):
-            """
-            Statistiques de population par cellule pour le partitionneur adaptatif.
-            """
-            coordinates = np.asarray(coordinates)
-            x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
-            states = self.compute_states(x, y, z)
-            counts = np.bincount(states, minlength=self.n_cells)
-            return {
-                "pop_min": int(counts.min()),
-                "pop_max": int(counts.max()),
-                "pop_mean": float(counts.mean()),
-                "pop_std": float(counts.std()),
-                "n_empty": int((counts == 0).sum()),
-                "n_visited": int((counts > 0).sum()),
-                "fraction_visited": float((counts > 0).sum() / self.n_cells),
-            }
+        for iz in range(self.nz):
+            z0 = self._z_min + iz * (self._z_max - self._z_min) / self.nz
+            z1 = z0 + (self._z_max - self._z_min) / self.nz
+            for itheta in range(self.ntheta):
+                t0 = itheta * 2 * np.pi / self.ntheta
+                t1 = (itheta + 1) * 2 * np.pi / self.ntheta
+                for ir in range(self.nr):
+                    state_id = ir + itheta * self.nr + iz * self.nr * self.ntheta
+                    r0 = self._r_edges[ir]
+                    r1 = self._r_edges[ir + 1]
+                    cos_t0, sin_t0 = np.cos(t0), np.sin(t0)
+                    cos_t1, sin_t1 = np.cos(t1), np.sin(t1)
+                    vertices = np.array([
+                        [r0*cos_t0, r0*sin_t0, z0],
+                        [r1*cos_t0, r1*sin_t0, z0],
+                        [r1*cos_t1, r1*sin_t1, z0],
+                        [r0*cos_t1, r0*sin_t1, z0],
+                        [r0*cos_t0, r0*sin_t0, z1],
+                        [r1*cos_t0, r1*sin_t0, z1],
+                        [r1*cos_t1, r1*sin_t1, z1],
+                        [r0*cos_t1, r0*sin_t1, z1],
+                    ])
+                    results.append((state_id, vertices, face_indices))
+        return results
 
 
 # =============================================================================
@@ -1123,23 +937,27 @@ class VoronoiPartitioner(BasePartitioner):
         from sklearn.cluster import MiniBatchKMeans
         from scipy.spatial import cKDTree
 
-        # Sous-échantillonner si trop gros
         rng = np.random.RandomState(self.random_state)
         if len(coordinates) > 500_000:
             idx = rng.choice(len(coordinates), 500_000, replace=False)
             fit_data = coordinates[idx]
         else:
             fit_data = coordinates
-        # Création du cluster
         kmeans = MiniBatchKMeans(
             n_clusters=self._n_cells,
             random_state=self.random_state,
             batch_size=min(10_000, len(fit_data)),
             n_init=10,
         )
-        kmeans.fit(fit_data) # determination des centres des distributions dans chaque partition
+        kmeans.fit(fit_data)
         self.centroids = kmeans.cluster_centers_
         self._tree = cKDTree(self.centroids)
+        self._voronoi_3d = Voronoi(self.centroids)
+        self._data_bounds_3d = (
+            coordinates[:, 0].min(), coordinates[:, 0].max(),
+            coordinates[:, 1].min(), coordinates[:, 1].max(),
+            coordinates[:, 2].min(), coordinates[:, 2].max(),
+        )
         return self
 
     def compute_states(self, x, y, z):
@@ -1161,65 +979,45 @@ class VoronoiPartitioner(BasePartitioner):
         self.centroids = np.load(os.path.join(path, "centroids.npy"))
         self._tree = cKDTree(self.centroids)
         self._n_cells = len(self.centroids)
-    
-    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
-        """
-        Génère des visualisations avec adaptation pour l'axe y
-        """
-        self.fit(np.column_stack([x,y,z]))
-        states = self.compute_states(x, y, z)
-        
-        image_data = {}
-        
-        if "3d" in plot_types:
-            fig = plt.figure(figsize=(12, 8))
-            ax = fig.add_subplot(111, projection='3d')
-            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
-            plt.colorbar(scatter, label='ID de Partition')
-            plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
-            plt.close()
-        
-        if "2d_xy" in plot_types:
-            plt.figure(figsize=(12, 5))
-            
-            # Vue XY
-            plt.subplot(121)
-            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axhline(y=self._y_split, color='r', linestyle='--', 
-                         label=f'Seuil y={self._y_split:.2f}')
-            plt.xlabel('X')
-            plt.ylabel('Y')
-            plt.title('Vue XY')
-            plt.legend()
-            plt.colorbar(label='Partition ID')
-            
-            # Vue YZ
-            plt.subplot(122)
-            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
-            plt.xlabel('Y')
-            plt.ylabel('Z')
-            plt.title('Vue YZ')
-            plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
-            plt.close()
-        
-        return image_data
+        self._voronoi_3d = Voronoi(self.centroids)
+
+    def _get_cell_polygons_2d(self, view='xy'):
+        if view == 'xy':
+            pts_2d = self.centroids[:, :2]
+            x_idx, y_idx = 0, 1
+        elif view == 'yz':
+            pts_2d = self.centroids[:, 1:]
+            x_idx, y_idx = 1, 2
+        else:
+            return []
+
+        vor = Voronoi(pts_2d)
+        results = []
+        for state_id in range(self._n_cells):
+            region_idx = vor.point_region[state_id]
+            region = vor.regions[region_idx]
+            if not region or -1 in region:
+                continue
+            polygon_pts = vor.vertices[region]
+            results.append((state_id, polygon_pts))
+        return results
+
+    def _get_cell_polyhedra_3d(self):
+        vor = self._voronoi_3d
+        results = []
+        for state_id in range(self._n_cells):
+            region_idx = vor.point_region[state_id]
+            region = vor.regions[region_idx]
+            if not region or -1 in region:
+                continue
+            vertices = vor.vertices[region]
+            if len(vertices) < 4:
+                continue
+            hull = ConvexHull(vertices)
+            faces = hull.simplices.tolist()
+            results.append((state_id, vertices, faces))
+        return results
+
     def diagnostics(self, coordinates):
             """
             Statistiques de population par cellule pour le partitionneur adaptatif.
@@ -1320,82 +1118,45 @@ class QuantileGridPartitioner(BasePartitioner):
         self._x_edges = data["x"]
         self._y_edges = data["y"]
         self._z_edges = data["z"]
-    
-    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
-        """
-        Génère des visualisations avec adaptation pour l'axe y
-        """
-        self.fit(np.column_stack([x,y,z]))
-        states = self.compute_states(x, y, z)
-        
-        image_data = {}
-        
-        if "3d" in plot_types:
-            fig = plt.figure(figsize=(12, 8))
-            ax = fig.add_subplot(111, projection='3d')
-            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
-            plt.colorbar(scatter, label='ID de Partition')
-            plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
-            plt.close()
-        
-        if "2d_xy" in plot_types:
-            plt.figure(figsize=(12, 5))
-            
-            # Vue XY
-            plt.subplot(121)
-            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axhline(y=self._y_split, color='r', linestyle='--', 
-                         label=f'Seuil y={self._y_split:.2f}')
-            plt.xlabel('X')
-            plt.ylabel('Y')
-            plt.title('Vue XY')
-            plt.legend()
-            plt.colorbar(label='Partition ID')
-            
-            # Vue YZ
-            plt.subplot(122)
-            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
-            plt.xlabel('Y')
-            plt.ylabel('Z')
-            plt.title('Vue YZ')
-            plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
-            plt.close()
-        
-        return image_data
-    def diagnostics(self, coordinates):
-            """
-            Statistiques de population par cellule pour le partitionneur adaptatif.
-            """
-            coordinates = np.asarray(coordinates)
-            x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
-            states = self.compute_states(x, y, z)
-            counts = np.bincount(states, minlength=self.n_cells)
-            return {
-                "pop_min": int(counts.min()),
-                "pop_max": int(counts.max()),
-                "pop_mean": float(counts.mean()),
-                "pop_std": float(counts.std()),
-                "n_empty": int((counts == 0).sum()),
-                "n_visited": int((counts > 0).sum()),
-                "fraction_visited": float((counts > 0).sum() / self.n_cells),
-            }
+
+    def _get_cell_polygons_2d(self, view='xy'):
+        results = []
+        if view == 'xy':
+            for iz in range(self.nz):
+                for iy in range(self.ny):
+                    for ix in range(self.nx):
+                        state_id = ix + iy * self.nx + iz * self.nx * self.ny
+                        x0, x1 = self._x_edges[ix], self._x_edges[ix + 1]
+                        y0, y1 = self._y_edges[iy], self._y_edges[iy + 1]
+                        pts = np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]])
+                        results.append((state_id, pts))
+        elif view == 'yz':
+            for iz in range(self.nz):
+                for iy in range(self.ny):
+                    for ix in range(self.nx):
+                        state_id = ix + iy * self.nx + iz * self.nx * self.ny
+                        y0, y1 = self._y_edges[iy], self._y_edges[iy + 1]
+                        z0, z1 = self._z_edges[iz], self._z_edges[iz + 1]
+                        pts = np.array([[y0, z0], [y1, z0], [y1, z1], [y0, z1]])
+                        results.append((state_id, pts))
+        return results
+
+    def _get_cell_polyhedra_3d(self):
+        results = []
+        face_indices = [[0,1,2,3],[4,5,6,7],[0,1,5,4],[2,3,7,6],[0,3,7,4],[1,2,6,5]]
+        for iz in range(self.nz):
+            for iy in range(self.ny):
+                for ix in range(self.nx):
+                    state_id = ix + iy * self.nx + iz * self.nx * self.ny
+                    x0, x1 = self._x_edges[ix], self._x_edges[ix + 1]
+                    y0, y1 = self._y_edges[iy], self._y_edges[iy + 1]
+                    z0, z1 = self._z_edges[iz], self._z_edges[iz + 1]
+                    vertices = np.array([
+                        [x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0],
+                        [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1],
+                    ])
+                    results.append((state_id, vertices, face_indices))
+        return results
 
 
 # =============================================================================
@@ -1551,82 +1312,29 @@ class OctreePartitioner(BasePartitioner):
         bounds_path = os.path.join(path, "bounds.npy")
         if os.path.exists(bounds_path):
             self._bounds = tuple(np.load(bounds_path))
-    
-    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
-        """
-        Génère des visualisations avec adaptation pour l'axe y
-        """
-        self.fit(np.column_stack([x,y,z]))
-        states = self.compute_states(x, y, z)
-        
-        image_data = {}
-        
-        if "3d" in plot_types:
-            fig = plt.figure(figsize=(12, 8))
-            ax = fig.add_subplot(111, projection='3d')
-            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
-            plt.colorbar(scatter, label='ID de Partition')
-            plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
-            plt.close()
-        
-        if "2d_xy" in plot_types:
-            plt.figure(figsize=(12, 5))
-            
-            # Vue XY
-            plt.subplot(121)
-            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axhline(y=self._y_split, color='r', linestyle='--', 
-                         label=f'Seuil y={self._y_split:.2f}')
-            plt.xlabel('X')
-            plt.ylabel('Y')
-            plt.title('Vue XY')
-            plt.legend()
-            plt.colorbar(label='Partition ID')
-            
-            # Vue YZ
-            plt.subplot(122)
-            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
-            plt.xlabel('Y')
-            plt.ylabel('Z')
-            plt.title('Vue YZ')
-            plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
-            plt.close()
-        
-        return image_data
-    def diagnostics(self, coordinates):
-            """
-            Statistiques de population par cellule pour le partitionneur adaptatif.
-            """
-            coordinates = np.asarray(coordinates)
-            x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
-            states = self.compute_states(x, y, z)
-            counts = np.bincount(states, minlength=self.n_cells)
-            return {
-                "pop_min": int(counts.min()),
-                "pop_max": int(counts.max()),
-                "pop_mean": float(counts.mean()),
-                "pop_std": float(counts.std()),
-                "n_empty": int((counts == 0).sum()),
-                "n_visited": int((counts > 0).sum()),
-                "fraction_visited": float((counts > 0).sum() / self.n_cells),
-            }
+
+    def _get_cell_polygons_2d(self, view='xy'):
+        results = []
+        for cell_id, (xmin, xmax, ymin, ymax, zmin, zmax) in enumerate(self._leaves):
+            if view == 'xy':
+                pts = np.array([[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]])
+            elif view == 'yz':
+                pts = np.array([[ymin, zmin], [ymax, zmin], [ymax, zmax], [ymin, zmax]])
+            else:
+                continue
+            results.append((cell_id, pts))
+        return results
+
+    def _get_cell_polyhedra_3d(self):
+        results = []
+        face_indices = [[0,1,2,3],[4,5,6,7],[0,1,5,4],[2,3,7,6],[0,3,7,4],[1,2,6,5]]
+        for cell_id, (xmin, xmax, ymin, ymax, zmin, zmax) in enumerate(self._leaves):
+            vertices = np.array([
+                [xmin, ymin, zmin], [xmax, ymin, zmin], [xmax, ymax, zmin], [xmin, ymax, zmin],
+                [xmin, ymin, zmax], [xmax, ymin, zmax], [xmax, ymax, zmax], [xmin, ymax, zmax],
+            ])
+            results.append((cell_id, vertices, face_indices))
+        return results
 
 
 # =============================================================================
@@ -1763,140 +1471,43 @@ class PhysicsAwarePartitioner(BasePartitioner):
         self._n_cells = len(self._centroids)
         with open(os.path.join(path, "physics_params.json")) as f:
             self._n_features = json.load(f)["n_features"]
-    def visualize(self, x, y, z,vx,vy,vz, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
-        """
-        Génère des visualisations avec adaptation pour l'axe y
-        """
-        self.fit_with_physics(np.column_stack([x,y,z]),np.column_stack([vx,vy,vz]))
-        states = self.compute_states_with_physics(x, y, z, vx, vy, vz)
-        
-        
-        image_data = {}
-        
-        if "3d" in plot_types:
-            fig = plt.figure(figsize=(12, 8))
-            ax = fig.add_subplot(111, projection='3d')
-            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
-            plt.colorbar(scatter, label='ID de Partition')
-            plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
-            plt.close()
-        
-        if "2d_xy" in plot_types:
-            plt.figure(figsize=(12, 5))
-            
-            # Vue XY
-            plt.subplot(121)
-            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axhline(y=self._y_split, color='r', linestyle='--', 
-                         label=f'Seuil y={self._y_split:.2f}')
-            plt.xlabel('X')
-            plt.ylabel('Y')
-            plt.title('Vue XY')
-            plt.legend()
-            plt.colorbar(label='Partition ID')
-            
-            # Vue YZ
-            plt.subplot(122)
-            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
-            plt.xlabel('Y')
-            plt.ylabel('Z')
-            plt.title('Vue YZ')
-            plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
-            plt.close()
-        
-        return image_data
-    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
-        """
-        Génère des visualisations avec adaptation pour l'axe y
-        """
-        self.fit(np.column_stack([x,y,z]))
-        states = self.compute_states(x, y, z)
-        
-        image_data = {}
-        
-        if "3d" in plot_types:
-            fig = plt.figure(figsize=(12, 8))
-            ax = fig.add_subplot(111, projection='3d')
-            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
-            plt.colorbar(scatter, label='ID de Partition')
-            plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
-            plt.close()
-        
-        if "2d_xy" in plot_types:
-            plt.figure(figsize=(12, 5))
-            
-            # Vue XY
-            plt.subplot(121)
-            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axhline(y=self._y_split, color='r', linestyle='--', 
-                         label=f'Seuil y={self._y_split:.2f}')
-            plt.xlabel('X')
-            plt.ylabel('Y')
-            plt.title('Vue XY')
-            plt.legend()
-            plt.colorbar(label='Partition ID')
-            
-            # Vue YZ
-            plt.subplot(122)
-            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
-            plt.xlabel('Y')
-            plt.ylabel('Z')
-            plt.title('Vue YZ')
-            plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
-            plt.close()
-        
-        return image_data
-    def diagnostics(self, coordinates):
-            """
-            Statistiques de population par cellule pour le partitionneur adaptatif.
-            """
-            coordinates = np.asarray(coordinates)
-            x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
-            states = self.compute_states(x, y, z)
-            counts = np.bincount(states, minlength=self.n_cells)
-            return {
-                "pop_min": int(counts.min()),
-                "pop_max": int(counts.max()),
-                "pop_mean": float(counts.mean()),
-                "pop_std": float(counts.std()),
-                "n_empty": int((counts == 0).sum()),
-                "n_visited": int((counts > 0).sum()),
-                "fraction_visited": float((counts > 0).sum() / self.n_cells),
-            }
+
+    def _get_cell_polygons_2d(self, view='xy'):
+        pos_centroids = self._centroids[:, :3]
+        if view == 'xy':
+            pts_2d = pos_centroids[:, :2]
+        elif view == 'yz':
+            pts_2d = pos_centroids[:, 1:]
+        else:
+            return []
+        vor = Voronoi(pts_2d)
+        results = []
+        for state_id in range(self._n_cells):
+            region_idx = vor.point_region[state_id]
+            region = vor.regions[region_idx]
+            if not region or -1 in region:
+                continue
+            polygon_pts = vor.vertices[region]
+            results.append((state_id, polygon_pts))
+        return results
+
+    def _get_cell_polyhedra_3d(self):
+        pos_centroids = self._centroids[:, :3]
+        vor = Voronoi(pos_centroids)
+        results = []
+        for state_id in range(self._n_cells):
+            region_idx = vor.point_region[state_id]
+            region = vor.regions[region_idx]
+            if not region or -1 in region:
+                continue
+            vertices = vor.vertices[region]
+            if len(vertices) < 4:
+                continue
+            hull = ConvexHull(vertices)
+            faces = hull.simplices.tolist()
+            results.append((state_id, vertices, faces))
+        return results
+
 
 # =============================================================================
 # 7. PARTITIONNEMENT ADAPTATIF HAUT/BAS
@@ -2042,82 +1653,31 @@ class AdaptivePartitioner(BasePartitioner):
         self.states= states # Les méthode de découpage hybrides comme le adaptive et le multizone ne necessite pas l'application de masque car
         # elles appellent déjà d'autres méthode de computestate des classes de découpage qu'elle instancient.
         return self.states
-    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
-        """
-        Génère des visualisations avec adaptation pour l'axe y
-        """
-        self.fit(np.column_stack([x,y,z]))
-        states = self.compute_states(x, y, z)
-        
-        image_data = {}
-        
-        if "3d" in plot_types:
-            fig = plt.figure(figsize=(12, 8))
-            ax = fig.add_subplot(111, projection='3d')
-            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
-            plt.colorbar(scatter, label='ID de Partition')
-            plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
-            plt.close()
-        
-        if "2d_xy" in plot_types:
-            plt.figure(figsize=(12, 5))
-            
-            # Vue XY
-            plt.subplot(121)
-            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axhline(y=self._y_split, color='r', linestyle='--', 
-                         label=f'Seuil y={self._y_split:.2f}')
-            plt.xlabel('X')
-            plt.ylabel('Y')
-            plt.title('Vue XY')
-            plt.legend()
-            plt.colorbar(label='Partition ID')
-            
-            # Vue YZ
-            plt.subplot(122)
-            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
-            plt.xlabel('Y')
-            plt.ylabel('Z')
-            plt.title('Vue YZ')
-            plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
-            plt.close()
-        
-        return image_data
-    def diagnostics(self, coordinates):
-            """
-            Statistiques de population par cellule pour le partitionneur adaptatif.
-            """
-            coordinates = np.asarray(coordinates)
-            x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
-            states = self.compute_states(x, y, z)
-            counts = np.bincount(states, minlength=self.n_cells)
-            return {
-                "pop_min": int(counts.min()),
-                "pop_max": int(counts.max()),
-                "pop_mean": float(counts.mean()),
-                "pop_std": float(counts.std()),
-                "n_empty": int((counts == 0).sum()),
-                "n_visited": int((counts > 0).sum()),
-                "fraction_visited": float((counts > 0).sum() / self.n_cells),
-            }
-        
+
+    def _get_cell_polygons_2d(self, view='xy'):
+        results = []
+        if self._bottom_partitioner is not None:
+            for state_id, pts in self._bottom_partitioner._get_cell_polygons_2d(view):
+                results.append((state_id, pts))
+        if self._top_partitioner is not None and self.top_method != "single":
+            offset = self._n_cells_bottom
+            for state_id, pts in self._top_partitioner._get_cell_polygons_2d(view):
+                results.append((state_id + offset, pts))
+        elif self._top_partitioner is None:
+            offset = self._n_cells_bottom
+            results.append((offset, np.array([[0, 0], [1, 0], [1, 1], [0, 1]])))
+        return results
+
+    def _get_cell_polyhedra_3d(self):
+        results = []
+        if self._bottom_partitioner is not None:
+            for state_id, vertices, faces in self._bottom_partitioner._get_cell_polyhedra_3d():
+                results.append((state_id, vertices, faces))
+        if self._top_partitioner is not None and self.top_method != "single":
+            offset = self._n_cells_bottom
+            for state_id, vertices, faces in self._top_partitioner._get_cell_polyhedra_3d():
+                results.append((state_id + offset, vertices, faces))
+        return results
 
 
 # =============================================================================
@@ -2273,82 +1833,27 @@ class MultiZonePartitioner(BasePartitioner):
             partitioner.load(zone_path)
             
             self._zones.append((y_min, y_max, partitioner))
-    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
-        """
-        Génère des visualisations avec adaptation pour l'axe y
-        """
-        self.fit(np.column_stack([x,y,z]))
-        states = self.compute_states(x, y, z)
-        
-        image_data = {}
-        
-        if "3d" in plot_types:
-            fig = plt.figure(figsize=(12, 8))
-            ax = fig.add_subplot(111, projection='3d')
-            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
-            plt.colorbar(scatter, label='ID de Partition')
-            plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
-            plt.close()
-        
-        if "2d_xy" in plot_types:
-            plt.figure(figsize=(12, 5))
-            
-            # Vue XY
-            plt.subplot(121)
-            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axhline(y=self._y_split, color='r', linestyle='--', 
-                         label=f'Seuil y={self._y_split:.2f}')
-            plt.xlabel('X')
-            plt.ylabel('Y')
-            plt.title('Vue XY')
-            plt.legend()
-            plt.colorbar(label='Partition ID')
-            
-            # Vue YZ
-            plt.subplot(122)
-            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
-            plt.xlabel('Y')
-            plt.ylabel('Z')
-            plt.title('Vue YZ')
-            plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
-            plt.close()
-        
-        return image_data
-    def diagnostics(self, coordinates):
-            """
-            Statistiques de population par cellule pour le partitionneur adaptatif.
-            """
-            coordinates = np.asarray(coordinates)
-            x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
-            states = self.compute_states(x, y, z)
-            counts = np.bincount(states, minlength=self.n_cells)
-            return {
-                "pop_min": int(counts.min()),
-                "pop_max": int(counts.max()),
-                "pop_mean": float(counts.mean()),
-                "pop_std": float(counts.std()),
-                "n_empty": int((counts == 0).sum()),
-                "n_visited": int((counts > 0).sum()),
-                "fraction_visited": float((counts > 0).sum() / self.n_cells),
-            }
 
+    def _get_cell_polygons_2d(self, view='xy'):
+        results = []
+        for zone_idx, (y_min, y_max, partitioner) in enumerate(self._zones):
+            offset = self._cell_offsets[zone_idx]
+            for state_id, pts in partitioner._get_cell_polygons_2d(view):
+                results.append((state_id + offset, pts))
+        return results
+
+    def _get_cell_polyhedra_3d(self):
+        results = []
+        for zone_idx, (y_min, y_max, partitioner) in enumerate(self._zones):
+            offset = self._cell_offsets[zone_idx]
+            for state_id, vertices, faces in partitioner._get_cell_polyhedra_3d():
+                results.append((state_id + offset, vertices, faces))
+        return results
+
+
+# =============================================================================
+# SINGLE CELL
+# =============================================================================
 
 class SingleCellPartitioner(BasePartitioner):
     """Une seule cellule pour tout le domaine."""
@@ -2370,81 +1875,31 @@ class SingleCellPartitioner(BasePartitioner):
     def compute_states(self, x, y, z):
         self.states= np.zeros(len(np.asarray(x)), dtype=np.int64)
         return self.states
-    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="adaptive_partition"):
-        """
-        Génère des visualisations avec adaptation pour l'axe y
-        """
-        self.fit(np.column_stack([x,y,z]))
-        states = self.compute_states(x, y, z)
-        
-        image_data = {}
-        
-        if "3d" in plot_types:
-            fig = plt.figure(figsize=(12, 8))
-            ax = fig.add_subplot(111, projection='3d')
-            scatter = ax.scatter(x, y, z, c=states, cmap='tab20', s=10, alpha=0.6)
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            ax.set_title(f'Partitionnement Adaptatif (Seuil y={self._y_split:.2f})')
-            plt.colorbar(scatter, label='ID de Partition')
-            plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_3d.png"] = img_buffer.getvalue()
-            plt.close()
-        
-        if "2d_xy" in plot_types:
-            plt.figure(figsize=(12, 5))
-            
-            # Vue XY
-            plt.subplot(121)
-            plt.scatter(x, y, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axhline(y=self._y_split, color='r', linestyle='--', 
-                         label=f'Seuil y={self._y_split:.2f}')
-            plt.xlabel('X')
-            plt.ylabel('Y')
-            plt.title('Vue XY')
-            plt.legend()
-            plt.colorbar(label='Partition ID')
-            
-            # Vue YZ
-            plt.subplot(122)
-            plt.scatter(y, z, c=states, cmap='tab20', s=5, alpha=0.6)
-            plt.axvline(x=self._y_split, color='r', linestyle='--')  # ← Changé en axvline car y est sur l'axe x
-            plt.xlabel('Y')
-            plt.ylabel('Z')
-            plt.title('Vue YZ')
-            plt.tight_layout()
-            
-            # ✅ Sauvegarder en mémoire
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_2d.png"] = img_buffer.getvalue()
-            plt.close()
-        
-        return image_data
-    def diagnostics(self, coordinates):
-            """
-            Statistiques de population par cellule pour le partitionneur adaptatif.
-            """
-            coordinates = np.asarray(coordinates)
-            x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
-            states = self.compute_states(x, y, z)
-            counts = np.bincount(states, minlength=self.n_cells)
-            return {
-                "pop_min": int(counts.min()),
-                "pop_max": int(counts.max()),
-                "pop_mean": float(counts.mean()),
-                "pop_std": float(counts.std()),
-                "n_empty": int((counts == 0).sum()),
-                "n_visited": int((counts > 0).sum()),
-                "fraction_visited": float((counts > 0).sum() / self.n_cells),
-            }
+
+    def _get_cell_polygons_2d(self, view='xy'):
+        if hasattr(self, '_data_bounds') and self._data_bounds is not None:
+            xmin, xmax, ymin, ymax, zmin, zmax = self._data_bounds
+        else:
+            xmin, xmax, ymin, ymax, zmin, zmax = -1, 1, -1, 1, -1, 1
+        if view == 'xy':
+            pts = np.array([[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]])
+        elif view == 'yz':
+            pts = np.array([[ymin, zmin], [ymax, zmin], [ymax, zmax], [ymin, zmax]])
+        else:
+            return []
+        return [(0, pts)]
+
+    def _get_cell_polyhedra_3d(self):
+        if hasattr(self, '_data_bounds') and self._data_bounds is not None:
+            xmin, xmax, ymin, ymax, zmin, zmax = self._data_bounds
+        else:
+            xmin, xmax, ymin, ymax, zmin, zmax = -1, 1, -1, 1, -1, 1
+        vertices = np.array([
+            [xmin, ymin, zmin], [xmax, ymin, zmin], [xmax, ymax, zmin], [xmin, ymax, zmin],
+            [xmin, ymin, zmax], [xmax, ymin, zmax], [xmax, ymax, zmax], [xmin, ymax, zmax],
+        ])
+        faces = [[0,1,2,3],[4,5,6,7],[0,1,5,4],[2,3,7,6],[0,3,7,4],[1,2,6,5]]
+        return [(0, vertices, faces)]
 
 
 # =============================================================================
