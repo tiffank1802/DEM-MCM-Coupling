@@ -2204,6 +2204,160 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         
         return fig, ax
 
+    def plot_rsd_vs_tau_comparison(self, partitioner, method, folder_name_template,
+                                     tau_list=None, max_time_seconds=60, figsize=(14, 8), save_name=None):
+        """
+        ✅ Étude de l'influence du pas de temps Markov (tau) sur la cinétique de mélange.
+        
+        Pour chaque tau, charge la matrice Markov correspondante et compare au RSD DEM.
+        Toutes les courbes sont tracées sur le même graphe.
+        
+        Args:
+            partitioner: partitionneur (~20 cellules)
+            method: nom de la méthode
+            folder_name_template: template avec {tau} (ex: "cylindrical_nr4_nth5_nz1_equal_area_NLT10_step50_dt2_tau{tau}_start250")
+            tau_list: liste des tau à tester (None = [50, 100, 200, 500, 1000])
+            max_time_seconds: temps final (par défaut 60s)
+            figsize: taille de la figure
+            save_name: nom du fichier de sortie
+        """
+        import re
+        from .partitioners import create_partitioner
+        
+        if tau_list is None:
+            tau_list = [50, 100, 200, 500, 1000]
+        
+        fig, ax = plt.subplots(figsize=figsize)
+        
+        # ════════════════════════════════════════════════════════════════
+        # 1. CALCUL RSD DEM
+        # ════════════════════════════════════════════════════════════════
+        
+        start_file = 250
+        total_files = 5999
+        file_indices = list(range(start_file, total_files + 1, 50))
+        
+        print(f"\n📊 Calcul RSD DEM...")
+        self.load_dem_snapshots(file_indices=file_indices)
+        if self.species_labels is None:
+            self.label_species()
+        
+        all_coords = np.vstack([s["coords"] for s in self.dem_snapshots])
+        partitioner.fit(all_coords)
+        
+        n_states = partitioner.n_cells
+        species_labels = self.species_labels
+        n_snaps = len(self.dem_snapshots)
+        rsd_dem = np.zeros(n_snaps)
+        times_dem_files = np.array([s["t"] for s in self.dem_snapshots])
+        
+        for i, snap in enumerate(self.dem_snapshots):
+            coords = snap["coords"]
+            states = partitioner.compute_states(coords[:, 0], coords[:, 1], coords[:, 2])
+            C_i = np.zeros(n_states)
+            for sid in range(n_states):
+                mask = states == sid
+                if mask.sum() > 0:
+                    C_i[sid] = species_labels[mask].sum() / mask.sum()
+            mask_active = C_i > 0
+            if mask_active.sum() > 1:
+                rsd_dem[i] = C_i[mask_active].std() / C_i[mask_active].mean()
+        
+        t_dem_seconds = times_dem_files * 0.01
+        print(f"   DEM: {n_snaps} points de {t_dem_seconds[0]:.2f}s à {t_dem_seconds[-1]:.2f}s")
+        
+        # Plot DEM curve
+        ax.plot(t_dem_seconds, rsd_dem * 100,
+               color="black", marker='o', linewidth=3, markersize=8,
+               label="RSD DEM (réel)", zorder=10, alpha=0.9)
+        
+        # ════════════════════════════════════════════════════════════════
+        # 2. CALCUL RSD MARKOV POUR CHAQUE TAU
+        # ════════════════════════════════════════════════════════════════
+        
+        colors = plt.cm.viridis(np.linspace(0.1, 0.9, len(tau_list)))
+        
+        print(f"\n📊 Calcul RSD Markov pour {len(tau_list)} tau...")
+        
+        for tau_idx, tau in enumerate(tau_list):
+            folder_name = folder_name_template.format(tau=tau)
+            dt_markov = tau * 0.01
+            
+            print(f"\n   ── tau = {tau} ({dt_markov:.3f}s par pas) ──")
+            
+            # Vérifier si le folder existe
+            try:
+                M = self.get_matrix(folder_name)
+            except Exception as e:
+                print(f"   ⚠️  Folder {folder_name} non trouvé: {e}")
+                continue
+            
+            # Conditions initiales depuis le premier snapshot DEM
+            snap0 = self.dem_snapshots[0]
+            coords0 = snap0["coords"]
+            states0 = partitioner.compute_states(coords0[:, 0], coords0[:, 1], coords0[:, 2])
+            
+            C0 = np.zeros(n_states)
+            phi_total_0 = np.zeros(n_states)
+            for sid in range(n_states):
+                mask = states0 == sid
+                phi_total_0[sid] = mask.sum()
+                if mask.sum() > 0:
+                    C0[sid] = species_labels[mask].sum()
+            
+            mask_active = phi_total_0 > 0
+            if phi_total_0[mask_active].sum() > 0:
+                C0[mask_active] /= phi_total_0[mask_active].sum()
+            
+            # Simulation Markov
+            n_steps_markov = (total_files - start_file) // tau
+            C = C0.copy()
+            rsd_markov = np.zeros(n_steps_markov)
+            
+            for t in range(n_steps_markov):
+                C = C @ M
+                if mask_active.sum() > 1:
+                    rsd_markov[t] = C[mask_active].std() / C[mask_active].mean() if C[mask_active].mean() > 0 else 0
+            
+            t_markov_seconds = (start_file + np.arange(n_steps_markov) * tau) * 0.01
+            
+            # Plot Markov curve
+            ax.plot(t_markov_seconds, rsd_markov * 100,
+                   color=colors[tau_idx], linewidth=2.5, linestyle='-',
+                   label=f"Markov tau={tau} ({n_steps_markov} pts)", zorder=5, alpha=0.8)
+            
+            print(f"   ✅ {n_steps_markov} points de {t_markov_seconds[0]:.2f}s à {t_markov_seconds[-1]:.2f}s")
+        
+        # ════════════════════════════════════════════════════════════════
+        # 3. STYLING
+        # ════════════════════════════════════════════════════════════════
+        
+        ax.set_xlabel("Temps (s)", fontsize=13, fontweight='bold')
+        ax.set_ylabel("RSD (%)", fontsize=13, fontweight='bold')
+        ax.set_title(
+            f"Influence du pas de temps Markov (tau) sur la cinétique de mélange\n"
+            f"{method.upper()} | {partitioner.label} | {n_states} cellules",
+            fontsize=14, fontweight='bold', pad=15
+        )
+        
+        ax.legend(fontsize=10, loc='best', framealpha=0.95, edgecolor='black', ncol=2)
+        ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.7)
+        ax.set_xlim(t_dem_seconds[0], max_time_seconds)
+        ax.set_ylim(bottom=0)
+        ax.minorticks_on()
+        ax.grid(True, which='minor', alpha=0.15, linestyle=':', linewidth=0.5)
+        
+        plt.tight_layout()
+        
+        if save_name is None:
+            save_name = f"rsd_tau_comparison_{method}_{n_states}cells.png"
+        
+        plt.savefig(save_name, dpi=200, bbox_inches='tight', facecolor='white')
+        print(f"\n✅ Figure sauvegardée: {save_name}")
+        plt.show()
+        
+        return fig, ax
+
     def compare_all_methods_dem_vs_markov(self, species_criterion="z_median",
                                         file_indices=None, figsize=(16, 10)):
         """
