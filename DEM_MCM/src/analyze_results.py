@@ -1917,8 +1917,18 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         )
         gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.4, wspace=0.35)
 
-        times_dem = dem_rsd["times"]
-        times_mkv = markov_rsd["times"]
+        # Extraire les temps (compute_dem_rsd retourne 'times', compute_rsd non)
+        times_dem = dem_rsd.get("times", np.arange(len(dem_rsd["rsd"])))
+        
+        # Pour Markov, calculer les temps depuis initial_time
+        # Extraire dt du nom du folder (step=dt) ou utiliser default
+        folder_name = [k for k in self.results.keys()][0] if self.results else ""
+        import re
+        dt_match = re.search(r'step(\d+)_dt(\d+)', folder_name)
+        markov_dt = int(dt_match.group(2)) if dt_match else 10
+        
+        markov_initial = markov_rsd.get("initial_time", self.initial_time)
+        times_mkv = markov_initial + np.arange(len(markov_rsd["rsd"])) * markov_dt
 
         # ── 1. RSD: DEM vs Markov ──
         ax = fig.add_subplot(gs[0, 0])
@@ -2041,6 +2051,62 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         plt.savefig(f"dem_vs_markov_{method}.png", dpi=200, bbox_inches="tight")
         plt.show()
 
+
+
+    def plot_dem_vs_markov_simple(self, dem_rsd, markov_rsd, partitioner, method, figsize=(14, 7), save_name=None):
+        """
+        ✅ Affiche SEULEMENT les courbes RSD DEM vs Markov sur une seule figure.
+        Pas d'entropie, pas de tableau, juste les deux courbes RSD.
+        """
+        fig, ax = plt.subplots(figsize=figsize)
+        
+        # Extraire les temps (compute_dem_rsd retourne 'times', compute_rsd non)
+        times_dem = dem_rsd.get("times", np.arange(len(dem_rsd["rsd"])))
+        
+        # Pour Markov, calculer les temps depuis initial_time
+        # Extraire dt du nom du folder (step=dt) ou utiliser default
+        folder_name = [k for k in self.results.keys()][0] if self.results else ""
+        import re
+        dt_match = re.search(r'step(\d+)_dt(\d+)', folder_name)
+        markov_dt = int(dt_match.group(2)) if dt_match else 10
+        
+        markov_initial = markov_rsd.get("initial_time", self.initial_time)
+        times_mkv = markov_initial + np.arange(len(markov_rsd["rsd"])) * markov_dt
+        
+        # DEM curve (points)
+        ax.plot(times_dem, dem_rsd["rsd_percent"],
+               color="#1f77b4", marker='o', linewidth=2.5, markersize=6,
+               label="RSD DEM (réel)", zorder=3, alpha=0.85)
+        
+        # Markov curve (smooth line)
+        ax.plot(times_mkv, markov_rsd["rsd_percent"],
+               color="#ff7f0e", marker='s', linewidth=2.5, markersize=5, linestyle='--',
+               label="RSD Markov (prédit)", zorder=2, alpha=0.85)
+        
+        ax.set_xlabel("Temps (index fichier)", fontsize=13, fontweight='bold')
+        ax.set_ylabel("RSD (%)", fontsize=13, fontweight='bold')
+        ax.set_title(
+            f"Comparaison RSD — DEM vs Markov\n"
+            f"{method.upper()} | {partitioner.label} | {partitioner.n_cells} cellules",
+            fontsize=14, fontweight='bold', pad=15
+        )
+        
+        ax.legend(fontsize=12, loc='best', framealpha=0.95, edgecolor='black')
+        ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.7)
+        ax.set_ylim(bottom=0)
+        ax.minorticks_on()
+        ax.grid(True, which='minor', alpha=0.15, linestyle=':', linewidth=0.5)
+        
+        plt.tight_layout()
+        
+        if save_name is None:
+            save_name = f"rsd_dem_vs_markov_{method}_{partitioner.n_cells}cells.png"
+        
+        plt.savefig(save_name, dpi=200, bbox_inches='tight', facecolor='white')
+        print(f"\n✅ Figure sauvegardée: {save_name}")
+        plt.show()
+        
+        return fig, ax
 
     def compare_all_methods_dem_vs_markov(self, species_criterion="z_median",
                                         file_indices=None, figsize=(16, 10)):
