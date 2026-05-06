@@ -812,14 +812,11 @@ def run_experiment(config, partitioner, files, fs, device):
 
         # ✅ Conversion immédiate en numpy (un seul appel à to_numpy())
         if isinstance(partitioner, part.PhysicsAwarePartitioner):
-            # vel_prev = load_velocities(files[idx_prev])
-            # vel_curr = load_velocities(files[idx_curr])
+            vel_prev = load_velocities(files[idx_prev])
+            vel_curr = load_velocities(files[idx_curr])
 
-           
-            # states_prev = partitioner.compute_states_with_physics(*coords_prev, *vel_prev)
-            # states_curr = partitioner.compute_states_with_physics(*coords_curr, *vel_curr)
-            states_prev = partitioner.compute_states(*coords_prev)
-            states_curr = partitioner.compute_states(*coords_curr)
+            states_prev = partitioner.compute_states_with_physics(*coords_prev, *vel_prev)
+            states_curr = partitioner.compute_states_with_physics(*coords_curr, *vel_curr)
         else:
         
             states_prev = partitioner.compute_states(*coords_prev)
@@ -940,9 +937,19 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, partic
     # ── Coordonnées pour fit ──
     print("\n🔍 Échantillonnage des coordonnées pour le fit...")
     sample_coords = sample_coordinates(files, fs)
-    n=int(6000/50)
-    s_velocities=sample_velocities(files,fs)
+    s_velocities = sample_velocities(files, fs)
     print(f"   {len(sample_coords)} points échantillonnés")
+
+    # ── Diamètres pour visualize ──
+    sample_diameters = None
+    try:
+        with fs.open(files[5], "rb") as fh:
+            df = pl.read_csv(fh)
+            if "Diameter" in df.columns:
+                sample_diameters = df["Diameter"].to_numpy()
+                print(f"   📏 Diamètres chargés: {len(sample_diameters)} particules")
+    except Exception as e:
+        print(f"   ⚠️  Diamètres non chargés: {e}")
 
     # ── Configs ──
     if method == "all":
@@ -976,8 +983,7 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, partic
             partitioner = create_partitioner(config.method, **config.method_kwargs)
             print(f"   🔧 Fit partitionneur...")
             if method=='physics':
-                # partitioner.fit_with_physics(sample_coords,s_velocities)
-                partitioner.fit(sample_coords)
+                partitioner.fit_with_physics(sample_coords, s_velocities)
             else:
                 partitioner.fit(sample_coords)
 
@@ -994,17 +1000,14 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, partic
             image_data = None
             if hasattr(partitioner, 'visualize'):
                 try:
-
-                    x, y, z ,vx,vy,vz= sample_coords[:, 0], sample_coords[:, 1], sample_coords[:, 2],s_velocities[:,0],s_velocities[:,1],s_velocities[:,2]
-                    # Créer un nom de fichier sûr
+                    x, y, z = sample_coords[:, 0], sample_coords[:, 1], sample_coords[:, 2]
                     safe_label = partitioner.label.replace('=', '_').replace(' ', '_').replace('/', '_')
-                    if method=='physics':
-                        # image_data=partitioner.visualize(x,y,z,vx,vy,vz,save_prefix=f"partition_vis_{safe_label}")
-                        image_data = partitioner.visualize(x, y, z, save_prefix=f"partition_vis_{safe_label}")
-                        print(f"   🎨 {len(image_data)} images générées")
-                    else:
-                        image_data = partitioner.visualize(x, y, z, save_prefix=f"partition_vis_{safe_label}")
-                        print(f"   🎨 {len(image_data)} images générées")
+                    image_data = partitioner.visualize(
+                        x, y, z,
+                        save_prefix=f"partition_vis_{safe_label}",
+                        particle_diameters=sample_diameters,
+                    )
+                    print(f"   🎨 {len(image_data)} images générées")
                 except Exception as e:
                     print(f"   ⚠️  Visualisation échouée: {e}")
 
