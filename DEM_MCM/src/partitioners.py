@@ -129,189 +129,82 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
     def _load_data(self, path):
         pass
 
-    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="partition_visualization", particle_diameters=None, use_diameter=True):
+    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="partition_visualization", **kwargs):
         """
-        Génère 4 images: particules avec diamètres + limites réelles des partitions.
-        
-        Args:
-            particle_diameters: array de diamètres pour représenter chaque particule avec sa taille
-            use_diameter: si True (défaut), utilise les diamètres si disponibles (DEM ou explicites)
-            
-        Returns:
-            dict: {
-                "{prefix}_particles_2d.png": bytes,
-                "{prefix}_particles_3d.png": bytes,
-                "{prefix}_boundaries_2d.png": bytes,
-                "{prefix}_boundaries_3d.png": bytes,
-            }
+        Génère des visualisations des particules coloriées par état.
         """
-        self.fit(np.column_stack([x,y,z]))
+        self.fit(np.column_stack([x, y, z]))
         states = self.compute_states(x, y, z)
         
         image_data = {}
-        
-        if "2d_xy" not in plot_types and "3d" not in plot_types:
-            return image_data
-        
         xmin, xmax = x.min(), x.max()
         ymin, ymax = y.min(), y.max()
         zmin, zmax = z.min(), z.max()
         self._data_bounds = (xmin, xmax, ymin, ymax, zmin, zmax)
         
-        # ════════════ IMAGES LIMITES DE PARTITIONS (toujours) ════════════
-        try:
-            boundary_data = self._visualize_cell_boundaries(x, y, z, states, plot_types, save_prefix)
-            image_data.update(boundary_data)
-        except Exception as e:
-            print(f"⚠️  Visualisation des limites échouée: {e}")
-        
-        # ════════════ IMAGES PARTICULES (si diamètres dispos) ════════════
-        diameters = None
-        if use_diameter:
-            if particle_diameters is not None:
-                diameters = particle_diameters
-            elif hasattr(self, 'particle_diameters') and self.particle_diameters is not None:
-                diameters = self.particle_diameters
-            elif hasattr(self, 'dem_diameters') and self.dem_diameters is not None:
-                if len(self.dem_diameters) == len(x):
-                    diameters = self.dem_diameters
-                else:
-                    print(f"⚠️  dem_diameters ({len(self.dem_diameters)}) != nombre de particules ({len(x)})")
-        
-        if diameters is not None:
-            try:
-                particle_data = self._visualize_particles_with_diameter(
-                    x, y, z, states, diameters, plot_types, save_prefix
-                )
-                image_data.update(particle_data)
-            except Exception as e:
-                print(f"⚠️  Visualisation des particules échouée: {e}")
-        
-        return image_data
-
-    def _visualize_cell_boundaries(self, x, y, z, states, plot_types, save_prefix):
-        """
-        Visualise les limites réelles des partitions (sans particules).
-        Utilise _get_cell_polygons_2d() et _get_cell_polyhedra_3d() implémentés par chaque sous-classe.
-        """
-        import matplotlib.cm as cm
-        import matplotlib.patches as patches
-        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-        
-        image_data = {}
-        cmap = cm.get_cmap('tab20')
-        unique_states = np.unique(states)
-        n_states = len(unique_states)
-        
-        xmin, xmax = x.min(), x.max()
-        ymin, ymax = y.min(), y.max()
-        zmin, zmax = z.min(), z.max()
-        
         if "2d_xy" in plot_types:
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
             
-            # ════════ Vue XY ════════
-            try:
-                polygons_xy = self._get_cell_polygons_2d(view='xy')
-                for state_id, polygon_pts in polygons_xy:
-                    if len(polygon_pts) < 3:
-                        continue
-                    color = cmap(state_id / max(n_states - 1, 1))
-                    poly = patches.Polygon(polygon_pts, closed=True,
-                                          facecolor=color, alpha=0.6,
-                                          edgecolor='black', linewidth=1.5, zorder=1)
-                    ax1.add_patch(poly)
-            except Exception as e:
-                print(f"⚠️  Limites XY non disponibles: {e}")
-                ax1.text(0.5, 0.5, 'Limites non disponibles', ha='center', va='center',
-                        transform=ax1.transAxes, fontsize=14, color='gray')
-            
+            sc1 = ax1.scatter(x, y, c=states, cmap='tab20', s=8, alpha=0.7, edgecolors='none')
             ax1.set_xlim(xmin, xmax)
             ax1.set_ylim(ymin, ymax)
             ax1.set_xlabel('X (m)', fontsize=12, fontweight='bold')
             ax1.set_ylabel('Y (m)', fontsize=12, fontweight='bold')
-            ax1.set_title('Vue XY - Limites des partitions', fontsize=14, fontweight='bold')
+            ax1.set_title(f'Vue XY - {self.label}', fontsize=14, fontweight='bold')
             ax1.grid(True, alpha=0.3, linestyle='--')
             ax1.set_aspect('equal', adjustable='box')
+            plt.colorbar(sc1, ax=ax1, label='État', shrink=0.8)
             
-            # ════════ Vue YZ ════════
-            try:
-                polygons_yz = self._get_cell_polygons_2d(view='yz')
-                for state_id, polygon_pts in polygons_yz:
-                    if len(polygon_pts) < 3:
-                        continue
-                    color = cmap(state_id / max(n_states - 1, 1))
-                    poly = patches.Polygon(polygon_pts, closed=True,
-                                          facecolor=color, alpha=0.6,
-                                          edgecolor='black', linewidth=1.5, zorder=1)
-                    ax2.add_patch(poly)
-            except Exception as e:
-                print(f"⚠️  Limites YZ non disponibles: {e}")
-                ax2.text(0.5, 0.5, 'Limites non disponibles', ha='center', va='center',
-                        transform=ax2.transAxes, fontsize=14, color='gray')
-            
+            sc2 = ax2.scatter(y, z, c=states, cmap='tab20', s=8, alpha=0.7, edgecolors='none')
             ax2.set_xlim(ymin, ymax)
             ax2.set_ylim(zmin, zmax)
             ax2.set_xlabel('Y (m)', fontsize=12, fontweight='bold')
             ax2.set_ylabel('Z (m)', fontsize=12, fontweight='bold')
-            ax2.set_title('Vue YZ - Limites des partitions', fontsize=14, fontweight='bold')
+            ax2.set_title(f'Vue YZ - {self.label}', fontsize=14, fontweight='bold')
             ax2.grid(True, alpha=0.3, linestyle='--')
             ax2.set_aspect('equal', adjustable='box')
+            plt.colorbar(sc2, ax=ax2, label='État', shrink=0.8)
             
             plt.tight_layout()
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_boundaries_2d.png"] = img_buffer.getvalue()
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+            buf.seek(0)
+            image_data[f"{save_prefix}_2d.png"] = buf.getvalue()
             plt.close()
         
         if "3d" in plot_types:
             fig = plt.figure(figsize=(14, 10))
             ax = fig.add_subplot(111, projection='3d')
-            
-            try:
-                polyhedra = self._get_cell_polyhedra_3d()
-                for state_id, vertices, faces in polyhedra:
-                    if len(vertices) < 4 or len(faces) == 0:
-                        continue
-                    color = cmap(state_id / max(n_states - 1, 1))
-                    face_verts = [vertices[f] for f in faces]
-                    collection = Poly3DCollection(face_verts, alpha=0.5,
-                                                 facecolor=color, edgecolor='black',
-                                                 linewidth=0.8, zorder=1)
-                    ax.add_collection3d(collection)
-            except Exception as e:
-                print(f"⚠️  Limites 3D non disponibles: {e}")
-            
+            sc = ax.scatter(x, y, z, c=states, cmap='tab20', s=8, alpha=0.7, edgecolors='none')
             ax.set_xlim(xmin, xmax)
             ax.set_ylim(ymin, ymax)
             ax.set_zlim(zmin, zmax)
             ax.set_xlabel('X (m)', fontsize=12, fontweight='bold')
             ax.set_ylabel('Y (m)', fontsize=12, fontweight='bold')
             ax.set_zlabel('Z (m)', fontsize=12, fontweight='bold')
-            ax.set_title(f'Limites des partitions 3D - {self.label}',
-                        fontsize=14, fontweight='bold')
-            
+            ax.set_title(f'3D - {self.label}', fontsize=14, fontweight='bold')
             ax.xaxis.pane.fill = False
             ax.yaxis.pane.fill = False
             ax.zaxis.pane.fill = False
             ax.grid(True, alpha=0.3)
+            plt.colorbar(sc, ax=ax, label='État', shrink=0.6)
             
             plt.tight_layout()
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_boundaries_3d.png"] = img_buffer.getvalue()
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+            buf.seek(0)
+            image_data[f"{save_prefix}_3d.png"] = buf.getvalue()
             plt.close()
         
         return image_data
 
+    def _visualize_cell_boundaries(self, x, y, z, states, plot_types, save_prefix):
+        return {}
+
     def _get_cell_polygons_2d(self, view='xy'):
-        """Retourne une liste de (state_id, polygon_pts_2d). À implémenter par chaque sous-classe."""
         return []
 
     def _get_cell_polyhedra_3d(self):
-        """Retourne une liste de (state_id, vertices_3d, faces_3d). À implémenter par chaque sous-classe."""
         return []
 
     def visualize_enhanced(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="partition_visualization", 
