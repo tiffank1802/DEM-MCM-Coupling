@@ -129,15 +129,36 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
     def _load_data(self, path):
         pass
 
-    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="partition_visualization"):
+    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="partition_visualization", particle_diameters=None, use_diameter=True):
         """
-        Génère des visualisations et retourne les données des images en mémoire
+        Génère des visualisations et retourne les données des images en mémoire.
         
+        Args:
+            particle_diameters: array de diamètres pour représenter chaque particule avec sa taille
+            use_diameter: si True (défaut), utilise les diamètres si disponibles (DEM ou explicites)
+            
         Returns:
             dict: {"filename.png": bytes_data, ...}
         """
         self.fit(np.column_stack([x,y,z]))
         states = self.compute_states(x, y, z)
+        
+        diameters = None
+        if use_diameter:
+            if particle_diameters is not None:
+                diameters = particle_diameters
+            elif hasattr(self, 'particle_diameters') and self.particle_diameters is not None:
+                diameters = self.particle_diameters
+            elif hasattr(self, 'dem_diameters') and self.dem_diameters is not None:
+                if len(self.dem_diameters) == len(x):
+                    diameters = self.dem_diameters
+                else:
+                    print(f"⚠️  dem_diameters ({len(self.dem_diameters)}) != nombre de particules ({len(x)})")
+        
+        if diameters is not None:
+            return self._visualize_particles_with_diameter(
+                x, y, z, states, diameters, plot_types, save_prefix
+            )
         
         image_data = {}
         
