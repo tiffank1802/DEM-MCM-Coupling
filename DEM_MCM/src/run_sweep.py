@@ -991,7 +991,7 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, partic
     results = []
     for i, config in enumerate(all_configs):
         # ✅ Générer le nom du dossier (pas un chemin)
-        if config.method in ["adaptive", "multizone"]:
+        if config.method in ["adaptive", "multizone", "physics"]:
             folder_name = config.output_folder(base_dir=base_dir, sample_coords=sample_coords)
         else:
             folder_name = config.output_folder(base_dir)
