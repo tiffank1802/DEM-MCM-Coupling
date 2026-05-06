@@ -2053,37 +2053,55 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
 
 
 
-    def plot_dem_vs_markov_simple(self, dem_rsd, markov_rsd, partitioner, method, figsize=(14, 7), save_name=None):
+    def plot_dem_vs_markov_simple(self, dem_rsd, markov_rsd, partitioner, method, 
+                                   figsize=(14, 7), save_name=None, max_time_seconds=60, total_files=6000):
         """
         ✅ Affiche SEULEMENT les courbes RSD DEM vs Markov sur une seule figure.
-        Pas d'entropie, pas de tableau, juste les deux courbes RSD.
+        Tracé en fonction du TEMPS PHYSIQUE (secondes), pas des indices de fichiers.
+        
+        Args:
+            max_time_seconds: temps final en secondes (par défaut 60s)
+            total_files: nombre total de fichiers DEM (par défaut 6000)
         """
         fig, ax = plt.subplots(figsize=figsize)
         
-        # Extraire les temps (compute_dem_rsd retourne 'times', compute_rsd non)
-        times_dem = dem_rsd.get("times", np.arange(len(dem_rsd["rsd"])))
+        # ════════════════════════════════════════════════════════════════
+        # CONVERSION INDICES → TEMPS PHYSIQUE (secondes)
+        # ════════════════════════════════════════════════════════════════
         
-        # Pour Markov, calculer les temps depuis initial_time
-        # Extraire dt du nom du folder (step=dt) ou utiliser default
+        times_dem_indices = dem_rsd.get("times", np.arange(len(dem_rsd["rsd"])))
+        
+        # Conversion DEM: temps_physique = (index_fichier / total_files) * max_time_seconds
+        t_dem_seconds = (times_dem_indices / total_files) * max_time_seconds
+        
+        # Pour Markov: extraire dt du nom du folder
         folder_name = [k for k in self.results.keys()][0] if self.results else ""
         import re
-        dt_match = re.search(r'step(\d+)_dt(\d+)', folder_name)
-        markov_dt = int(dt_match.group(2)) if dt_match else 10
+        dt_match = re.search(r'dt(\d+)', folder_name)
+        markov_dt = int(dt_match.group(1)) if dt_match else 2
         
         markov_initial = markov_rsd.get("initial_time", self.initial_time)
-        times_mkv = markov_initial + np.arange(len(markov_rsd["rsd"])) * markov_dt
+        markov_initial_seconds = (markov_initial / total_files) * max_time_seconds
+        
+        # Conversion Markov: chaque pas = dt fichiers DEM
+        n_steps_mkv = len(markov_rsd["rsd"])
+        t_mkv_seconds = markov_initial_seconds + np.arange(n_steps_mkv) * (markov_dt / total_files) * max_time_seconds
+        
+        # ════════════════════════════════════════════════════════════════
+        # PLOT RSD DEM vs Markov
+        # ════════════════════════════════════════════════════════════════
         
         # DEM curve (points)
-        ax.plot(times_dem, dem_rsd["rsd_percent"],
+        ax.plot(t_dem_seconds, dem_rsd["rsd_percent"],
                color="#1f77b4", marker='o', linewidth=2.5, markersize=6,
                label="RSD DEM (réel)", zorder=3, alpha=0.85)
         
         # Markov curve (smooth line)
-        ax.plot(times_mkv, markov_rsd["rsd_percent"],
+        ax.plot(t_mkv_seconds, markov_rsd["rsd_percent"],
                color="#ff7f0e", marker='s', linewidth=2.5, markersize=5, linestyle='--',
                label="RSD Markov (prédit)", zorder=2, alpha=0.85)
         
-        ax.set_xlabel("Temps (index fichier)", fontsize=13, fontweight='bold')
+        ax.set_xlabel("Temps (s)", fontsize=13, fontweight='bold')
         ax.set_ylabel("RSD (%)", fontsize=13, fontweight='bold')
         ax.set_title(
             f"Comparaison RSD — DEM vs Markov\n"
@@ -2093,6 +2111,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         
         ax.legend(fontsize=12, loc='best', framealpha=0.95, edgecolor='black')
         ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.7)
+        ax.set_xlim(0, max_time_seconds)
         ax.set_ylim(bottom=0)
         ax.minorticks_on()
         ax.grid(True, which='minor', alpha=0.15, linestyle=':', linewidth=0.5)
