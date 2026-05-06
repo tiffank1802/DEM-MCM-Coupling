@@ -2211,7 +2211,8 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         return fig, ax
 
     def plot_rsd_vs_tau_comparison(self, partitioner, method, folder_name_template,
-                                     tau_list=None, max_time_seconds=60, figsize=(14, 8), save_name=None):
+                                     tau_list=None, max_time_seconds=60, figsize=(14, 8), save_name=None,
+                                     species_criterion="small"):
         """
         ✅ Étude de l'influence du pas de temps Markov (tau) sur la cinétique de mélange.
         
@@ -2226,6 +2227,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
             max_time_seconds: temps final (par défaut 60s)
             figsize: taille de la figure
             save_name: nom du fichier de sortie
+            species_criterion: "small" ou "large" pour l'espèce A (défaut: "small")
         """
         import re
         # Ne pas utiliser d'import relatif ici
@@ -2247,7 +2249,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         print(f"\n📊 Calcul RSD DEM...")
         self.load_dem_snapshots(file_indices=file_indices)
         if self.species_labels is None:
-            self.label_species()
+            self.label_species(criterion=species_criterion)
         
         all_coords = np.vstack([s["coords"] for s in self.dem_snapshots])
         partitioner.fit(all_coords)
