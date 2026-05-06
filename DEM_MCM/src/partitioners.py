@@ -1286,7 +1286,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
     @property
     def label(self):
         suffix = "withvel" if self._n_features > 3 else "pos"
-        return f"physics_{self._n_cells}cells_{suffix}"
+        return f"physics_{self._n_cells}cells_{suffix}_vw{self.velocity_weight}"
 
     def fit(self, coordinates, use_velocities=False):
         """
