@@ -1260,16 +1260,15 @@ class PhysicsAwarePartitioner(BasePartitioner):
     K-means sur des features physiques (position + vitesse optionnelle).
 
     Par défaut, fonctionne sur les positions normalisées (équivalent Voronoï).
-    Si des vitesses sont fournies via fit_with_physics(), le clustering
-    tient aussi compte de la norme de vitesse.
+    Si use_velocities=True, le clustering utilise aussi les composantes vx, vy, vz.
 
-    Usage avancé:
-        part = PhysicsAwarePartitioner(n_cells=125, velocity_weight=0.3)
-        part.fit_with_physics(positions, velocities)
-        states = part.compute_states_with_physics(x, y, z, vx, vy, vz)
+    Usage:
+        part = PhysicsAwarePartitioner(n_cells=125, velocity_weight=0.5)
+        part.fit(positions)                    # positions seules
+        part.fit_with_physics(positions, velocities)  # positions + vitesses
     """
 
-    def __init__(self, n_cells=125, velocity_weight=0.0, random_state=42):
+    def __init__(self, n_cells=125, velocity_weight=0.5, random_state=42):
         super().__init__()
         self._n_cells = n_cells
         self.velocity_weight = velocity_weight
@@ -1278,7 +1277,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
         self._tree = None
         self._mean = None
         self._std = None
-        self._n_features = 3  # 3 = position seule, 4 = position + vitesse
+        self._n_features = 3  # 3 = position seule, 6 = position + vitesse complète
 
     @property
     def n_cells(self):
@@ -1289,22 +1288,36 @@ class PhysicsAwarePartitioner(BasePartitioner):
         suffix = "withvel" if self._n_features > 3 else "pos"
         return f"physics_{self._n_cells}cells_{suffix}"
 
-    def fit(self, coordinates):
-        """Fit sur positions seules (équivalent Voronoï normalisé)."""
-        coordinates=np.asarray(coordinates)
+    def fit(self, coordinates, use_velocities=False):
+        """
+        Fit sur positions seules ou positions + vitesses DEM.
+
+        Args:
+            coordinates: (N, 3) positions
+            use_velocities: si True, utilise self.dem_velocities du premier snapshot
+        """
+        coordinates = np.asarray(coordinates)
+        if use_velocities and self.dem_velocities is not None:
+            vel = self.dem_velocities * self.velocity_weight
+            if len(vel) == len(coordinates):
+                features = np.hstack([coordinates, vel])
+                self._n_features = 6
+                return self._fit_internal(features)
+            else:
+                print(f"⚠️  Mismatch velocities ({len(vel)}) vs coordinates ({len(coordinates)}), fallback to positions only")
         return self._fit_internal(coordinates)
 
     def fit_with_physics(self, positions, velocities):
         """
-        Fit sur positions + norme de vitesse.
+        Fit sur positions + vitesse complète (vx, vy, vz).
 
         Args:
             positions: (N, 3)
             velocities: (N, 3)
         """
-        speed = np.linalg.norm(velocities, axis=1, keepdims=True)
-        features = np.hstack([positions, speed * self.velocity_weight])
-        self._n_features = 4
+        vel = velocities * self.velocity_weight
+        features = np.hstack([positions, vel])
+        self._n_features = 6
         return self._fit_internal(features)
 
     def _fit_internal(self, features):
@@ -1340,32 +1353,27 @@ class PhysicsAwarePartitioner(BasePartitioner):
         return self
 
     def compute_states(self, x, y, z):
-        """Assigne les états (position seule, vitesse=0 si fitté avec)."""
-        coords = np.column_stack(
-            [np.asarray(x), np.asarray(y), np.asarray(z)]
-        )
+        """Assigne les états (position seule, vitesse=0 si fitté avec vitesses)."""
+        coords = np.column_stack([np.asarray(x), np.asarray(y), np.asarray(z)])
         if self._n_features > 3:
             padding = np.zeros((len(coords), self._n_features - 3))
             coords = np.hstack([coords, padding])
 
         X = (coords - self._mean) / self._std
         _, indices = self._tree.query(X)
-        n=int(len(x)/self.PARTICLE_NUMBER)
-        self.states=indices.astype(np.int64)
-        return self.states#[np.tile(self.species_labels,n)]
+        self.states = indices.astype(np.int64)
+        return self.states
 
     def compute_states_with_physics(self, x, y, z, vx, vy, vz):
-        """Assigne les états avec vitesse."""
+        """Assigne les états avec vitesse complète (vx, vy, vz)."""
         pos = np.column_stack([np.asarray(x), np.asarray(y), np.asarray(z)])
-        vel = np.column_stack([np.asarray(vx), np.asarray(vy), np.asarray(vz)])
-        speed = np.linalg.norm(vel, axis=1, keepdims=True)
-        features = np.hstack([pos, speed * self.velocity_weight])
+        vel = np.column_stack([np.asarray(vx), np.asarray(vy), np.asarray(vz)]) * self.velocity_weight
+        features = np.hstack([pos, vel])
 
         X = (features - self._mean) / self._std
         _, indices = self._tree.query(X)
-        n=int(len(x)/self.PARTICLE_NUMBER)
-        self.states=indices.astype(np.int64)
-        return self.states#[np.tile(self.species_labels,n)]
+        self.states = indices.astype(np.int64)
+        return self.states
 
     def _save_data(self, path):
         np.save(os.path.join(path, "centroids.npy"), self._centroids)

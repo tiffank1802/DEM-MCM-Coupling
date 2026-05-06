@@ -128,6 +128,8 @@ class MarkovAnalyzer:
         self.dem_file_indices = []
         self.n_particles = 0
         self.dem_diameters = None
+        self.dem_velocities = None
+        self.dem_angular_velocities = None
         self.species_labels = None
         
         # Partitionneurs
@@ -1113,6 +1115,19 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
                 if i == 0:
                     self.dem_diameters = df["Diameter"].to_numpy()[::sample_every]
                     print(f"   Diamètres chargés : {len(self.dem_diameters)} particules")
+                    self.dem_velocities = np.column_stack([
+                        df["Velocity:0"].to_numpy(),
+                        df["Velocity:1"].to_numpy(),
+                        df["Velocity:2"].to_numpy(),
+                    ])[::sample_every]
+                    print(f"   Vitesses chargées : {self.dem_velocities.shape}")
+                    if "Angular_velocity:0" in df.columns:
+                        self.dem_angular_velocities = np.column_stack([
+                            df["Angular_velocity:0"].to_numpy(),
+                            df["Angular_velocity:1"].to_numpy(),
+                            df["Angular_velocity:2"].to_numpy(),
+                        ])[::sample_every]
+                        print(f"   Vitesses angulaires chargées : {self.dem_angular_velocities.shape}")
                 # ===========================================================================
 
                 self.dem_snapshots.append({"t": idx, "coords": coords})
