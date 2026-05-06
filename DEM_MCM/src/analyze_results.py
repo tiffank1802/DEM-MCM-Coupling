@@ -2053,42 +2053,134 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
 
 
 
-    def plot_dem_vs_markov_simple(self, dem_rsd, markov_rsd, partitioner, method, 
-                                   figsize=(14, 7), save_name=None, max_time_seconds=60, total_files=6000):
+    def plot_dem_vs_markov_simple(self, dem_rsd, partitioner, method, 
+                                   folder_name=None, max_time_seconds=60, figsize=(14, 7), save_name=None):
         """
-        ✅ Affiche SEULEMENT les courbes RSD DEM vs Markov sur une seule figure.
-        Tracé en fonction du TEMPS PHYSIQUE (secondes), pas des indices de fichiers.
+        ✅ Affiche SEULEMENT les courbes RSD DEM vs Markov sur 60 secondes.
+        
+        - Chaque fichier DEM = 0.01 secondes
+        - Le 'step' de Markov = pas de temps en centièmes de secondes (step=10 → 0.1s)
+        - Markov prédit sur 60s: n_steps = 6000 / step
         
         Args:
-            max_time_seconds: temps final en secondes (par défaut 60s)
-            total_files: nombre total de fichiers DEM (par défaut 6000)
+            dem_rsd: résultats RSD DEM
+            partitioner: partitionneur utilisé
+            method: nom de la méthode
+            folder_name: nom du folder Markov (pour extraire le step)
+            max_time_seconds: temps final (par défaut 60s)
+            figsize: taille de la figure
+            save_name: nom du fichier de sortie
         """
         fig, ax = plt.subplots(figsize=figsize)
         
         # ════════════════════════════════════════════════════════════════
-        # CONVERSION INDICES → TEMPS PHYSIQUE (secondes)
+        # 1. EXTRACTION DES PARAMÈTRES MARKOV
+        # ════════════════════════════════════════════════════════════════
+        
+        if folder_name is None:
+            folder_name = [k for k in self.results.keys()][0] if self.results else ""
+        
+        import re
+        step_match = re.search(r'step(\d+)', folder_name)
+        markov_step = int(step_match.group(1)) if step_match else 10
+        
+        # Temps physique par pas Markov (en secondes)
+        dt_markov_seconds = markov_step * 0.01  # step=10 → 0.1s
+        
+        # Nombre de pas Markov pour couvrir 60 secondes
+        n_steps_markov = int(max_time_seconds / dt_markov_seconds)
+        print(f"\n📊 Paramètres Markov:")
+        print(f"   Step = {markov_step} fichiers = {dt_markov_seconds:.3f}s par pas")
+        print(f"   Prédiction: {n_steps_markov} pas pour {max_time_seconds}s")
+        
+        # ════════════════════════════════════════════════════════════════
+        # 2. CALCUL RSD MARKOV SUR 60 SECONDES
+        # ════════════════════════════════════════════════════════════════
+        
+        M = self.get_matrix(folder_name)
+        initial_time = dem_rsd.get("times", [0])[0] if "times" in dem_rsd else 250
+        
+        # Calculer les conditions initiales depuis les données DEM
+        snap0_idx = int(initial_time)
+        if not self.dem_snapshots or self.dem_snapshots[0]["t"] != snap0_idx:
+            self.load_dem_snapshots(file_indices=[snap0_idx])
+        
+        snap0 = self.dem_snapshots[0]
+        coords0 = snap0["coords"]
+        
+        # Créer un partitionneur qui correspond à la méthode Markov
+        from .partitioners import create_partitioner
+        
+        # Extraire les paramètres du folder name
+        nr_match = re.search(r'nr(\d+)', folder_name)
+        nth_match = re.search(r'nth(\d+)', folder_name)
+        nz_match = re.search(r'nz(\d+)', folder_name)
+        nx_match = re.search(r'nx(\d+)', folder_name)
+        ny_match = re.search(r'ny(\d+)', folder_name)
+        
+        # Déterminer la méthode et créer le bon partitionneur
+        markov_partitioner = None
+        if 'cylindrical' in method.lower() and nr_match and nth_match:
+            nr = int(nr_match.group(1))
+            nth = int(nth_match.group(1))
+            nz_val = int(nz_match.group(1)) if nz_match else 1
+            markov_partitioner = create_partitioner("cylindrical", nr=nr, ntheta=nth, nz=nz_val)
+        elif 'cartesian' in method.lower() and nx_match and ny_match:
+            nx = int(nx_match.group(1))
+            ny = int(ny_match.group(1))
+            nz_val = int(nz_match.group(1)) if nz_match else 1
+            markov_partitioner = create_partitioner("cartesian", nx=nx, ny=ny, nz=nz_val)
+        else:
+            # Fallback: utiliser le partitionneur existant
+            markov_partitioner = partitioner
+        
+        markov_partitioner.fit(coords0)
+        
+        states0 = markov_partitioner.compute_states(coords0[:, 0], coords0[:, 1], coords0[:, 2])
+        
+        n_states = markov_partitioner.n_cells
+        species_labels = self.species_labels
+        n_species = species_labels.sum()
+        
+        C0 = np.zeros(n_states)
+        phi_total_0 = np.zeros(n_states)
+        
+        for state_id in range(n_states):
+            mask = states0 == state_id
+            phi_total_0[state_id] = mask.sum()
+            if mask.sum() > 0:
+                C0[state_id] = species_labels[mask].sum()
+        
+        mask_active = phi_total_0 > 0
+        if phi_total_0[mask_active].sum() > 0:
+            C0[mask_active] /= phi_total_0[mask_active].sum()
+        
+        # Simulation Markov sur 60 secondes
+        C = C0.copy()
+        rsd_markov = np.zeros(n_steps_markov)
+        
+        for t in range(n_steps_markov):
+            if mask_active.sum() > 1:
+                mean_c = C[mask_active].mean()
+                std_c = C[mask_active].std()
+                rsd_markov[t] = std_c / mean_c if mean_c > 0 else 0
+            C = C @ M
+        
+        # Temps Markov en secondes
+        t_markov_seconds = np.arange(n_steps_markov) * dt_markov_seconds
+        
+        # ════════════════════════════════════════════════════════════════
+        # 3. TEMPS DEM EN SECONDES
         # ════════════════════════════════════════════════════════════════
         
         times_dem_indices = dem_rsd.get("times", np.arange(len(dem_rsd["rsd"])))
+        t_dem_seconds = times_dem_indices * 0.01  # Chaque fichier = 0.01s
         
-        # Conversion DEM: temps_physique = (index_fichier / total_files) * max_time_seconds
-        t_dem_seconds = (times_dem_indices / total_files) * max_time_seconds
-        
-        # Pour Markov: extraire dt du nom du folder
-        folder_name = [k for k in self.results.keys()][0] if self.results else ""
-        import re
-        dt_match = re.search(r'dt(\d+)', folder_name)
-        markov_dt = int(dt_match.group(1)) if dt_match else 2
-        
-        markov_initial = markov_rsd.get("initial_time", self.initial_time)
-        markov_initial_seconds = (markov_initial / total_files) * max_time_seconds
-        
-        # Conversion Markov: chaque pas = dt fichiers DEM
-        n_steps_mkv = len(markov_rsd["rsd"])
-        t_mkv_seconds = markov_initial_seconds + np.arange(n_steps_mkv) * (markov_dt / total_files) * max_time_seconds
+        print(f"   DEM: {len(t_dem_seconds)} points de {t_dem_seconds[0]:.2f}s à {t_dem_seconds[-1]:.2f}s")
+        print(f"   Markov: {n_steps_markov} points de 0s à {t_markov_seconds[-1]:.2f}s")
         
         # ════════════════════════════════════════════════════════════════
-        # PLOT RSD DEM vs Markov
+        # 4. PLOT RSD DEM vs Markov
         # ════════════════════════════════════════════════════════════════
         
         # DEM curve (points)
@@ -2097,15 +2189,15 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
                label="RSD DEM (réel)", zorder=3, alpha=0.85)
         
         # Markov curve (smooth line)
-        ax.plot(t_mkv_seconds, markov_rsd["rsd_percent"],
+        ax.plot(t_markov_seconds, rsd_markov * 100,
                color="#ff7f0e", marker='s', linewidth=2.5, markersize=5, linestyle='--',
-               label="RSD Markov (prédit)", zorder=2, alpha=0.85)
+               label=f"RSD Markov (step={markov_step})", zorder=2, alpha=0.85)
         
         ax.set_xlabel("Temps (s)", fontsize=13, fontweight='bold')
         ax.set_ylabel("RSD (%)", fontsize=13, fontweight='bold')
         ax.set_title(
             f"Comparaison RSD — DEM vs Markov\n"
-            f"{method.upper()} | {partitioner.label} | {partitioner.n_cells} cellules",
+            f"{method.upper()} | {partitioner.label} | {partitioner.n_cells} cellules | {max_time_seconds}s",
             fontsize=14, fontweight='bold', pad=15
         )
         
@@ -2119,7 +2211,7 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         plt.tight_layout()
         
         if save_name is None:
-            save_name = f"rsd_dem_vs_markov_{method}_{partitioner.n_cells}cells.png"
+            save_name = f"rsd_dem_vs_markov_{method}_{partitioner.n_cells}cells_{max_time_seconds}s.png"
         
         plt.savefig(save_name, dpi=200, bbox_inches='tight', facecolor='white')
         print(f"\n✅ Figure sauvegardée: {save_name}")

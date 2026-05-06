@@ -129,18 +129,19 @@ if __name__=="__main__":
         species_criterion="large"
     )
 
-    # ✅ VISUALISATION SIMPLE : RSD DEM vs Markov sur une seule figure
+    # ✅ VISUALISATION SIMPLE : RSD DEM vs Markov sur 60 secondes
     print("\n" + "="*70)
-    print("✅ Comparaison RSD DEM vs Markov (figure unique)")
+    print("✅ Comparaison RSD DEM vs Markov (60 secondes)")
     print("="*70)
     
     try:
         analyzer.plot_dem_vs_markov_simple(
             dem_rsd=results['dem'],
-            markov_rsd=results['markov'],
             partitioner=part,
             method="cylindrical",
-            save_name="rsd_cylindrical_dem_vs_markov.png"
+            folder_name=folder_name,
+            max_time_seconds=60,
+            save_name="rsd_cylindrical_60s.png"
         )
     except Exception as e:
         print(f"⚠️  Error: {e}")
