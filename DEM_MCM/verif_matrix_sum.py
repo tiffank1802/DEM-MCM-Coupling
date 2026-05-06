@@ -5,7 +5,8 @@ import matplotlib.pyplot as plt
 
 # a=np.array([[1,0,0],[0,0,1],[0,2,0]])
 # print(a.sum(axis=1))
-Matrix=load_experiment_from_bucket("cylindrical_nr1_nth10_nz1_equal_area_NLT10_step10_dt2_tau50_start250")
+# Matrix=load_experiment_from_bucket("cylindrical_nr2_nth5_nz5_equal_area_NLT10_step50_dt2_tau1000_start250_d0004")
+Matrix=load_experiment_from_bucket("cylindrical_nr2_nth4_nz4_equal_area_NLT20_step50_dt2_tau50_start250_d0004")
 print(Matrix["matrix"].sum(axis=0))
 # M=Matrix["matrix"]
 # S=np.zeros(10)

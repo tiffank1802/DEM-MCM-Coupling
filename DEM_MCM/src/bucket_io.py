@@ -176,41 +176,94 @@ def save_experiment_to_bucket(folder_name, matrix, stats, config,
 # LECTURE
 # =============================================================================
 
-def load_matrix_from_bucket(path):
+def load_matrix_from_bucket(path, base_path=None):
     fs = get_fs()
-    full_path = f"{BUCKET_BASE}/{path}"
+    if base_path is None:
+        base_path = BUCKET_BASE
+    full_path = f"{base_path}/{path}"
     with fs.open(full_path, "rb") as f:
         buffer = io.BytesIO(f.read())
     return np.load(buffer)
 
-
-def load_json_from_bucket(path):
+def load_json_from_bucket(path, base_path=None):
     fs = get_fs()
-    full_path = f"{BUCKET_BASE}/{path}"
+    if base_path is None:
+        base_path = BUCKET_BASE
+    full_path = f"{base_path}/{path}"
     with fs.open(full_path, "r") as f:
         return json.load(f)
-
 
 def load_experiment_from_bucket(folder_name):
     """Charge  depuis le bucket huggingface:
             - la matrice de transition
             - les statistiques de l'experience
             - la configuration de l'experience
-
+    
+    ✅ NOUVEAU: Cherche dans le bucket correspondant au diamètre,
+    puis dans /Experiments/ si pas trouvé.
+    
     Args:
         folder_name (str): est le nom du dossier de l'experience à charger depuis le bucket
-
+    
     Returns:
-        dict: un dictionnare comportant:
-                -Matrice de transition correspondant à l'expérience chargée
+        dict: un dictionnaire comportant:
+                -Matrice de transition correspondant à l'experience chargée
                 - les statistiques
                 - les configurations
     """
-    return {
-        "matrix": load_matrix_from_bucket(f"{folder_name}/transitionmatrix.npy"),
-        "stats": load_json_from_bucket(f"{folder_name}/stats.json"),
-        "config": load_json_from_bucket(f"{folder_name}/config.json"),
-    }
+    # 1. Déterminer le bucket prefix selon le diamètre dans le nom du dossier
+    bucket_prefix = None
+    if "_d" in folder_name:
+        # Extraire le diamètre du nom (ex: _d0004 → 0.004)
+        import re
+        match = re.search(r'_d(\d+)', folder_name)
+        if match:
+            diameter_str = match.group(1)
+            if diameter_str == "0004":
+                bucket_prefix = "SMALL"
+            elif diameter_str == "0008":
+                bucket_prefix = "BIG"
+    
+    if bucket_prefix is None:
+        bucket_prefix = "Experiments"  # Fallback ancien format
+    
+    # 2. Essayer différents chemins
+    fs = get_fs()
+    bucket_base = f"hf://buckets/{BUCKET_ID}/{bucket_prefix}"
+    
+    # Chemins à essayer (par ordre de priorité)
+    paths_to_try = [
+        f"{bucket_base}/markov_results/{folder_name}",  # Nouveau format avec markov_results/
+        f"{bucket_base}/Experiments/{folder_name}",    # Ancien format avec Experiments/
+        f"{bucket_base}/{folder_name}",             # Directement dans le bucket
+    ]
+    
+    for path in paths_to_try:
+        if fs.exists(path):
+            return {
+                "matrix": load_matrix_from_bucket(f"{folder_name}/transitionmatrix.npy", base_path=bucket_base),
+                "stats": load_json_from_bucket(f"{folder_name}/stats.json", base_path=bucket_base),
+                "config": load_json_from_bucket(f"{folder_name}/config.json", base_path=bucket_base),
+            }
+    
+    # Si toujours pas trouvé, essayer avec le prefixe opposé
+    alt_prefix = "BIG" if bucket_prefix == "SMALL" else "SMALL" if bucket_prefix == "BIG" else None
+    if alt_prefix:
+        alt_base = f"hf://buckets/{BUCKET_ID}/{alt_prefix}"
+        alt_paths = [
+            f"{alt_base}/markov_results/{folder_name}",
+            f"{alt_base}/Experiments/{folder_name}",
+            f"{alt_base}/{folder_name}",
+        ]
+        for path in alt_paths:
+            if fs.exists(path):
+                return {
+                    "matrix": load_matrix_from_bucket(f"{folder_name}/transitionmatrix.npy", base_path=alt_base),
+                    "stats": load_json_from_bucket(f"{folder_name}/stats.json", base_path=alt_base),
+                    "config": load_json_from_bucket(f"{folder_name}/config.json", base_path=alt_base),
+                }
+    
+    raise FileNotFoundError(f"❌ Dossier introuvable: {folder_name} dans {bucket_prefix} ou {alt_prefix}")
 
 
 def list_experiments():

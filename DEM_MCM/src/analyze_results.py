@@ -336,6 +336,12 @@ class MarkovAnalyzer:
         # ✅ Option B: Lister les buckets à essayer (par ordre de priorité)
         buckets_to_try = [base_path] + [b for b in ALL_BUCKET_BASES if b != base_path]
         
+        # ✅ NOUVEAU: Ajouter aussi le chemin direct (sans markov_results/)
+        # ex: hf://buckets/ktongue/DEM_MCM/SMALL/dossier
+        direct_base = base_path.replace("/markov_results", "")
+        if direct_base not in buckets_to_try:
+            buckets_to_try.append(direct_base)
+        
         loaded = False
         last_error = None
         
@@ -2215,14 +2221,15 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         Args:
             partitioner: partitionneur (~20 cellules)
             method: nom de la méthode
-            folder_name_template: template avec {tau} (ex: "cylindrical_nr4_nth5_nz1_equal_area_NLT10_step50_dt2_tau{tau}_start250")
+            folder_name_template: template avec {tau} (ex: "cylindrical_nr4_nth5_nz1_equal_area_NLT10_step50_dt2_tau{tau}_start250_d0004")
             tau_list: liste des tau à tester (None = [50, 100, 200, 500, 1000])
             max_time_seconds: temps final (par défaut 60s)
             figsize: taille de la figure
             save_name: nom du fichier de sortie
         """
         import re
-        from .partitioners import create_partitioner
+        # Ne pas utiliser d'import relatif ici
+        from partitioners import create_partitioner
         
         if tau_list is None:
             tau_list = [50, 100, 200, 500, 1000]
@@ -2297,36 +2304,44 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
             coords0 = snap0["coords"]
             states0 = partitioner.compute_states(coords0[:, 0], coords0[:, 1], coords0[:, 2])
             
-            C0 = np.zeros(n_states)
-            phi_total_0 = np.zeros(n_states)
+            # ✅ Comptes de particules (A et total) par cellule
+            phi_A_0 = np.zeros(n_states, dtype=float)
+            phi_total_0 = np.zeros(n_states, dtype=float)
             for sid in range(n_states):
                 mask = states0 == sid
                 phi_total_0[sid] = mask.sum()
-                if mask.sum() > 0:
-                    C0[sid] = species_labels[mask].sum()
+                phi_A_0[sid] = species_labels[mask].sum()
             
             mask_active = phi_total_0 > 0
-            if phi_total_0[mask_active].sum() > 0:
-                C0[mask_active] /= phi_total_0[mask_active].sum()
             
-            # Simulation Markov
+            # Simulation Markov: évoluer les comptes, puis recalculer concentrations
             n_steps_markov = (total_files - start_file) // tau
-            C = C0.copy()
-            rsd_markov = np.zeros(n_steps_markov)
+            phi_A = phi_A_0.copy()
+            phi_total = phi_total_0.copy()
+            rsd_markov = np.zeros(n_steps_markov + 1)
             
-            for t in range(n_steps_markov):
-                C = C @ M
+            # t=0: concentrations initiales (identiques au DEM)
+            C_t0 = np.zeros(n_states)
+            C_t0[mask_active] = phi_A[mask_active] / phi_total[mask_active]
+            if mask_active.sum() > 1 and C_t0[mask_active].mean() > 0:
+                rsd_markov[0] = C_t0[mask_active].std() / C_t0[mask_active].mean()
+            
+            for t in range(1, n_steps_markov + 1):
+                phi_A = phi_A @ M
+                phi_total = phi_total @ M
+                C_t = np.zeros(n_states)
+                C_t[mask_active] = phi_A[mask_active] / phi_total[mask_active]
                 if mask_active.sum() > 1:
-                    rsd_markov[t] = C[mask_active].std() / C[mask_active].mean() if C[mask_active].mean() > 0 else 0
+                    rsd_markov[t] = C_t[mask_active].std() / C_t[mask_active].mean() if C_t[mask_active].mean() > 0 else 0
             
-            t_markov_seconds = (start_file + np.arange(n_steps_markov) * tau) * 0.01
+            t_markov_seconds = (start_file + np.arange(n_steps_markov + 1) * tau) * 0.01
             
             # Plot Markov curve
             ax.plot(t_markov_seconds, rsd_markov * 100,
                    color=colors[tau_idx], linewidth=2.5, linestyle='-',
-                   label=f"Markov tau={tau} ({n_steps_markov} pts)", zorder=5, alpha=0.8)
+                   label=f"Markov tau={tau} ({n_steps_markov+1} pts)", zorder=5, alpha=0.8)
             
-            print(f"   ✅ {n_steps_markov} points de {t_markov_seconds[0]:.2f}s à {t_markov_seconds[-1]:.2f}s")
+            print(f"   ✅ {n_steps_markov+1} points de {t_markov_seconds[0]:.2f}s à {t_markov_seconds[-1]:.2f}s (incl. t=0)")
         
         # ════════════════════════════════════════════════════════════════
         # 3. STYLING
