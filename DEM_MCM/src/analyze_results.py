@@ -2621,6 +2621,174 @@ Ajoutez ces méthodes à la classe MarkovAnalyzer dans analyze_results.py
         plt.tight_layout()
         plt.savefig("eigenvalues_comparison.png", dpi=150, bbox_inches="tight")
         plt.show()
+    def plot_rsd_vs_timestep(self, folder_name=None, timestep_range=None, dem_rsd=None, n_steps=200, figsize=(14, 8), use_dem_initial_conditions=False, partitioner=None, species_labels=None):
+        """
+        ✅ **NOUVELLE MÉTHODE** - Trace le RSD Markov pour différents timesteps d'initialisation,
+        comparé à une courbe DEM constante.
+        
+        Args:
+            folder_name: nom de l'expérience (None = première expérience trouvée)
+            timestep_range: list de timesteps à tester (None = [5, 10, 20, 50])
+            dem_rsd: RSD DEM constant (ligne horizontale). Si None, pas affiché
+            n_steps: nombre de pas de simulation Markov
+            figsize: taille de la figure
+            use_dem_initial_conditions: si True, utilise les conditions initiales DEM (nécessite partitioner)
+            partitioner: partitionneur fitté (requis si use_dem_initial_conditions=True)
+            species_labels: labels des espèces (None = self.species_labels)
+        
+        Returns:
+            dict: {timestep: rsd_data_dict, ...}
+        
+        Example:
+            >>> analyzer = MarkovAnalyzer()
+            >>> analyzer.load_all()
+            >>> analyzer.plot_rsd_vs_timestep("cartesian_nx5_ny5_nz5", 
+            ...                              timestep_range=[5, 10, 20, 50],
+            ...                              dem_rsd=0.25)
+        """
+        # ════════════════════════════════════════════════════════════════
+        # SÉLECTION DE L'EXPÉRIENCE
+        # ════════════════════════════════════════════════════════════════
+        
+        if folder_name is None:
+            # Prendre la première expérience trouvée
+            if not self.results:
+                print("❌ Aucune expérience chargée")
+                return None
+            folder_name = list(self.results.keys())[0]
+            print(f"📌 Utilisant l'expérience: {folder_name}")
+        
+        if folder_name not in self.results:
+            print(f"❌ Expérience {folder_name} non trouvée")
+            return None
+        
+        # ════════════════════════════════════════════════════════════════
+        # PARAMÈTRES PAR DÉFAUT
+        # ════════════════════════════════════════════════════════════════
+        
+        if timestep_range is None:
+            timestep_range = [5, 10, 20, 50]
+        
+        exp_data = self.results[folder_name]
+        method = exp_data.get("method", "unknown")
+        n_states = exp_data["matrix"].shape[0]
+        
+        # ════════════════════════════════════════════════════════════════
+        # CALCUL DU RSD MARKOV POUR CHAQUE TIMESTEP
+        # ════════════════════════════════════════════════════════════════
+        
+        rsd_by_timestep = {}
+        print(f"\n📈 Calcul RSD Markov pour {len(timestep_range)} timesteps...")
+        
+        for t_init in timestep_range:
+            try:
+                rsd_data = self.compute_rsd(
+                    folder_name, 
+                    n_steps=n_steps, 
+                    initial_time=t_init,
+                    use_dem_initial_conditions=use_dem_initial_conditions,
+                    partitioner=partitioner,
+                    species_labels=species_labels
+                )
+                rsd_by_timestep[t_init] = rsd_data
+                print(f"   ✅ t={t_init:3d}: RSD initial={rsd_data['rsd_initial']*100:6.2f}%, final={rsd_data['rsd_final']*100:6.2f}%")
+            except Exception as e:
+                print(f"   ⚠️  t={t_init}: {e}")
+        
+        if not rsd_by_timestep:
+            print("❌ Aucun RSD calculé")
+            return None
+        
+        # ════════════════════════════════════════════════════════════════
+        # VISUALISATION
+        # ════════════════════════════════════════════════════════════════
+        
+        fig, axes = plt.subplots(2, 2, figsize=figsize)
+        fig.suptitle(f"{method.upper()} — RSD vs Timestep initial ({n_states} états)", 
+                    fontsize=14, fontweight='bold')
+        
+        # Couleurs pour les courbes
+        colors = plt.cm.tab10(np.linspace(0, 1, len(rsd_by_timestep)))
+        
+        # ────── 1. RSD vs temps (linéaire) ──────
+        ax = axes[0, 0]
+        for (t_init, rsd_data), color in zip(sorted(rsd_by_timestep.items()), colors):
+            ax.plot(range(n_steps), rsd_data['rsd_percent'], 
+                   color=color, lw=2.5, label=f't_init={t_init}', alpha=0.8)
+        
+        if dem_rsd is not None:
+            ax.axhline(dem_rsd * 100, color='red', linestyle='--', linewidth=2.5, 
+                      label=f'DEM RSD = {dem_rsd*100:.2f}%', zorder=10)
+        
+        ax.set_xlabel('Pas de temps Markov', fontsize=11, fontweight='bold')
+        ax.set_ylabel('RSD (%)', fontsize=11, fontweight='bold')
+        ax.set_title('1. RSD vs Temps (linéaire)', fontsize=12, fontweight='bold')
+        ax.legend(fontsize=9, loc='best')
+        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.set_ylim(bottom=0)
+        
+        # ────── 2. RSD vs temps (log) ──────
+        ax = axes[0, 1]
+        for (t_init, rsd_data), color in zip(sorted(rsd_by_timestep.items()), colors):
+            rsd_pos = rsd_data['rsd_percent'].copy()
+            rsd_pos[rsd_pos < 1e-6] = 1e-6
+            ax.semilogy(range(n_steps), rsd_pos, 
+                       color=color, lw=2.5, label=f't_init={t_init}', alpha=0.8)
+        
+        if dem_rsd is not None:
+            ax.axhline(dem_rsd * 100, color='red', linestyle='--', linewidth=2.5, 
+                      label=f'DEM RSD = {dem_rsd*100:.2f}%', zorder=10)
+        
+        ax.set_xlabel('Pas de temps Markov', fontsize=11, fontweight='bold')
+        ax.set_ylabel('RSD (%) — log', fontsize=11, fontweight='bold')
+        ax.set_title('2. RSD vs Temps (log)', fontsize=12, fontweight='bold')
+        ax.legend(fontsize=9, loc='best')
+        ax.grid(True, alpha=0.3, linestyle='--', which='both')
+        
+        # ────── 3. RSD initial vs timestep ──────
+        ax = axes[1, 0]
+        t_inits = sorted(rsd_by_timestep.keys())
+        rsd_initials = [rsd_by_timestep[t]['rsd_initial'] * 100 for t in t_inits]
+        rsd_finals = [rsd_by_timestep[t]['rsd_final'] * 100 for t in t_inits]
+        
+        ax.plot(t_inits, rsd_initials, 'o-', color='blue', linewidth=2.5, 
+               markersize=8, label='RSD initial', alpha=0.7)
+        ax.plot(t_inits, rsd_finals, 's-', color='green', linewidth=2.5, 
+               markersize=8, label='RSD final', alpha=0.7)
+        
+        if dem_rsd is not None:
+            ax.axhline(dem_rsd * 100, color='red', linestyle='--', linewidth=2.5, 
+                      label=f'DEM RSD = {dem_rsd*100:.2f}%', zorder=10)
+        
+        ax.set_xlabel('Timestep initial (t)', fontsize=11, fontweight='bold')
+        ax.set_ylabel('RSD (%)', fontsize=11, fontweight='bold')
+        ax.set_title('3. RSD initial/final vs t_init', fontsize=12, fontweight='bold')
+        ax.legend(fontsize=9)
+        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.set_ylim(bottom=0)
+        
+        # ────── 4. Entropie vs temps ──────
+        ax = axes[1, 1]
+        for (t_init, rsd_data), color in zip(sorted(rsd_by_timestep.items()), colors):
+            ax.plot(range(n_steps), rsd_data['entropy'], 
+                   color=color, lw=2.5, label=f't_init={t_init}', alpha=0.8)
+        
+        ax.set_xlabel('Pas de temps Markov', fontsize=11, fontweight='bold')
+        ax.set_ylabel('Entropie normalisée', fontsize=11, fontweight='bold')
+        ax.set_title('4. Entropie vs Temps', fontsize=12, fontweight='bold')
+        ax.legend(fontsize=9, loc='best')
+        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.set_ylim(0, 1.05)
+        
+        plt.tight_layout()
+        filename = f"rsd_vs_timestep_{method}_{n_states}states.png"
+        plt.savefig(filename, dpi=200, bbox_inches='tight')
+        print(f"\n✅ Figure sauvegardée: {filename}")
+        plt.show()
+        
+        return rsd_by_timestep
+
+
  
 # =============================================================================
 # SCRIPT PRINCIPAL

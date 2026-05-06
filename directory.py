@@ -133,5 +133,24 @@ if __name__=="__main__":
     print(f"RSD DEM stocké: {list(analyzer.dem_rsd_results.keys())}")
     print(f"RSD Markov stocké: {list(analyzer.markov_rsd_results.keys())}")
     print(f"Conditions initiales partagées disponibles: C0.shape = {analyzer.C0.shape}")
-
+    
+    # ✅ TEST NEW VISUALIZATION METHOD
+    print("\n" + "="*70)
+    print("✅ Testing plot_rsd_vs_timestep()")
+    print("="*70)
+    
+    try:
+        rsd_results = analyzer.plot_rsd_vs_timestep(
+            folder_name=folder_name,
+            timestep_range=[250, 500, 1000, 1500],
+            dem_rsd=0.15,  # Placeholder DEM RSD
+            n_steps=150,
+            figsize=(16, 10)
+        )
+        print(f"✅ Successfully generated {len(rsd_results)} RSD plots")
+    except Exception as e:
+        print(f"⚠️  Error in plot_rsd_vs_timestep: {e}")
+        import traceback
+        traceback.print_exc()
         
+

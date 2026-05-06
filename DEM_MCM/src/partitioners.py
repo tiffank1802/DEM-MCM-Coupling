@@ -187,6 +187,255 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
             plt.close()
         
         return image_data
+    def visualize_enhanced(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="partition_visualization", 
+                          particle_diameters=None, show_filled_partitions=True):
+        """
+        ✅ **NOUVELLE MÉTHODE** - Génère 2 représentations (4 images total):
+        
+        Représentation 1: Particules avec diamètre (bidisperses)
+        Représentation 2: Partitions remplies (contours + remplissage)
+        
+        Args:
+            x, y, z: coordonnées des particules
+            plot_types: ["3d", "2d_xy"] ou sous-ensemble
+            particle_diameters: array de diamètres (None → pas de particules)
+            show_filled_partitions: True → afficher aussi les partitions remplies
+        
+        Returns:
+            dict: {
+                "particles_2d.png": bytes,
+                "particles_3d.png": bytes,
+                "partitions_2d.png": bytes,
+                "partitions_3d.png": bytes,
+            }
+        """
+        self.fit(np.column_stack([x, y, z]))
+        states = self.compute_states(x, y, z)
+        
+        image_data = {}
+        
+        # ========== REPRÉSENTATION 1: Particules avec diamètre ==========
+        if particle_diameters is not None:
+            img_parts = self._visualize_particles_with_diameter(
+                x, y, z, states, particle_diameters, plot_types, save_prefix
+            )
+            image_data.update(img_parts)
+        
+        # ========== REPRÉSENTATION 2: Partitions remplies ==========
+        if show_filled_partitions:
+            img_parts_filled = self._visualize_partitions_filled(
+                x, y, z, states, plot_types, save_prefix
+            )
+            image_data.update(img_parts_filled)
+        
+        return image_data
+    
+    def _visualize_particles_with_diameter(self, x, y, z, states, diameters, 
+                                          plot_types, save_prefix):
+        """
+        Visualise les particules bidisperses avec diamètre proportionnel.
+        Deux images: 2D (XY + YZ) et 3D
+        """
+        import matplotlib.cm as cm
+        
+        image_data = {}
+        cmap = cm.get_cmap('tab20')
+        
+        # Normaliser les diamètres pour la taille des points
+        diameters_norm = np.asarray(diameters)
+        size_scale = (diameters_norm / diameters_norm.max()) * 200  # [0, 200]
+        
+        # ════════════ 2D (XY + YZ) ════════════
+        if "2d_xy" in plot_types:
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
+            
+            # Vue XY
+            scatter1 = ax1.scatter(x, y, s=size_scale, c=states, cmap='tab20', 
+                                   alpha=0.6, edgecolors='black', linewidth=0.3)
+            ax1.set_xlabel('X (m)', fontsize=12, fontweight='bold')
+            ax1.set_ylabel('Y (m)', fontsize=12, fontweight='bold')
+            ax1.set_title('Vue XY - Particules avec diamètre', fontsize=14, fontweight='bold')
+            ax1.grid(True, alpha=0.3)
+            plt.colorbar(scatter1, ax=ax1, label='ID Partition')
+            
+            # Vue YZ
+            scatter2 = ax2.scatter(y, z, s=size_scale, c=states, cmap='tab20', 
+                                   alpha=0.6, edgecolors='black', linewidth=0.3)
+            ax2.set_xlabel('Y (m)', fontsize=12, fontweight='bold')
+            ax2.set_ylabel('Z (m)', fontsize=12, fontweight='bold')
+            ax2.set_title('Vue YZ - Particules avec diamètre', fontsize=14, fontweight='bold')
+            ax2.grid(True, alpha=0.3)
+            plt.colorbar(scatter2, ax=ax2, label='ID Partition')
+            
+            plt.tight_layout()
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_particles_2d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        # ════════════ 3D ════════════
+        if "3d" in plot_types:
+            fig = plt.figure(figsize=(14, 10))
+            ax = fig.add_subplot(111, projection='3d')
+            
+            scatter = ax.scatter(x, y, z, s=size_scale, c=states, cmap='tab20', 
+                                alpha=0.6, edgecolors='black', linewidth=0.3)
+            
+            ax.set_xlabel('X (m)', fontsize=12, fontweight='bold')
+            ax.set_ylabel('Y (m)', fontsize=12, fontweight='bold')
+            ax.set_zlabel('Z (m)', fontsize=12, fontweight='bold')
+            ax.set_title(f'Particules bidisperses 3D - {self.label}', 
+                        fontsize=14, fontweight='bold')
+            
+            plt.colorbar(scatter, ax=ax, label='ID Partition', shrink=0.6)
+            ax.xaxis.pane.fill = False
+            ax.yaxis.pane.fill = False
+            ax.zaxis.pane.fill = False
+            ax.grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_particles_3d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        return image_data
+    
+    def _visualize_partitions_filled(self, x, y, z, states, plot_types, save_prefix):
+        """
+        Visualise les partitions remplies avec contours nets.
+        """
+        from scipy.spatial import ConvexHull
+        import matplotlib.patches as patches
+        import matplotlib.cm as cm
+        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+        
+        image_data = {}
+        cmap = cm.get_cmap('tab20')
+        unique_states = np.unique(states)
+        
+        # ════════════ 2D (XY + YZ) ════════════
+        if "2d_xy" in plot_types:
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
+            
+            # ────── Vue XY ──────
+            coords_xy = np.column_stack([x, y])
+            for state_id in unique_states:
+                mask = states == state_id
+                points = coords_xy[mask]
+                
+                if len(points) < 3:
+                    continue
+                
+                try:
+                    hull = ConvexHull(points)
+                    hull_points = points[hull.vertices]
+                    
+                    # Remplissage
+                    color = cmap(state_id / max(unique_states.max(), 1))
+                    polygon = patches.Polygon(hull_points, closed=True, 
+                                            facecolor=color, alpha=0.5, 
+                                            edgecolor='black', linewidth=2, zorder=1)
+                    ax1.add_patch(polygon)
+                except:
+                    pass
+            
+            ax1.set_xlim(x.min(), x.max())
+            ax1.set_ylim(y.min(), y.max())
+            ax1.set_xlabel('X (m)', fontsize=12, fontweight='bold')
+            ax1.set_ylabel('Y (m)', fontsize=12, fontweight='bold')
+            ax1.set_title('Vue XY - Partitions remplies', fontsize=14, fontweight='bold')
+            ax1.grid(True, alpha=0.3, linestyle='--')
+            
+            # ────── Vue YZ ──────
+            coords_yz = np.column_stack([y, z])
+            for state_id in unique_states:
+                mask = states == state_id
+                points = coords_yz[mask]
+                
+                if len(points) < 3:
+                    continue
+                
+                try:
+                    hull = ConvexHull(points)
+                    hull_points = points[hull.vertices]
+                    
+                    # Remplissage
+                    color = cmap(state_id / max(unique_states.max(), 1))
+                    polygon = patches.Polygon(hull_points, closed=True, 
+                                            facecolor=color, alpha=0.5, 
+                                            edgecolor='black', linewidth=2, zorder=1)
+                    ax2.add_patch(polygon)
+                except:
+                    pass
+            
+            ax2.set_xlim(y.min(), y.max())
+            ax2.set_ylim(z.min(), z.max())
+            ax2.set_xlabel('Y (m)', fontsize=12, fontweight='bold')
+            ax2.set_ylabel('Z (m)', fontsize=12, fontweight='bold')
+            ax2.set_title('Vue YZ - Partitions remplies', fontsize=14, fontweight='bold')
+            ax2.grid(True, alpha=0.3, linestyle='--')
+            
+            plt.tight_layout()
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_partitions_2d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        # ════════════ 3D ════════════
+        if "3d" in plot_types:
+            fig = plt.figure(figsize=(14, 10))
+            ax = fig.add_subplot(111, projection='3d')
+            
+            # Remplissage 3D (surfaces)
+            for state_id in unique_states:
+                mask = states == state_id
+                points_3d = np.column_stack([x[mask], y[mask], z[mask]])
+                
+                if len(points_3d) < 4:
+                    continue
+                
+                try:
+                    hull = ConvexHull(points_3d)
+                    faces = []
+                    for simplex in hull.simplices:
+                        faces.append(points_3d[simplex])
+                    
+                    color = cmap(state_id / max(unique_states.max(), 1))
+                    collection = Poly3DCollection(faces, alpha=0.5, 
+                                                 facecolor=color, edgecolor='black',
+                                                 linewidth=1, zorder=1)
+                    ax.add_collection3d(collection)
+                except:
+                    pass
+            
+            ax.set_xlim(x.min(), x.max())
+            ax.set_ylim(y.min(), y.max())
+            ax.set_zlim(z.min(), z.max())
+            ax.set_xlabel('X (m)', fontsize=12, fontweight='bold')
+            ax.set_ylabel('Y (m)', fontsize=12, fontweight='bold')
+            ax.set_zlabel('Z (m)', fontsize=12, fontweight='bold')
+            ax.set_title(f'Partitions remplies 3D - {self.label}', 
+                        fontsize=14, fontweight='bold')
+            
+            ax.xaxis.pane.fill = False
+            ax.yaxis.pane.fill = False
+            ax.zaxis.pane.fill = False
+            ax.grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            img_buffer = io.BytesIO()
+            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            img_buffer.seek(0)
+            image_data[f"{save_prefix}_partitions_3d.png"] = img_buffer.getvalue()
+            plt.close()
+        
+        return image_data
+
+
     def diagnostics(self, coordinates):
             """
             Statistiques de population par cellule pour le partitionneur adaptatif.
@@ -276,8 +525,7 @@ class CartesianPartitioner(BasePartitioner):
         Génère des visualisations avec adaptation pour l'axe y
         """
         self.fit(np.column_stack([x,y,z]))
-        # states = self.compute_states(x, y, z)
-        states = self.states
+        states = self.compute_states(x, y, z)
         
         image_data = {}
         
@@ -486,7 +734,7 @@ class CylindricalPartitioner(BasePartitioner):
             show_hulls: afficher les contours des enveloppes
         """
         self.fit(np.column_stack([x, y, z]))
-        states = self.states
+        states = self.compute_states(x, y, z)
         
         image_data = {}
     
@@ -898,8 +1146,7 @@ class VoronoiPartitioner(BasePartitioner):
         Génère des visualisations avec adaptation pour l'axe y
         """
         self.fit(np.column_stack([x,y,z]))
-        # states = self.compute_states(x, y, z)
-        states = self.states
+        states = self.compute_states(x, y, z)
         
         image_data = {}
         
@@ -1058,8 +1305,7 @@ class QuantileGridPartitioner(BasePartitioner):
         Génère des visualisations avec adaptation pour l'axe y
         """
         self.fit(np.column_stack([x,y,z]))
-        # states = self.compute_states(x, y, z)
-        states = self.states
+        states = self.compute_states(x, y, z)
         
         image_data = {}
         
@@ -1290,8 +1536,7 @@ class OctreePartitioner(BasePartitioner):
         Génère des visualisations avec adaptation pour l'axe y
         """
         self.fit(np.column_stack([x,y,z]))
-        # states = self.compute_states(x, y, z)
-        states = self.states
+        states = self.compute_states(x, y, z)
         
         image_data = {}
         
@@ -1502,8 +1747,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
         Génère des visualisations avec adaptation pour l'axe y
         """
         self.fit_with_physics(np.column_stack([x,y,z]),np.column_stack([vx,vy,vz]))
-        # states = self.compute_states_with_physics(x, y, z,vx,vy,vz)
-        states = self.states
+        states = self.compute_states_with_physics(x, y, z, vx, vy, vz)
         
         
         image_data = {}
@@ -1782,8 +2026,7 @@ class AdaptivePartitioner(BasePartitioner):
         Génère des visualisations avec adaptation pour l'axe y
         """
         self.fit(np.column_stack([x,y,z]))
-        # states = self.compute_states(x, y, z)
-        states = self.states
+        states = self.compute_states(x, y, z)
         
         image_data = {}
         
@@ -2014,8 +2257,7 @@ class MultiZonePartitioner(BasePartitioner):
         Génère des visualisations avec adaptation pour l'axe y
         """
         self.fit(np.column_stack([x,y,z]))
-        # states = self.compute_states(x, y, z)
-        states = self.states
+        states = self.compute_states(x, y, z)
         
         image_data = {}
         
@@ -2112,8 +2354,7 @@ class SingleCellPartitioner(BasePartitioner):
         Génère des visualisations avec adaptation pour l'axe y
         """
         self.fit(np.column_stack([x,y,z]))
-        # states = self.compute_states(x, y, z)
-        states = self.states
+        states = self.compute_states(x, y, z)
         
         image_data = {}
         
