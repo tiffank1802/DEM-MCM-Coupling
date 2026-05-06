@@ -129,28 +129,22 @@ if __name__=="__main__":
         species_criterion="large"
     )
 
-    # Accès aux résultats stockés
-    print(f"RSD DEM stocké: {list(analyzer.dem_rsd_results.keys())}")
-    print(f"RSD Markov stocké: {list(analyzer.markov_rsd_results.keys())}")
-    print(f"Conditions initiales partagées disponibles: C0.shape = {analyzer.C0.shape}")
-    
-    # ✅ TEST NEW VISUALIZATION METHOD
+    # ✅ VISUALISATION SIMPLE : RSD DEM vs Markov sur une seule figure
     print("\n" + "="*70)
-    print("✅ Testing plot_rsd_vs_timestep()")
+    print("✅ Comparaison RSD DEM vs Markov (figure unique)")
     print("="*70)
     
     try:
-        rsd_results = analyzer.plot_rsd_vs_timestep(
-            folder_name=folder_name,
-            timestep_range=[250, 500, 1000, 1500],
-            dem_rsd=0.15,  # Placeholder DEM RSD
-            n_steps=150,
-            figsize=(16, 10)
+        analyzer.plot_dem_vs_markov_simple(
+            dem_rsd=results['dem'],
+            markov_rsd=results['markov'],
+            partitioner=part,
+            method="cylindrical",
+            save_name="rsd_cylindrical_dem_vs_markov.png"
         )
-        print(f"✅ Successfully generated {len(rsd_results)} RSD plots")
     except Exception as e:
-        print(f"⚠️  Error in plot_rsd_vs_timestep: {e}")
+        print(f"⚠️  Error: {e}")
         import traceback
         traceback.print_exc()
-        
+
 
