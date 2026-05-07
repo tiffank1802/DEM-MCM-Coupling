@@ -47,6 +47,7 @@ TAU = 50
 START = 250
 
 VW_COLORS = plt.cm.viridis(np.linspace(0.1, 0.9, len(VELOCITY_WEIGHTS)))
+VW_COLOR_MAP = {vw: VW_COLORS[i] for i, vw in enumerate(VELOCITY_WEIGHTS)}
 
 
 def build_folder_name(vw, diameter):
@@ -133,7 +134,7 @@ fig, ax = plt.subplots(figsize=(14, 8))
 results_data = {}
 
 for i, (vw, folder) in enumerate(sorted(available, key=lambda x: x[0])):
-    vw_color = VW_COLORS[i]
+    vw_color = VW_COLOR_MAP[vw]
     result = analyzer.results[folder]
     matrix = result["matrix"]
 
