@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Point d'entrée principal pour lancer les configurations d'expériences.
+Point d'entrée principal pour les configurations d'expériences.
 
 Structure du projet:
     configs/   — Fichiers de configuration d'expériences
@@ -17,12 +17,6 @@ Usage:
     python runs/run_tau_comparison_physics.py --diameter 0.004
     python runs/run_velocity_weight_comparison.py --diameter 0.004
 """
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
-
-from src import run_sweep as r_s
-
 print("📂 Structure du projet:")
 print("   configs/     — Configurations d'expériences")
 print("   runs/        — Scripts d'études comparatives")

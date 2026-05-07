@@ -11,7 +11,10 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src'))
 
-from src import run_sweep as r_s
+try:
+    from src import run_sweep as r_s
+except ImportError:
+    import run_sweep as r_s
 
 # ══════════════════════════════════════════════════════════════════════
 # PHYSICS — TAU STUDY — SMALL (d=0.004)
