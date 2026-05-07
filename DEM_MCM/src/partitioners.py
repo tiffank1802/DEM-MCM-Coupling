@@ -36,7 +36,6 @@ except ImportError:
     import analyze_results as ar
 
 __all__ = [
- 
     "BasePartitioner",
     "CartesianPartitioner",
     "CylindricalPartitioner",
@@ -44,9 +43,9 @@ __all__ = [
     "QuantileGridPartitioner",
     "OctreePartitioner",
     "PhysicsAwarePartitioner",
-    "adaptive",   
-    "multizone", 
-    "single",   
+    "AdaptivePartitioner",
+    "MultiZonePartitioner",
+    "SingleCellPartitioner",
     "create_partitioner",
     "REGISTRY",
 ]
@@ -61,9 +60,8 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
     """Interface commune pour tous les partitionneurs."""
     def __init__(self):
         self._y_split=0
+        self._splitting_method = None
         super().__init__()
-        # self.load_dem_snapshots(file_indices=[250])
-        # self.label_species()
         self.PARTICLE_NUMBER=1030
         
     # analyzer=ar.MarkovAnalyzer()
@@ -162,6 +160,12 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
         if "2d_xy" in plot_types:
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
 
+            info = f"Méthode de découpage : {self._splitting_method}"
+            if self._splitting_method == "adaptive" and hasattr(self, 'y_seuil') and self.y_seuil is not None:
+                info += f" | y_seuil = {self.y_seuil:.4f}"
+            fig.text(0.02, 0.01, info, fontsize=9, style='italic', alpha=0.7,
+                     transform=fig.transFigure)
+
             sc1 = ax1.scatter(x, y, c=states, cmap='tab20', s=sizes, alpha=0.7,
                               edgecolors='black', linewidth=0.3)
             ax1.set_xlim(xmin, xmax)
@@ -184,7 +188,7 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
             ax2.set_aspect('equal', adjustable='box')
             plt.colorbar(sc2, ax=ax2, label='État', shrink=0.8)
 
-            plt.tight_layout()
+            plt.tight_layout(rect=[0, 0.03, 1, 1])
             buf = io.BytesIO()
             plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
             buf.seek(0)
@@ -193,6 +197,13 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
 
         if "3d" in plot_types:
             fig = plt.figure(figsize=(14, 10))
+
+            info = f"Méthode de découpage : {self._splitting_method}"
+            if self._splitting_method == "adaptive" and hasattr(self, 'y_seuil') and self.y_seuil is not None:
+                info += f" | y_seuil = {self.y_seuil:.4f}"
+            fig.text(0.02, 0.01, info, fontsize=9, style='italic', alpha=0.7,
+                     transform=fig.transFigure)
+
             ax = fig.add_subplot(111, projection='3d')
             sc = ax.scatter(x, y, z, c=states, cmap='tab20', s=sizes, alpha=0.7,
                             edgecolors='black', linewidth=0.3)
@@ -514,6 +525,7 @@ class CartesianPartitioner(BasePartitioner):
         super().__init__()
         self.nx, self.ny, self.nz = nx, ny, nz
         self._bounds = None
+        self._splitting_method = "cartesian"
 
     @property
     def n_cells(self):
@@ -654,8 +666,7 @@ class CylindricalPartitioner(BasePartitioner):
         self._z_min = None
         self._z_max = None
         self._r_edges = None
-        
-        # self.species_labels=self.label_species()
+        self._splitting_method = "cylindrical"
 
     @property
     def n_cells(self):
@@ -836,6 +847,7 @@ class VoronoiPartitioner(BasePartitioner):
         self.random_state = random_state
         self.centroids = None
         self._tree = None
+        self._splitting_method = "voronoi"
 
     @property
     def n_cells(self):
@@ -972,6 +984,7 @@ class QuantileGridPartitioner(BasePartitioner):
         self._x_edges = None
         self._y_edges = None
         self._z_edges = None
+        self._splitting_method = "quantile"
 
     @property
     def n_cells(self):
@@ -1084,42 +1097,70 @@ class OctreePartitioner(BasePartitioner):
     Subdivise récursivement les cellules contenant plus de max_particles
     particules, jusqu'à max_depth niveaux.
 
+    Supporte les plans de coupe axiaux (axis) et obliques :
+      - "pca"      : plan orthogonal à la direction de variance maximale
+      - "kmeans2"  : plan médiateur entre 2 centroïdes k-means
+      - "2medians" : plan médiateur entre 2 médianes de cluster
+      - "random"   : plan aléatoire (direction uniforme sur la sphère)
+      - "svm"      : plan de marge maximale SVM (labels PCA)
+
     Avantage : raffine automatiquement les zones denses.
     Inconvénient : nombre de cellules non contrôlé a priori.
     """
 
-    def __init__(self, max_particles=100, max_depth=5,transform_type=0):
+    def __init__(self, max_particles=100, max_depth=5, transform_type=0, oblique_method=None):
         super().__init__()
         self.max_particles = max_particles
         self.max_depth = max_depth
-        self.transform_type=transform_type
-        self._leaves = []  # liste de tuples (xmin, xmax, ymin, ymax, zmin, zmax)
+        self.transform_type = transform_type
+        self.oblique_method = oblique_method
+        self._leaves = []
         self._bounds = None
-        self._stats={}
+        self._stats = {}
+        self._oblique_root = None
+        om = oblique_method or "axis"
+        self._splitting_method = f"octree_{om}"
 
     @property
     def n_cells(self):
+        if self._oblique_root is not None:
+            return self._count_tree_leaves(self._oblique_root)
         return len(self._leaves) if self._leaves else 0
 
     @property
     def label(self):
-        return f"octree_mp{self.max_particles}_md{self.max_depth}"
-    
-    def _apply_transform(self,coords):
-        if self.transform_type=='normalize':
-            return (coords-self._stats["min"])/self._stats["max"]-self._stats["min"]
-        return coords 
+        om = self.oblique_method or "axis"
+        return f"octree_mp{self.max_particles}_md{self.max_depth}_{om}"
+
+    # ── Helpers arbre oblique ──────────────────────────────────────────
+
+    def _count_tree_leaves(self, node):
+        if node["type"] == "leaf":
+            return 1
+        return self._count_tree_leaves(node["left"]) + self._count_tree_leaves(node["right"])
+
+    def _flatten_tree(self, node):
+        if node["type"] == "leaf":
+            return [node]
+        return self._flatten_tree(node["left"]) + self._flatten_tree(node["right"])
+
+    # ── Transformation ─────────────────────────────────────────────────
+
+    def _apply_transform(self, coords):
+        if self.transform_type == 'normalize':
+            return (coords - self._stats["min"]) / (self._stats["max"] - self._stats["min"])
+        return coords
+
+    # ── Fit ────────────────────────────────────────────────────────────
 
     def fit(self, coordinates):
-        coordinates=np.asarray(coordinates)
+        coordinates = np.asarray(coordinates)
         eps = 0.001
-        self._stats["min"]=coordinates.min(axis=0)-eps
-        self._stats["max"]=coordinates.max(axis=0)+eps
-        # 2. Application de la transformation (si définie)
+        self._stats["min"] = coordinates.min(axis=0) - eps
+        self._stats["max"] = coordinates.max(axis=0) + eps
         if self.transform_type is not None:
             transformed_coords = self._apply_transform(coordinates)
         else:
-            # Sécurité : si pas de transform, on utilise les coordonnées brutes
             transformed_coords = coordinates
         self._bounds = (
             transformed_coords[:, 0].min() - eps,
@@ -1129,36 +1170,39 @@ class OctreePartitioner(BasePartitioner):
             transformed_coords[:, 2].min() - eps,
             transformed_coords[:, 2].max() + eps,
         )
-        self._leaves = []
-        self._subdivide(transformed_coords, self._bounds, depth=0)
+
+        if self.oblique_method not in (None, "axis"):
+            self._oblique_root = self._build_oblique_tree(
+                transformed_coords, self._bounds, depth=0,
+                halfspaces_sofar=[]
+            )
+            self._leaves = []
+        else:
+            self._leaves = []
+            self._oblique_root = None
+            self._subdivide(transformed_coords, self._bounds, depth=0)
         return self
 
+    # ── Subdivision axiale (originale) ─────────────────────────────────
+
     def _subdivide(self, coords, bounds, depth):
-        """Subdivision récursive."""
         xmin, xmax, ymin, ymax, zmin, zmax = bounds
         n_in = len(coords)
 
-        # Condition d'arrêt
         if n_in <= self.max_particles or depth >= self.max_depth:
             self._leaves.append(bounds)
             return
 
-        # Point de coupe = milieu
-        # xmid = (xmin + xmax) / 2
-        # ymid = (ymin + ymax) / 2
-        # zmid = (zmin + zmax) / 2
-        xmid = np.median(coords[:,0])
-        ymid = np.median(coords[:,1])
-        zmid = np.median(coords[:,2])
+        xmid = np.median(coords[:, 0])
+        ymid = np.median(coords[:, 1])
+        zmid = np.median(coords[:, 2])
 
-        # Assigner chaque particule à un octant (0-7)
         octant = (
             (coords[:, 0] >= xmid).astype(np.int64)
             + (coords[:, 1] >= ymid).astype(np.int64) * 2
             + (coords[:, 2] >= zmid).astype(np.int64) * 4
         )
 
-        # Récursion sur les 8 enfants
         for idx in range(8):
             ix, iy, iz = idx % 2, (idx // 2) % 2, idx // 4
             child_bounds = (
@@ -1172,82 +1216,506 @@ class OctreePartitioner(BasePartitioner):
             child_mask = octant == idx
             self._subdivide(coords[child_mask], child_bounds, depth + 1)
 
-    def compute_states(self, x, y, z):
-        coords = np.column_stack(
-            [np.asarray(x, dtype=np.float64),
-             np.asarray(y, dtype=np.float64),
-             np.asarray(z, dtype=np.float64)]
-        )
+    # ── Plan de coupe oblique ──────────────────────────────────────────
+
+    def _find_splitting_plane(self, coords, method):
+        if len(coords) < 2:
+            return np.array([1.0, 0.0, 0.0]), 0.0
+
+        if method == "pca":
+            cov = np.cov(coords, rowvar=False)
+            eigvals, eigvecs = np.linalg.eigh(cov)
+            normal = eigvecs[:, np.argmax(eigvals)]
+            proj = coords @ normal
+            offset = np.median(proj)
+
+        elif method == "kmeans2":
+            from sklearn.cluster import KMeans
+            n = min(len(coords), 10000)
+            kmeans = KMeans(n_clusters=2, n_init=3, random_state=42).fit(coords[:n])
+            c1, c2 = kmeans.cluster_centers_
+            normal = c2 - c1
+            norm = np.linalg.norm(normal)
+            normal = normal / norm if norm > 1e-12 else np.array([1.0, 0.0, 0.0])
+            offset = ((c1 + c2) / 2) @ normal
+
+        elif method == "2medians":
+            rng = np.random.RandomState(42)
+            idx = rng.choice(len(coords), min(2, len(coords)), replace=False)
+            c1, c2 = coords[idx].copy()
+            for _ in range(5):
+                d1 = np.linalg.norm(coords - c1, axis=1)
+                d2 = np.linalg.norm(coords - c2, axis=1)
+                labels = (d1 <= d2).astype(int)
+                if (labels == 0).any():
+                    c1 = np.median(coords[labels == 0], axis=0)
+                if (labels == 1).any():
+                    c2 = np.median(coords[labels == 1], axis=0)
+            normal = c2 - c1
+            norm = np.linalg.norm(normal)
+            normal = normal / norm if norm > 1e-12 else np.array([1.0, 0.0, 0.0])
+            offset = ((c1 + c2) / 2) @ normal
+
+        elif method == "random":
+            rng = np.random.RandomState(42)
+            normal = rng.randn(3)
+            normal /= np.linalg.norm(normal)
+            proj = coords @ normal
+            offset = np.median(proj)
+
+        elif method == "svm":
+            from sklearn.svm import LinearSVC
+            cov = np.cov(coords, rowvar=False)
+            eigvals, eigvecs = np.linalg.eigh(cov)
+            pca_normal = eigvecs[:, np.argmax(eigvals)]
+            proj_pca = coords @ pca_normal
+            labels = (proj_pca > np.median(proj_pca)).astype(int)
+            if len(np.unique(labels)) < 2:
+                return np.array([1.0, 0.0, 0.0]), 0.0
+            svm = LinearSVC(max_iter=1000, C=1.0, dual='auto', random_state=42)
+            svm.fit(coords, labels)
+            w = svm.coef_[0].astype(np.float64)
+            wn = np.linalg.norm(w)
+            if wn < 1e-12:
+                normal, offset = np.array([1.0, 0.0, 0.0]), 0.0
+            else:
+                normal = w / wn
+                offset = -svm.intercept_[0].item() / wn
+
+        else:
+            raise ValueError(f"Méthode oblique inconnue: {method}")
+
+        return normal, offset
+
+    # ── Construction arbre oblique ─────────────────────────────────────
+
+    def _build_oblique_tree(self, coords, bounds, depth, halfspaces_sofar):
+        xmin, xmax, ymin, ymax, zmin, zmax = bounds
+        n_in = len(coords)
+
+        if n_in <= self.max_particles or depth >= self.max_depth:
+            center = coords.mean(axis=0) if len(coords) > 0 else np.zeros(3)
+            return {
+                "type": "leaf",
+                "bounds": (xmin, xmax, ymin, ymax, zmin, zmax),
+                "centroid": center,
+                "halfspaces": list(halfspaces_sofar),
+            }
+
+        normal, offset = self._find_splitting_plane(coords, self.oblique_method)
+        proj = coords @ normal
+        left_mask = proj <= offset
+        right_mask = proj > offset
+        left_coords = coords[left_mask]
+        right_coords = coords[right_mask]
+
+        if len(left_coords) == 0 or len(right_coords) == 0:
+            center = coords.mean(axis=0) if len(coords) > 0 else np.zeros(3)
+            return {
+                "type": "leaf",
+                "bounds": (xmin, xmax, ymin, ymax, zmin, zmax),
+                "centroid": center,
+                "halfspaces": list(halfspaces_sofar),
+            }
+
+        hs_left = list(halfspaces_sofar) + [(normal, offset, "le")]
+        hs_right = list(halfspaces_sofar) + [(normal, offset, "gt")]
+
+        return {
+            "type": "internal",
+            "normal": normal,
+            "offset": offset,
+            "left": self._build_oblique_tree(left_coords, bounds, depth + 1, hs_left),
+            "right": self._build_oblique_tree(right_coords, bounds, depth + 1, hs_right),
+        }
+
+    # ── Compute States ─────────────────────────────────────────────────
+
+    def _assign_state_by_halfspaces(self, coords, leaves):
         n = len(coords)
         states = np.full(n, -1, dtype=np.int64)
-
-        # Assignation par bounding box
-        for cell_id, (xmin, xmax, ymin, ymax, zmin, zmax) in enumerate(self._leaves):
-            mask = (
-                (coords[:, 0] >= xmin) & (coords[:, 0] < xmax)
-                & (coords[:, 1] >= ymin) & (coords[:, 1] < ymax)
-                & (coords[:, 2] >= zmin) & (coords[:, 2] < zmax)
-            )
+        for cell_id, leaf in enumerate(leaves):
+            mask = np.ones(n, dtype=bool)
+            for normal, offset, side in leaf["halfspaces"]:
+                proj = coords @ normal
+                if side == "le":
+                    mask &= proj <= offset
+                else:
+                    mask &= proj > offset
             states[mask] = cell_id
-
-        # Points non assignés → cellule la plus proche
         unassigned = states == -1
         if unassigned.any():
+            centers = np.array([l["centroid"] for l in leaves])
             from scipy.spatial import cKDTree
-
-            centers = np.array(
-                [
-                    (
-                        (b[0] + b[1]) / 2,
-                        (b[2] + b[3]) / 2,
-                        (b[4] + b[5]) / 2,
-                    )
-                    for b in self._leaves
-                ]
-            )
             tree = cKDTree(centers)
             _, idx = tree.query(coords[unassigned])
             states[unassigned] = idx
-        n_n=int(len(x)/self.PARTICLE_NUMBER)
+        return states
 
-        self.states= states
-        return self.states#[np.tile(self.species_labels,n_n)]
+    def compute_states(self, x, y, z):
+        coords = np.column_stack([
+            np.asarray(x, dtype=np.float64),
+            np.asarray(y, dtype=np.float64),
+            np.asarray(z, dtype=np.float64),
+        ])
+        n = len(coords)
+
+        if self._oblique_root is not None:
+            leaves = self._flatten_tree(self._oblique_root)
+            states = self._assign_state_by_halfspaces(coords, leaves)
+        else:
+            states = np.full(n, -1, dtype=np.int64)
+            for cell_id, (xmin, xmax, ymin, ymax, zmin, zmax) in enumerate(self._leaves):
+                mask = (
+                    (coords[:, 0] >= xmin) & (coords[:, 0] < xmax)
+                    & (coords[:, 1] >= ymin) & (coords[:, 1] < ymax)
+                    & (coords[:, 2] >= zmin) & (coords[:, 2] < zmax)
+                )
+                states[mask] = cell_id
+            unassigned = states == -1
+            if unassigned.any():
+                from scipy.spatial import cKDTree
+                centers = np.array([
+                    ((b[0] + b[1]) / 2, (b[2] + b[3]) / 2, (b[4] + b[5]) / 2)
+                    for b in self._leaves
+                ])
+                tree = cKDTree(centers)
+                _, idx = tree.query(coords[unassigned])
+                states[unassigned] = idx
+
+        self.states = states
+        return self.states
+
+    def _traverse_tree(self, coords, node, states, mask):
+        if node["type"] == "leaf":
+            return
+        proj = coords @ node["normal"]
+        left_mask = mask & (proj <= node["offset"])
+        right_mask = mask & (proj > node["offset"])
+        if left_mask.any():
+            self._traverse_tree(coords, node["left"], states, left_mask)
+        if right_mask.any():
+            self._traverse_tree(coords, node["right"], states, right_mask)
+
+    def _assign_cell_ids(self, states):
+        leaves = self._flatten_tree(self._oblique_root)
+        for cell_id, leaf in enumerate(leaves):
+            xmin, xmax, ymin, ymax, zmin, zmax = leaf["bounds"]
+            mask = (
+                (states >= 0 if cell_id == 0 else states < 0)  # will be overridden
+            )
+        # Assign by traversing again (simpler)
+        coords_for_id = None
+        for cell_id, leaf in enumerate(leaves):
+            leaf["cell_id"] = cell_id
+
+        # Better: traverse again and set cell IDs
+        all_coords = None
+
+    # Actually, simpler: store cell_id in leaves during tree walking
+    # Let's redo: first pass traverse gets leaf_index, second pass resolves
+    # The cleanest: pass cell_id down during traversal
+
+    def compute_states(self, x, y, z):
+        coords = np.column_stack([
+            np.asarray(x, dtype=np.float64),
+            np.asarray(y, dtype=np.float64),
+            np.asarray(z, dtype=np.float64),
+        ])
+        n = len(coords)
+
+        if self._oblique_root is not None:
+            leaves = self._flatten_tree(self._oblique_root)
+            states = np.full(n, -1, dtype=np.int64)
+            for cell_id, leaf in enumerate(leaves):
+                mask = np.ones(n, dtype=bool)
+                for normal, offset, side in leaf["halfspaces"]:
+                    proj = coords @ normal
+                    if side == "le":
+                        mask &= proj <= offset
+                    else:
+                        mask &= proj > offset
+                states[mask] = cell_id
+            unassigned = states == -1
+            if unassigned.any():
+                centers = np.array([l["centroid"] for l in leaves])
+                from scipy.spatial import cKDTree
+                tree = cKDTree(centers)
+                _, idx = tree.query(coords[unassigned])
+                states[unassigned] = idx
+        else:
+            states = np.full(n, -1, dtype=np.int64)
+            for cell_id, (xmin, xmax, ymin, ymax, zmin, zmax) in enumerate(self._leaves):
+                mask = (
+                    (coords[:, 0] >= xmin) & (coords[:, 0] < xmax)
+                    & (coords[:, 1] >= ymin) & (coords[:, 1] < ymax)
+                    & (coords[:, 2] >= zmin) & (coords[:, 2] < zmax)
+                )
+                states[mask] = cell_id
+            unassigned = states == -1
+            if unassigned.any():
+                from scipy.spatial import cKDTree
+                centers = np.array([
+                    ((b[0] + b[1]) / 2, (b[2] + b[3]) / 2, (b[4] + b[5]) / 2)
+                    for b in self._leaves
+                ])
+                tree = cKDTree(centers)
+                _, idx = tree.query(coords[unassigned])
+                states[unassigned] = idx
+
+        self.states = states
+        return self.states
+
+    # ── Save / Load ────────────────────────────────────────────────────
 
     def _save_data(self, path):
-        leaves_arr = np.array(self._leaves)
-        np.save(os.path.join(path, "leaves.npy"), leaves_arr)
+        if self._oblique_root is not None:
+            self._save_oblique_tree(path, self._oblique_root)
+            with open(os.path.join(path, "octree_mode.txt"), "w") as f:
+                f.write("oblique\n")
+                f.write(f"{self.oblique_method or 'axis'}\n")
+        else:
+            leaves_arr = np.array(self._leaves)
+            np.save(os.path.join(path, "leaves.npy"), leaves_arr)
+            with open(os.path.join(path, "octree_mode.txt"), "w") as f:
+                f.write("axis\n")
         if self._bounds:
             np.save(os.path.join(path, "bounds.npy"), np.array(self._bounds))
 
+    def _save_oblique_tree(self, path, node):
+        import pickle as pk
+        with open(os.path.join(path, "oblique_tree.pkl"), "wb") as f:
+            pk.dump(self._oblique_root, f, protocol=pk.HIGHEST_PROTOCOL)
+
     def _load_data(self, path):
-        leaves_arr = np.load(os.path.join(path, "leaves.npy"))
-        self._leaves = [tuple(row) for row in leaves_arr]
+        mode_path = os.path.join(path, "octree_mode.txt")
+        if os.path.exists(mode_path):
+            with open(mode_path) as f:
+                mode = f.readline().strip()
+            if mode == "oblique":
+                import pickle as pk
+                with open(os.path.join(path, "oblique_tree.pkl"), "rb") as f:
+                    self._oblique_root = pk.load(f)
+                om_path = os.path.join(path, "octree_mode.txt")
+                with open(om_path) as f:
+                    lines = f.readlines()
+                if len(lines) > 1:
+                    self.oblique_method = lines[1].strip()
+                self._leaves = []
+            else:
+                leaves_arr = np.load(os.path.join(path, "leaves.npy"))
+                self._leaves = [tuple(row) for row in leaves_arr]
+                self._oblique_root = None
+        else:
+            leaves_arr = np.load(os.path.join(path, "leaves.npy"))
+            self._leaves = [tuple(row) for row in leaves_arr]
+            self._oblique_root = None
         bounds_path = os.path.join(path, "bounds.npy")
         if os.path.exists(bounds_path):
             self._bounds = tuple(np.load(bounds_path))
 
+    # ── Polygones 2D ───────────────────────────────────────────────────
+
     def _get_cell_polygons_2d(self, view='xy'):
         results = []
-        for cell_id, (xmin, xmax, ymin, ymax, zmin, zmax) in enumerate(self._leaves):
-            if view == 'xy':
-                pts = np.array([[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]])
-            elif view == 'yz':
-                pts = np.array([[ymin, zmin], [ymax, zmin], [ymax, zmax], [ymin, zmax]])
-            else:
-                continue
-            results.append((cell_id, pts))
+        if self._oblique_root is not None:
+            leaves = self._flatten_tree(self._oblique_root)
+            for cell_id, leaf in enumerate(leaves):
+                xmin, xmax, ymin, ymax, zmin, zmax = leaf["bounds"]
+                if view == 'xy':
+                    pts = np.array([[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]])
+                elif view == 'yz':
+                    pts = np.array([[ymin, zmin], [ymax, zmin], [ymax, zmax], [ymin, zmax]])
+                else:
+                    continue
+                results.append((cell_id, pts))
+        else:
+            for cell_id, (xmin, xmax, ymin, ymax, zmin, zmax) in enumerate(self._leaves):
+                if view == 'xy':
+                    pts = np.array([[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]])
+                elif view == 'yz':
+                    pts = np.array([[ymin, zmin], [ymax, zmin], [ymax, zmax], [ymin, zmax]])
+                else:
+                    continue
+                results.append((cell_id, pts))
         return results
+
+    # ── Polyèdres 3D ───────────────────────────────────────────────────
 
     def _get_cell_polyhedra_3d(self):
         results = []
         face_indices = [[0,1,2,3],[4,5,6,7],[0,1,5,4],[2,3,7,6],[0,3,7,4],[1,2,6,5]]
-        for cell_id, (xmin, xmax, ymin, ymax, zmin, zmax) in enumerate(self._leaves):
-            vertices = np.array([
-                [xmin, ymin, zmin], [xmax, ymin, zmin], [xmax, ymax, zmin], [xmin, ymax, zmin],
-                [xmin, ymin, zmax], [xmax, ymin, zmax], [xmax, ymax, zmax], [xmin, ymax, zmax],
-            ])
-            results.append((cell_id, vertices, face_indices))
+        if self._oblique_root is not None:
+            leaves = self._flatten_tree(self._oblique_root)
+            for cell_id, leaf in enumerate(leaves):
+                xmin, xmax, ymin, ymax, zmin, zmax = leaf["bounds"]
+                vertices = np.array([
+                    [xmin, ymin, zmin], [xmax, ymin, zmin], [xmax, ymax, zmin], [xmin, ymax, zmin],
+                    [xmin, ymin, zmax], [xmax, ymin, zmax], [xmax, ymax, zmax], [xmin, ymax, zmax],
+                ])
+                results.append((cell_id, vertices, face_indices))
+        else:
+            for cell_id, (xmin, xmax, ymin, ymax, zmin, zmax) in enumerate(self._leaves):
+                vertices = np.array([
+                    [xmin, ymin, zmin], [xmax, ymin, zmin], [xmax, ymax, zmin], [xmin, ymax, zmin],
+                    [xmin, ymin, zmax], [xmax, ymin, zmax], [xmax, ymax, zmax], [xmin, ymax, zmax],
+                ])
+                results.append((cell_id, vertices, face_indices))
         return results
+
+    # ── Visualisation depuis le bucket ─────────────────────────────────
+
+    OBLIQUE_METHODS = ["axis", "pca", "kmeans2", "2medians", "random", "svm"]
+    DEFAULT_METHOD = "pca"
+
+    @classmethod
+    def visualize_from_bucket(cls, method=DEFAULT_METHOD, particle_diameter=0.004,
+                               save_prefix="oblique_from_bucket", plot_types=None):
+        """
+        Charge les résultats pré-calculés depuis le bucket HuggingFace
+        et génère les visualisations (matrice + RSD).
+
+        Args:
+            method: méthode oblique parmi "axis", "pca", "kmeans2", "2medians", "random", "svm"
+            particle_diameter: 0.004 (SMALL) ou 0.008 (BIG)
+            save_prefix: préfixe pour les fichiers image
+            plot_types: liste de types de plot ("matrix", "rsd", "comparison")
+
+        Returns:
+            dict d'images: {"matrix.png": bytes, "rsd.png": bytes, ...}
+        """
+        if method not in cls.OBLIQUE_METHODS:
+            print(f"⚠️  Méthode '{method}' inconnue. Utilisation de '{cls.DEFAULT_METHOD}'")
+            method = cls.DEFAULT_METHOD
+
+        from bucket_io import load_experiment_from_bucket
+
+        diam_str = str(particle_diameter).replace(".", "")
+        folder = (
+            f"octree_mp100_md3_{method}"
+            f"_NLT10_step10_dt2_tau50_start250_d{diam_str}"
+        )
+
+        print(f"  Chargement depuis le bucket: {folder}")
+        from huggingface_hub import HfFileSystem
+        fs = HfFileSystem()
+        try:
+            data = load_experiment_from_bucket(folder)
+        except Exception as e:
+            print(f"❌ Aucune donnée trouvée pour '{method}' (diamètre={particle_diameter})")
+            print(f"   Lancez d'abord: python runs/run_oblique_comparison.py --diameter {particle_diameter}")
+            print(f"   ({e})")
+            return {}
+
+        if data is None or data.get("matrix") is None or data["matrix"].size == 0:
+            print(f"❌ Aucune donnée trouvée pour '{method}' (diamètre={particle_diameter})")
+            print(f"   Lancez d'abord: python runs/run_oblique_comparison.py --diameter {particle_diameter}")
+            return {}
+
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        import io
+
+        P = np.asarray(data["matrix"], dtype=np.float64)
+        stats = data.get("stats", {})
+        config = data.get("config", {})
+        image_data = {}
+
+        if plot_types is None:
+            plot_types = ["matrix", "rsd"]
+
+        # ── Matrice de transition ──
+        if "matrix" in plot_types:
+            fig, ax = plt.subplots(figsize=(10, 8))
+            im = ax.imshow(P, aspect='auto', cmap='viridis', interpolation='nearest')
+            plt.colorbar(im, ax=ax, label='P(i→j)')
+            ax.set_xlabel('État précédent (i)', fontsize=12)
+            ax.set_ylabel('État suivant (j)', fontsize=12)
+            ax.set_title(f'Matrice P — octree_{method} ({P.shape[0]} états)',
+                        fontsize=14, fontweight='bold')
+            info = f"Méthode de découpage : octree_{method}"
+            fig.text(0.02, 0.01, info, fontsize=9, style='italic', alpha=0.7,
+                     transform=fig.transFigure)
+            plt.tight_layout(rect=[0, 0.03, 1, 1])
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+            buf.seek(0)
+            image_data[f"{save_prefix}_matrix.png"] = buf.getvalue()
+            plt.close()
+
+        # ── RSD simulé ──
+        if "rsd" in plot_types:
+            n_steps = 200
+            n_states = P.shape[0]
+            conc = np.zeros(n_states)
+            conc[:n_states // 2] = 1.0
+            conc = conc / conc.sum()
+            rsd = []
+            for _ in range(n_steps):
+                conc = P.T @ conc
+                mean_c = conc.mean()
+                std_c = conc.std()
+                rsd.append(std_c / mean_c if mean_c > 0 else 0)
+
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.plot(rsd, linewidth=2, color='#1f77b4')
+            ax.set_xlabel('Pas de temps', fontsize=12)
+            ax.set_ylabel('RSD', fontsize=12)
+            ax.set_title(f'RSD — octree_{method}', fontsize=14, fontweight='bold')
+            ax.grid(True, alpha=0.3)
+            ax.set_ylim(bottom=0)
+            info = f"Méthode de découpage : octree_{method}"
+            fig.text(0.02, 0.01, info, fontsize=9, style='italic', alpha=0.7,
+                     transform=fig.transFigure)
+            plt.tight_layout(rect=[0, 0.03, 1, 1])
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+            buf.seek(0)
+            image_data[f"{save_prefix}_rsd.png"] = buf.getvalue()
+            plt.close()
+
+        # ── Comparaison RSD toutes méthodes ──
+        if "comparison" in plot_types:
+            fig, ax = plt.subplots(figsize=(12, 8))
+            colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+            for i, om in enumerate(cls.OBLIQUE_METHODS):
+                om_diam_str = str(particle_diameter).replace(".", "")
+                om_folder = (
+                    f"octree_mp100_md3_{om}"
+                    f"_NLT10_step10_dt2_tau50_start250_d{om_diam_str}"
+                )
+                om_data = load_experiment_from_bucket(om_folder)
+                if om_data is None or om_data.get("matrix") is None or om_data["matrix"].size == 0:
+                    continue
+                om_P = np.asarray(om_data["matrix"], dtype=np.float64)
+                n_states = om_P.shape[0]
+                conc = np.zeros(n_states)
+                conc[:n_states // 2] = 1.0
+                conc = conc / conc.sum()
+                om_rsd = []
+                for _ in range(n_steps):
+                    conc = om_P.T @ conc
+                    mean_c = conc.mean()
+                    std_c = conc.std()
+                    om_rsd.append(std_c / mean_c if mean_c > 0 else 0)
+                ax.plot(om_rsd, color=colors[i % len(colors)], label=f"octree_{om}",
+                        linewidth=2)
+            ax.set_xlabel('Pas de temps', fontsize=12)
+            ax.set_ylabel('RSD', fontsize=12)
+            ax.set_title('Comparaison RSD — Méthodes obliques', fontsize=14, fontweight='bold')
+            ax.legend(fontsize=10, loc='upper right')
+            ax.grid(True, alpha=0.3)
+            ax.set_ylim(bottom=0)
+            plt.tight_layout()
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+            buf.seek(0)
+            image_data[f"{save_prefix}_comparison.png"] = buf.getvalue()
+            plt.close()
+
+        print(f"  ✅ {len(image_data)} images générées depuis le bucket")
+        return image_data
 
 
 # =============================================================================
@@ -1277,7 +1745,8 @@ class PhysicsAwarePartitioner(BasePartitioner):
         self._tree = None
         self._mean = None
         self._std = None
-        self._n_features = 3  # 3 = position seule, 6 = position + vitesse complète
+        self._n_features = 3
+        self._splitting_method = "physics"
 
     @property
     def n_cells(self):
@@ -1431,6 +1900,10 @@ class PhysicsAwarePartitioner(BasePartitioner):
         if "2d_xy" in plot_types:
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
 
+            info = f"Méthode de découpage : {self._splitting_method}"
+            fig.text(0.02, 0.01, info, fontsize=9, style='italic', alpha=0.7,
+                     transform=fig.transFigure)
+
             sc1 = ax1.scatter(x, y, c=states, cmap='tab20', s=sizes, alpha=0.7,
                               edgecolors='black', linewidth=0.3)
             ax1.set_xlim(xmin, xmax)
@@ -1453,7 +1926,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
             ax2.set_aspect('equal', adjustable='box')
             plt.colorbar(sc2, ax=ax2, label='État', shrink=0.8)
 
-            plt.tight_layout()
+            plt.tight_layout(rect=[0, 0.03, 1, 1])
             buf = io.BytesIO()
             plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
             buf.seek(0)
@@ -1462,6 +1935,11 @@ class PhysicsAwarePartitioner(BasePartitioner):
 
         if "3d" in plot_types:
             fig = plt.figure(figsize=(12, 10))
+
+            info = f"Méthode de découpage : {self._splitting_method}"
+            fig.text(0.02, 0.01, info, fontsize=9, style='italic', alpha=0.7,
+                     transform=fig.transFigure)
+
             ax = fig.add_subplot(111, projection='3d')
             sc = ax.scatter(x, y, z, c=states, cmap='tab20', s=sizes, alpha=0.7,
                            edgecolors='black', linewidth=0.3)
@@ -1552,7 +2030,7 @@ class AdaptivePartitioner(BasePartitioner):
         bottom_method: str = "cylindrical",
         bottom_kwargs: dict = None,
     ):
-        # super().__init__()
+        self._splitting_method = "adaptive"
         self.y_split_input = y_split
         self.y_split_mode = y_split_mode
         self.n_cells_top_target = n_cells_top
@@ -1563,6 +2041,7 @@ class AdaptivePartitioner(BasePartitioner):
         
         # Calculés au fit
         self._y_split = None
+        self.y_seuil = None
         self._y_min = None
         self._y_max = None
         self._top_partitioner = None
@@ -1603,6 +2082,8 @@ class AdaptivePartitioner(BasePartitioner):
                 self._y_split = self.y_split_input
         else:
             raise ValueError(f"y_split_mode inconnu: {self.y_split_mode}")
+        
+        self.y_seuil = self._y_split
         
         # ── Séparer les données ──
         mask_bottom = y <= self._y_split
@@ -1715,7 +2196,7 @@ class MultiZonePartitioner(BasePartitioner):
         zones: list,
         y_mode: str = "absolute"
     ):
-        # super().__init__()
+        self._splitting_method = "multizone"
         self.zones_config = zones
         self.y_mode = y_mode
         self._zones = []  # [(y_min, y_max, partitioner), ...]
@@ -1869,6 +2350,7 @@ class SingleCellPartitioner(BasePartitioner):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self._splitting_method = "single"
 
     @property
     def n_cells(self):
