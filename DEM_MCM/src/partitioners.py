@@ -267,9 +267,23 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
                 norm_d = diameters / diameters.max()
                 sizes = (norm_d ** 2) * 60 + 10
         
-        # Paramètres de la vidéo
-        n_frames = duration * fps  # 360-450 frames
-        angles = np.linspace(0, 360, n_frames)  # Rotation complète
+        # Paramètres de la vidéo - limiter pour Pillow
+        try:
+            import matplotlib.pyplot as plt
+            plt.figure()
+            import matplotlib.animation as animation
+            animation.writers.list()
+            has_ffmpeg = 'ffmpeg' in animation.writers.list()
+            plt.close()
+        except:
+            has_ffmpeg = False
+        
+        if not has_ffmpeg:
+            fps = 15
+            duration = 6
+        
+        n_frames = duration * fps  # 90 frames pour Pillow, 600 pour ffmpeg
+        angles = np.linspace(0, 360, n_frames)
         
         # Créer la figure
         fig = plt.figure(figsize=(12, 10))
@@ -311,12 +325,11 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
         # Sauvegarder
         os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
         
-        # Vérifier si ffmpeg est disponible
-        try:
+        # Utiliser le writer disponible
+        if has_ffmpeg:
             ani.save(output_path, writer='ffmpeg', fps=fps, dpi=100)
-        except:
-            # Fallback sur matplotlib writer
-            ani.save(output_path, writer='pillow', fps=fps, dpi=100)
+        else:
+            ani.save(output_path, writer='pillow', fps=fps, dpi=80)
         
         plt.close()
         
