@@ -1036,6 +1036,7 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, partic
 
             # ✅ Générer la vidéo 3D avec rotation
             video_path = None
+            print(f"   🔍 DEBUG: Entrée bloc vidéo, méthode existe: {hasattr(partitioner, 'visualize_3d_rotation')}")
             if hasattr(partitioner, 'visualize_3d_rotation'):
                 try:
                     safe_label = partitioner.label.replace('=', '_').replace(' ', '_').replace('/', '_')
