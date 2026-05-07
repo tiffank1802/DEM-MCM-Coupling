@@ -12,7 +12,8 @@ Usage:
 """
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(PROJECT_ROOT, 'src'))
 
 import numpy as np
 import matplotlib
@@ -20,8 +21,12 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import argparse
 
-from analyze_results import MarkovAnalyzer
-from partitioners import PhysicsAwarePartitioner
+try:
+    from analyze_results import MarkovAnalyzer
+    from partitioners import PhysicsAwarePartitioner
+except ImportError:
+    from src.analyze_results import MarkovAnalyzer
+    from src.partitioners import PhysicsAwarePartitioner
 
 # ══════════════════════════════════════════════════════════════════════
 # CONFIGURATION

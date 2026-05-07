@@ -14,8 +14,12 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from analyze_results import MarkovAnalyzer
-from partitioners import VoronoiPartitioner
+try:
+    from analyze_results import MarkovAnalyzer
+    from partitioners import VoronoiPartitioner
+except ImportError:
+    from src.analyze_results import MarkovAnalyzer
+    from src.partitioners import VoronoiPartitioner
 
 IMAGES_DIR = os.path.join(PROJECT_ROOT, 'images', 'tau_studies')
 os.makedirs(IMAGES_DIR, exist_ok=True)
