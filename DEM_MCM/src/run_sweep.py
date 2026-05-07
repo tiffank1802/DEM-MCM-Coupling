@@ -1034,6 +1034,24 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, partic
                 except Exception as e:
                     print(f"   ⚠️  Visualisation échouée: {e}")
 
+            # ✅ Générer la vidéo 3D avec rotation
+            video_path = None
+            if hasattr(partitioner, 'visualize_3d_rotation'):
+                try:
+                    safe_label = partitioner.label.replace('=', '_').replace(' ', '_').replace('/', '_')
+                    video_output = os.path.join("images", "3d_rotation", f"{safe_label}_rotation.mp4")
+                    os.makedirs(os.path.dirname(video_output), exist_ok=True)
+                    
+                    video_path = partitioner.visualize_3d_rotation(
+                        sample_coords[:, 0], sample_coords[:, 1], sample_coords[:, 2],
+                        particle_diameters=sample_diameters if sample_diameters is not None else None,
+                        output_path=video_output,
+                        duration=10, fps=60
+                    )
+                    print(f"   🎥 Vidéo générée: {video_path}")
+                except Exception as e:
+                    print(f"   ⚠️  Vidéo échouée: {e}")
+
             # Lancer l'expérience
             P, stats = run_experiment(config, partitioner, files, fs, device)
 

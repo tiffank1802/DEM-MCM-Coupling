@@ -1,22 +1,22 @@
 """
 ===================================================================================
-PARTITIONERS — Méthodes de partitionnement spatial pour chaînes de Markov
+ PARTITIONERS — Méthodes de partitionnement spatial pour chaînes de Markov
 ===================================================================================
 
-Interface commune:
-    partitioner = create_partitioner("voronoi", n_cells=125)
-    partitioner.fit(coordinates)                    # (N, 3) numpy array
-    states = partitioner.compute_states(x, y, z)    # → indices int64
-    partitioner.save("output/")
-    partitioner.load("output/")
-
-Méthodes disponibles:
-    cartesian    — grille régulière (x, y, z)
-    cylindrical  — grille cylindrique (r, θ, z)
-    voronoi      — clustering K-means / cellules de Voronoï
-    quantile     — grille avec bords par quantiles (équi-population)
-    octree       — octree adaptatif à la densité
-    physics      — K-means sur position + champs physiques
+ Interface commune:
+     partitioner = create_partitioner("voronoi", n_cells=125)
+     partitioner.fit(coordinates)                    # (N, 3) numpy array
+     states = partitioner.compute_states(x, y, z)    # → indices int64
+     partitioner.save("output/")
+     partitioner.load("output/")
+ 
+ Méthodes disponibles:
+     cartesian    — grille régulière (x, y, z)
+     cylindrical  — grille cylindrique (r, θ, z)
+     voronoi      — clustering K-means / cellules de Voronoï
+     quantile     — grille avec bords par quantiles (équi-population)
+     octree       — octree adaptatif à la densité
+     physics      — K-means sur position + champs physiques
 ===================================================================================
 """
 
@@ -28,6 +28,7 @@ from abc import ABC, abstractmethod
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.spatial import ConvexHull, Voronoi
+import matplotlib.animation as animation
 
 # Imports relatifs (notebooks) vs absolus (script direct)
 try:
@@ -152,8 +153,11 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
         zmin, zmax = z.min(), z.max()
         self._data_bounds = (xmin, xmax, ymin, ymax, zmin, zmax)
 
+        # ── Taille basée sur le diamètre ──────────────────────────
         if diameters is not None and diameters.max() > 0:
-            sizes = (diameters / diameters.max()) * 200 + 10
+            # Taille proportionnelle à l'aire (rayon²) : 0.004m → ~20, 0.008m → ~80
+            norm_diameters = diameters / diameters.max()
+            sizes = (norm_diameters ** 2) * 60 + 10
         else:
             sizes = 30
 
@@ -167,7 +171,7 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
                      transform=fig.transFigure)
 
             sc1 = ax1.scatter(x, y, c=states, cmap='tab20', s=sizes, alpha=0.7,
-                              edgecolors='black', linewidth=0.3)
+                               edgecolors='black', linewidth=0.3)
             ax1.set_xlim(xmin, xmax)
             ax1.set_ylim(ymin, ymax)
             ax1.set_xlabel('X (m)', fontsize=12, fontweight='bold')
@@ -178,7 +182,7 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
             plt.colorbar(sc1, ax=ax1, label='État', shrink=0.8)
 
             sc2 = ax2.scatter(y, z, c=states, cmap='tab20', s=sizes, alpha=0.7,
-                              edgecolors='black', linewidth=0.3)
+                               edgecolors='black', linewidth=0.3)
             ax2.set_xlim(ymin, ymax)
             ax2.set_ylim(zmin, zmax)
             ax2.set_xlabel('Y (m)', fontsize=12, fontweight='bold')
@@ -228,6 +232,95 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
             plt.close()
 
         return image_data
+
+    def visualize_3d_rotation(self, x, y, z, particle_diameters=None,
+                              output_path="rotation_video.mp4",
+                              duration=10, fps=60, use_diameter=True):
+        """
+        Génère une vidéo 3D du mélangeur avec rotation lente.
+        
+        Args:
+            x, y, z: coordonnées des particules
+            particle_diameters: array de diamètres (optionnel)
+            output_path: chemin de sortie pour la vidéo
+            duration: durée en secondes (défaut: 12s)
+            fps: images par seconde (défaut: 30)
+            use_diameter: si True, taille proportionnelle au diamètre
+        
+        Returns:
+            str: chemin vers la vidéo générée
+        """
+        # Convertir en arrays numpy
+        x = np.asarray(x)
+        y = np.asarray(y)
+        z = np.asarray(z)
+        
+        # Calculer les états
+        self.fit(np.column_stack([x, y, z]))
+        states = self.compute_states(x, y, z)
+        
+        # Taille des particules
+        sizes = 30
+        if use_diameter and particle_diameters is not None:
+            diameters = np.asarray(particle_diameters)
+            if diameters.max() > 0:
+                norm_d = diameters / diameters.max()
+                sizes = (norm_d ** 2) * 60 + 10
+        
+        # Paramètres de la vidéo
+        n_frames = duration * fps  # 360-450 frames
+        angles = np.linspace(0, 360, n_frames)  # Rotation complète
+        
+        # Créer la figure
+        fig = plt.figure(figsize=(12, 10))
+        ax = fig.add_subplot(111, projection='3d')
+        
+        # Limites
+        xmin, xmax = x.min(), x.max()
+        ymin, ymax = y.min(), y.max()
+        zmin, zmax = z.min(), z.max()
+        
+        # Données fixes pour la performance
+        sc = ax.scatter(x, y, z, c=states, cmap='tab20', s=sizes,
+                        alpha=0.7, edgecolors='black', linewidth=0.3)
+        
+        ax.set_xlim(xmin, xmax)
+        ax.set_ylim(ymin, ymax)
+        ax.set_zlim(zmin, zmax)
+        ax.set_xlabel('X (m)', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Y (m)', fontsize=12, fontweight='bold')
+        ax.set_zlabel('Z (m)', fontsize=12, fontweight='bold')
+        ax.set_title(f'3D Rotation - {self.label}', fontsize=14, fontweight='bold')
+        ax.xaxis.pane.fill = False
+        ax.yaxis.pane.fill = False
+        ax.zaxis.pane.fill = False
+        ax.grid(True, alpha=0.3)
+        plt.colorbar(sc, ax=ax, label='État', shrink=0.6)
+        
+        def animate(frame):
+            angle = angles[frame]
+            ax.view_init(elev=20, azim=angle)
+            ax.set_title(f'3D Rotation - {self.label} - {angle:.0f}°', 
+                        fontsize=14, fontweight='bold')
+            return sc,
+        
+        # Animation
+        ani = animation.FuncAnimation(fig, animate, frames=n_frames, 
+                                       interval=1000/fps, blit=False)
+        
+        # Sauvegarder
+        os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
+        
+        # Vérifier si ffmpeg est disponible
+        try:
+            ani.save(output_path, writer='ffmpeg', fps=fps, dpi=100)
+        except:
+            # Fallback sur matplotlib writer
+            ani.save(output_path, writer='pillow', fps=fps, dpi=100)
+        
+        plt.close()
+        
+        return output_path
 
     def _visualize_cell_boundaries(self, x, y, z, states, plot_types, save_prefix):
         return {}
@@ -1092,54 +1185,92 @@ class QuantileGridPartitioner(BasePartitioner):
 
 class OctreePartitioner(BasePartitioner):
     """
-    Octree adaptatif.
+    Octree adaptatif avec coupes axiales ou obliques.
 
-    Subdivise récursivement les cellules contenant plus de max_particles
-    particules, jusqu'à max_depth niveaux.
+    Principe général :
+      Subdivise récursivement l'espace 3D en cellules de plus en plus fines
+      dans les zones denses. Chaque cellule contenant plus de `max_particles`
+      particules est coupée en deux par un plan (axial ou oblique), jusqu'à
+      `max_depth` niveaux de profondeur.
 
-    Supporte les plans de coupe axiaux (axis) et obliques :
-      - "pca"      : plan orthogonal à la direction de variance maximale
-      - "kmeans2"  : plan médiateur entre 2 centroïdes k-means
-      - "2medians" : plan médiateur entre 2 médianes de cluster
-      - "random"   : plan aléatoire (direction uniforme sur la sphère)
-      - "svm"      : plan de marge maximale SVM (labels PCA)
+    Deux modes de fonctionnement :
+      1. **Axial** (`oblique_method=None` ou `"axis"`) :
+         Découpage classique en 8 octants alignés sur les axes x, y, z
+         selon les médianes des coordonnées. Construit un arbre 8-aire.
+
+      2. **Oblique** (`oblique_method` parmi "pca", "kmeans2", "2medians",
+         "random", "svm") :
+         Découpage binaire avec un plan de coupe orienté selon la géométrie
+         locale des particules. Construit un arbre binaire.
+
+    Méthodes de coupe oblique :
+      - "pca"      : Plan orthogonal à la direction de variance maximale
+                     (analyse en composantes principales).
+      - "kmeans2"  : Plan médiateur entre 2 centroïdes obtenus par k-means.
+      - "2medians" : Plan médiateur entre 2 médianes de cluster
+                     (variante robuste du k-means, insensible aux outliers).
+      - "random"   : Plan de direction aléatoire (uniforme sur la sphère),
+                     coupure à la médiane projective.
+      - "svm"      : Plan de marge maximale calculé par SVM linéaire,
+                     avec étiquettes binaires issues de PCA.
 
     Avantage : raffine automatiquement les zones denses.
     Inconvénient : nombre de cellules non contrôlé a priori.
     """
 
     def __init__(self, max_particles=100, max_depth=5, transform_type=0, oblique_method=None):
+        """
+        Parameters
+        ----------
+        max_particles : int
+            Seuil de remplissage : une cellule avec moins de `max_particles`
+            particules n'est plus subdivisée (devient une feuille).
+        max_depth : int
+            Profondeur maximale de récursion. Limite le nombre total de
+            subdivisions, même dans les zones très denses.
+        transform_type : int ou str
+            Type de normalisation appliqué aux coordonnées avant découpage.
+            Par exemple "normalize" pour mettre à l'échelle [0,1].
+        oblique_method : str ou None
+            Méthode de calcul du plan de coupe. None ou "axis" → coupes
+            axiales (octree classique). Sinon, choisir parmi "pca",
+            "kmeans2", "2medians", "random", "svm".
+        """
         super().__init__()
         self.max_particles = max_particles
         self.max_depth = max_depth
         self.transform_type = transform_type
         self.oblique_method = oblique_method
-        self._leaves = []
-        self._bounds = None
-        self._stats = {}
-        self._oblique_root = None
+        self._leaves = []          # feuilles axiales : liste de tuples (xmin,xmax,ymin,ymax,zmin,zmax)
+        self._bounds = None        # bounding box globale (xmin,xmax,ymin,ymax,zmin,zmax)
+        self._stats = {}           # statistiques (min, max) pour la normalisation
+        self._oblique_root = None  # racine de l'arbre binaire oblique (dict)
         om = oblique_method or "axis"
         self._splitting_method = f"octree_{om}"
 
     @property
     def n_cells(self):
+        """Nombre de feuilles (cellules) dans l'arbre oblique ou axial."""
         if self._oblique_root is not None:
             return self._count_tree_leaves(self._oblique_root)
         return len(self._leaves) if self._leaves else 0
 
     @property
     def label(self):
+        """Étiquette descriptive incluant les hyperparamètres et la méthode de coupe."""
         om = self.oblique_method or "axis"
         return f"octree_mp{self.max_particles}_md{self.max_depth}_{om}"
 
     # ── Helpers arbre oblique ──────────────────────────────────────────
 
     def _count_tree_leaves(self, node):
+        """Parcourt récursivement l'arbre binaire oblique et compte les feuilles."""
         if node["type"] == "leaf":
             return 1
         return self._count_tree_leaves(node["left"]) + self._count_tree_leaves(node["right"])
 
     def _flatten_tree(self, node):
+        """Concatène récursivement toutes les feuilles de l'arbre oblique en une liste plate."""
         if node["type"] == "leaf":
             return [node]
         return self._flatten_tree(node["left"]) + self._flatten_tree(node["right"])
@@ -1147,6 +1278,7 @@ class OctreePartitioner(BasePartitioner):
     # ── Transformation ─────────────────────────────────────────────────
 
     def _apply_transform(self, coords):
+        """Normalisation éventuelle des coordonnées avant découpage."""
         if self.transform_type == 'normalize':
             return (coords - self._stats["min"]) / (self._stats["max"] - self._stats["min"])
         return coords
@@ -1154,6 +1286,17 @@ class OctreePartitioner(BasePartitioner):
     # ── Fit ────────────────────────────────────────────────────────────
 
     def fit(self, coordinates):
+        """
+        Construit l'arbre de partitionnement à partir des coordonnées 3D.
+
+        Étapes :
+          1. Calcule les stats (min, max) pour la normalisation éventuelle.
+          2. Transforme les coordonnées si demandé.
+          3. Définit la bounding box globale (avec une marge eps).
+          4. Selon le mode :
+             - Oblique : construit un arbre binaire via _build_oblique_tree.
+             - Axial   : construit un octree 8-aire via _subdivide.
+        """
         coordinates = np.asarray(coordinates)
         eps = 0.001
         self._stats["min"] = coordinates.min(axis=0) - eps
@@ -1162,6 +1305,7 @@ class OctreePartitioner(BasePartitioner):
             transformed_coords = self._apply_transform(coordinates)
         else:
             transformed_coords = coordinates
+        # Bounding box globale (xmin, xmax, ymin, ymax, zmin, zmax)
         self._bounds = (
             transformed_coords[:, 0].min() - eps,
             transformed_coords[:, 0].max() + eps,
@@ -1172,31 +1316,60 @@ class OctreePartitioner(BasePartitioner):
         )
 
         if self.oblique_method not in (None, "axis"):
+            # Mode oblique : arbre binaire avec plans de coupe orientés
             self._oblique_root = self._build_oblique_tree(
                 transformed_coords, self._bounds, depth=0,
                 halfspaces_sofar=[]
             )
             self._leaves = []
         else:
+            # Mode axial : octree classique par médianes x, y, z
             self._leaves = []
             self._oblique_root = None
             self._subdivide(transformed_coords, self._bounds, depth=0)
         return self
 
-    # ── Subdivision axiale (originale) ─────────────────────────────────
+    # ── Subdivision axiale (octree classique) ──────────────────────────
 
     def _subdivide(self, coords, bounds, depth):
+        """
+        Subdivision axiale récursive : coupe chaque cellule en 8 octants
+        selon les médianes des coordonnées x, y, z.
+
+        Principe :
+          1. Si le nombre de particules <= max_particles ou profondeur max
+             atteinte → stocker comme feuille et arrêter.
+          2. Sinon, calculer la médiane de x, y, z.
+          3. Créer un code d'octant binaire (bit 0=x, bit 1=y, bit 2=z).
+          4. Pour chacun des 8 octants, calculer sa bounding box et
+             subdiviser récursivement les particules qu'il contient.
+
+        Paramètres
+        ----------
+        coords : ndarray (N, 3)
+            Coordonnées des particules dans cette cellule.
+        bounds : tuple (xmin, xmax, ymin, ymax, zmin, zmax)
+            Bounding box de la cellule courante.
+        depth : int
+            Profondeur actuelle dans l'arbre.
+        """
         xmin, xmax, ymin, ymax, zmin, zmax = bounds
         n_in = len(coords)
 
+        # Condition d'arrêt : assez peu de particules ou profondeur max
         if n_in <= self.max_particles or depth >= self.max_depth:
             self._leaves.append(bounds)
             return
 
+        # Médianes selon chaque axe
         xmid = np.median(coords[:, 0])
         ymid = np.median(coords[:, 1])
         zmid = np.median(coords[:, 2])
 
+        # Encodage binaire de l'octant :
+        #   bit 0 (poids 1) = côté x (0: gauche, 1: droite)
+        #   bit 1 (poids 2) = côté y (0: bas,   1: haut)
+        #   bit 2 (poids 4) = côté z (0: avant, 1: arrière)
         octant = (
             (coords[:, 0] >= xmid).astype(np.int64)
             + (coords[:, 1] >= ymid).astype(np.int64) * 2
@@ -1204,6 +1377,7 @@ class OctreePartitioner(BasePartitioner):
         )
 
         for idx in range(8):
+            # Décode les bits en coordonnées de la bounding box enfant
             ix, iy, iz = idx % 2, (idx // 2) % 2, idx // 4
             child_bounds = (
                 xmid if ix else xmin,
@@ -1219,10 +1393,39 @@ class OctreePartitioner(BasePartitioner):
     # ── Plan de coupe oblique ──────────────────────────────────────────
 
     def _find_splitting_plane(self, coords, method):
+        """
+        Calcule un plan de coupe (normale, offset) pour séparer les
+        particules en deux groupes, selon la méthode spécifiée.
+
+        Le plan est défini par :  normale · x = offset
+        - Les points avec normale · x <= offset vont à gauche.
+        - Les points avec normale · x >  offset vont à droite.
+
+        Paramètres
+        ----------
+        coords : ndarray (N, 3)
+            Positions des particules dans la cellule courante.
+        method : str
+            Méthode de coupe ("pca", "kmeans2", "2medians", "random", "svm").
+
+        Retour
+        ------
+        normal : ndarray (3,)
+            Vecteur normal unitaire au plan de coupe.
+        offset : float
+            Décalage (seuil) du plan.
+        """
         if len(coords) < 2:
+            # Moins de 2 points : plan par défaut (x=0)
             return np.array([1.0, 0.0, 0.0]), 0.0
 
         if method == "pca":
+            # PCA : plan orthogonal à la direction de variance maximale.
+            # 1. Matrice de covariance 3×3 des positions.
+            # 2. Décomposition en valeurs/vecteurs propres (eigh = hermitien).
+            # 3. Le vecteur propre de plus grande valeur propre = direction
+            #    de plus grande dispersion.
+            # 4. On coupe à la médiane des projections sur cette normale.
             cov = np.cov(coords, rowvar=False)
             eigvals, eigvecs = np.linalg.eigh(cov)
             normal = eigvecs[:, np.argmax(eigvals)]
@@ -1230,6 +1433,11 @@ class OctreePartitioner(BasePartitioner):
             offset = np.median(proj)
 
         elif method == "kmeans2":
+            # k-means à 2 clusters : plan médiateur des centroïdes.
+            # 1. Clustering k-means des positions en 2 groupes.
+            # 2. La normale du plan = vecteur reliant les 2 centroïdes.
+            # 3. L'offset = projection du point milieu sur cette normale.
+            # Échantillonnage à 10k points max pour limiter le coût.
             from sklearn.cluster import KMeans
             n = min(len(coords), 10000)
             kmeans = KMeans(n_clusters=2, n_init=3, random_state=42).fit(coords[:n])
@@ -1240,6 +1448,14 @@ class OctreePartitioner(BasePartitioner):
             offset = ((c1 + c2) / 2) @ normal
 
         elif method == "2medians":
+            # 2-médianes : variante robuste du k-means.
+            # Au lieu des moyennes (L2), on utilise les médianes (L1)
+            # comme centres, ce qui est moins sensible aux outliers.
+            # 1. Initialisation : 2 points aléatoires distincts.
+            # 2. 5 itérations d'affectation-recalcul :
+            #    a. Distance L2 aux 2 centres → labels.
+            #    b. Chaque centre = médiane des points de son cluster.
+            # 3. Plan médiateur des 2 centres finaux (comme kmeans2).
             rng = np.random.RandomState(42)
             idx = rng.choice(len(coords), min(2, len(coords)), replace=False)
             c1, c2 = coords[idx].copy()
@@ -1257,6 +1473,10 @@ class OctreePartitioner(BasePartitioner):
             offset = ((c1 + c2) / 2) @ normal
 
         elif method == "random":
+            # Plan aléatoire : direction uniforme sur la sphère unité.
+            # 1. Tirer un vecteur gaussien 3D et le normaliser.
+            # 2. Projeter les points sur cette direction.
+            # 3. Offset = médiane des projections (sépare en 2 parts égales).
             rng = np.random.RandomState(42)
             normal = rng.randn(3)
             normal /= np.linalg.norm(normal)
@@ -1264,6 +1484,15 @@ class OctreePartitioner(BasePartitioner):
             offset = np.median(proj)
 
         elif method == "svm":
+            # SVM linéaire : plan de marge maximale.
+            # 1. PCA pour générer des étiquettes binaires :
+            #    - Projeter sur la direction de variance max.
+            #    - Classe 1 si au-dessus de la médiane PCA, classe 0 sinon.
+            # 2. Entraîner un SVM linéaire (LinearSVC) à séparer ces 2 classes.
+            # 3. La normale = vecteur des coefficients SVM normalisé.
+            # 4. L'offset = -intercepte / ||w||.
+            # Note : les étiquettes PCA biaisent le SVM vers la direction
+            # de variance max, mais le SVM optimise la marge localement.
             from sklearn.svm import LinearSVC
             cov = np.cov(coords, rowvar=False)
             eigvals, eigvecs = np.linalg.eigh(cov)
@@ -1290,9 +1519,44 @@ class OctreePartitioner(BasePartitioner):
     # ── Construction arbre oblique ─────────────────────────────────────
 
     def _build_oblique_tree(self, coords, bounds, depth, halfspaces_sofar):
+        """
+        Construit récursivement un arbre binaire oblique.
+
+        Principe :
+          À chaque nœud, on calcule un plan de coupe via
+        `_find_splitting_plane`, on sépare les particules en deux groupes
+        (gauche : proj <= offset, droite : proj > offset), et on
+        subdivise récursivement chaque côté.
+
+        Structure d'un nœud interne :
+          {"type": "internal", "normal": vec3, "offset": float,
+           "left": node, "right": node}
+
+        Structure d'une feuille :
+          {"type": "leaf", "bounds": (xmin,...,zmax),
+           "centroid": vec3, "halfspaces": list}
+
+        La liste `halfspaces_sofar` accumule l'historique des
+        demi-espaces depuis la racine jusqu'à la feuille. Chaque
+        entrée est un tuple (normal, offset, sens) où sens est "le"
+        (<=) ou "gt" (>). Cela permet d'assigner un état à une
+        particule en évaluant tous les plans de coupe le long du chemin.
+
+        Paramètres
+        ----------
+        coords : ndarray (N, 3)
+            Particules dans la cellule courante.
+        bounds : tuple (xmin, xmax, ymin, ymax, zmin, zmax)
+            Bounding box (utile pour la visualisation).
+        depth : int
+            Profondeur actuelle.
+        halfspaces_sofar : list
+            Demi-espaces déjà traversés depuis la racine.
+        """
         xmin, xmax, ymin, ymax, zmin, zmax = bounds
         n_in = len(coords)
 
+        # Condition d'arrêt : feuille
         if n_in <= self.max_particles or depth >= self.max_depth:
             center = coords.mean(axis=0) if len(coords) > 0 else np.zeros(3)
             return {
@@ -1302,6 +1566,7 @@ class OctreePartitioner(BasePartitioner):
                 "halfspaces": list(halfspaces_sofar),
             }
 
+        # Calcul du plan de coupe
         normal, offset = self._find_splitting_plane(coords, self.oblique_method)
         proj = coords @ normal
         left_mask = proj <= offset
@@ -1309,6 +1574,8 @@ class OctreePartitioner(BasePartitioner):
         left_coords = coords[left_mask]
         right_coords = coords[right_mask]
 
+        # Sécurité : si le plan ne sépare rien (tous les points du même
+        # côté), on force une feuille pour éviter une boucle infinie.
         if len(left_coords) == 0 or len(right_coords) == 0:
             center = coords.mean(axis=0) if len(coords) > 0 else np.zeros(3)
             return {
@@ -1318,6 +1585,7 @@ class OctreePartitioner(BasePartitioner):
                 "halfspaces": list(halfspaces_sofar),
             }
 
+        # Propagation des demi-espaces dans chaque branche
         hs_left = list(halfspaces_sofar) + [(normal, offset, "le")]
         hs_right = list(halfspaces_sofar) + [(normal, offset, "gt")]
 
@@ -1332,6 +1600,18 @@ class OctreePartitioner(BasePartitioner):
     # ── Compute States ─────────────────────────────────────────────────
 
     def _assign_state_by_halfspaces(self, coords, leaves):
+        """
+        Assigne un état (cell_id) à chaque particule en évaluant les
+        demi-espaces accumulés le long du chemin dans l'arbre oblique.
+
+        Pour chaque feuille, on applique séquentiellement tous les
+        tests (normal·x <= offset) ou (normal·x > offset) pour
+        déterminer quelles particules appartiennent à cette cellule.
+
+        Fallback : si une particule n'est dans aucune feuille (cas
+        pathologique dû à des erreurs numériques), on lui assigne
+        la feuille la plus proche via cKDTree.
+        """
         n = len(coords)
         states = np.full(n, -1, dtype=np.int64)
         for cell_id, leaf in enumerate(leaves):
@@ -1352,7 +1632,56 @@ class OctreePartitioner(BasePartitioner):
             states[unassigned] = idx
         return states
 
+    def _compute_states_oblique_inlined(self, coords):
+        """
+        Version inline de l'assignation oblique (sans appeler
+        _assign_state_by_halfspaces). Même logique.
+        Conservée comme alternative — actuellement non utilisée
+        car la version avec `compute_states` ci-dessous prime.
+        """
+        leaves = self._flatten_tree(self._oblique_root)
+        n = len(coords)
+        states = np.full(n, -1, dtype=np.int64)
+        for cell_id, leaf in enumerate(leaves):
+            mask = np.ones(n, dtype=bool)
+            for normal, offset, side in leaf["halfspaces"]:
+                proj = coords @ normal
+                if side == "le":
+                    mask &= proj <= offset
+                else:
+                    mask &= proj > offset
+            states[mask] = cell_id
+        unassigned = states == -1
+        if unassigned.any():
+            centers = np.array([l["centroid"] for l in leaves])
+            from scipy.spatial import cKDTree
+            tree = cKDTree(centers)
+            _, idx = tree.query(coords[unassigned])
+            states[unassigned] = idx
+        return states
+
+    # ─── ATTENTION : Duplication de compute_states ─────────────────────
+    # Les deux définitions ci-dessous sont en conflit : la seconde
+    # (ligne ~1616) écrase la première (ligne ~1552).
+    # La seconde version utilise une logique inline au lieu d'appeler
+    # _assign_state_by_halfspaces. À nettoyer : garder une seule version.
+    # ───────────────────────────────────────────────────────────────────
+
     def compute_states(self, x, y, z):
+        """
+        Assigne un état (indice de cellule) à chaque particule.
+
+        Mode oblique : on aplatit l'arbre binaire en feuilles, puis
+        on évalue les demi-espaces de chaque feuille pour chaque
+        particule (approche "force brute" : O(N × n_leaves × depth)).
+
+        Mode axial : pour chaque cellule feuille, on teste si la
+        particule est dans sa bounding box (xmin ≤ x < xmax, etc.).
+        Fallback cKDTree pour les particules non assignées.
+
+        NOTE : Cette méthode est immédiatement écrasée par la seconde
+        définition de compute_states plus bas !
+        """
         coords = np.column_stack([
             np.asarray(x, dtype=np.float64),
             np.asarray(y, dtype=np.float64),
@@ -1386,7 +1715,18 @@ class OctreePartitioner(BasePartitioner):
         self.states = states
         return self.states
 
+    # ── Méthodes obsolètes / à nettoyer ────────────────────────────────
+    # Les méthodes _traverse_tree et _assign_cell_ids ci-dessous sont
+    # des tentatives de parcours plus efficaces (traverser l'arbre au
+    # lieu d'évaluer toutes les feuilles) mais ne sont pas utilisées
+    # actuellement. _assign_cell_ids est clairement inachevée.
+
     def _traverse_tree(self, coords, node, states, mask):
+        """
+        Parcourt récursivement l'arbre oblique en suivant le plan de
+        coupe à chaque nœud. Évite d'évaluer toutes les feuilles.
+        [NON UTILISÉ — approche plus efficace mais non intégrée]
+        """
         if node["type"] == "leaf":
             return
         proj = coords @ node["normal"]
@@ -1398,23 +1738,20 @@ class OctreePartitioner(BasePartitioner):
             self._traverse_tree(coords, node["right"], states, right_mask)
 
     def _assign_cell_ids(self, states):
+        """
+        [NON UTILISÉ — code mort, inachevé]
+        Tentative d'assigner les cell_ids aux feuilles après
+        une première traversée.
+        """
         leaves = self._flatten_tree(self._oblique_root)
-        for cell_id, leaf in enumerate(leaves):
-            xmin, xmax, ymin, ymax, zmin, zmax = leaf["bounds"]
-            mask = (
-                (states >= 0 if cell_id == 0 else states < 0)  # will be overridden
-            )
-        # Assign by traversing again (simpler)
-        coords_for_id = None
         for cell_id, leaf in enumerate(leaves):
             leaf["cell_id"] = cell_id
 
-        # Better: traverse again and set cell IDs
-        all_coords = None
-
-    # Actually, simpler: store cell_id in leaves during tree walking
-    # Let's redo: first pass traverse gets leaf_index, second pass resolves
-    # The cleanest: pass cell_id down during traversal
+    # ── Deuxième définition (écrase la première) ───────────────────────
+    # Même logique que la première compute_states, mais la partie
+    # oblique est inlinée (répète le code de _assign_state_by_halfspaces).
+    # C'est cette version qui est effective à l'exécution.
+    # TODO: Supprimer la redondance et garder une seule méthode propre.
 
     def compute_states(self, x, y, z):
         coords = np.column_stack([
@@ -1469,6 +1806,13 @@ class OctreePartitioner(BasePartitioner):
     # ── Save / Load ────────────────────────────────────────────────────
 
     def _save_data(self, path):
+        """Sauvegarde l'arbre (oblique ou axial) sur disque.
+
+        Mode oblique : pickle de l'arbre binaire + fichier texte
+        indiquant le nom de la méthode.
+        Mode axial : tableau numpy des feuilles (N×6).
+        Toujours sauvegarder la bounding box globale.
+        """
         if self._oblique_root is not None:
             self._save_oblique_tree(path, self._oblique_root)
             with open(os.path.join(path, "octree_mode.txt"), "w") as f:
@@ -1483,11 +1827,18 @@ class OctreePartitioner(BasePartitioner):
             np.save(os.path.join(path, "bounds.npy"), np.array(self._bounds))
 
     def _save_oblique_tree(self, path, node):
+        """Sauvegarde l'arbre oblique complet via pickle."""
         import pickle as pk
         with open(os.path.join(path, "oblique_tree.pkl"), "wb") as f:
             pk.dump(self._oblique_root, f, protocol=pk.HIGHEST_PROTOCOL)
 
     def _load_data(self, path):
+        """Charge un arbre préalablement sauvegardé.
+
+        Détecte automatiquement le mode (oblique ou axial) via le
+        fichier octree_mode.txt. En mode oblique, restore aussi
+        le nom de la méthode (pca, svm, etc.).
+        """
         mode_path = os.path.join(path, "octree_mode.txt")
         if os.path.exists(mode_path):
             with open(mode_path) as f:
@@ -1514,9 +1865,25 @@ class OctreePartitioner(BasePartitioner):
         if os.path.exists(bounds_path):
             self._bounds = tuple(np.load(bounds_path))
 
-    # ── Polygones 2D ───────────────────────────────────────────────────
+    # ── Polygones 2D (pour visualisation) ──────────────────────────────
 
     def _get_cell_polygons_2d(self, view='xy'):
+        """
+        Retourne les polygones 2D des feuilles pour la visualisation.
+
+        Pour chaque feuille (oblique ou axiale), on projette sa
+        bounding box sur le plan demandé ('xy' ou 'yz') et on
+        retourne un rectangle (4 sommets).
+
+        Paramètres
+        ----------
+        view : str
+            Plan de projection : 'xy' (défaut) ou 'yz'.
+
+        Retour
+        ------
+        list of (cell_id, pts)
+        """
         results = []
         if self._oblique_root is not None:
             leaves = self._flatten_tree(self._oblique_root)
@@ -1540,9 +1907,22 @@ class OctreePartitioner(BasePartitioner):
                 results.append((cell_id, pts))
         return results
 
-    # ── Polyèdres 3D ───────────────────────────────────────────────────
+    # ── Polyèdres 3D (pour visualisation) ──────────────────────────────
 
     def _get_cell_polyhedra_3d(self):
+        """
+        Retourne les polyèdres 3D des feuilles pour visualisation.
+
+        Chaque feuille est représentée par un parallélépipède
+        (8 sommets, 6 faces quadrilatères) défini par sa bounding
+        box. Utile pour matplotlib 3D ou plotly.
+
+        Retour
+        ------
+        list of (cell_id, vertices, face_indices)
+          vertices : ndarray (8, 3) — les 8 coins du parallélépipède
+          face_indices : list of 6 lists de 4 indices chacune
+        """
         results = []
         face_indices = [[0,1,2,3],[4,5,6,7],[0,1,5,4],[2,3,7,6],[0,3,7,4],[1,2,6,5]]
         if self._oblique_root is not None:
