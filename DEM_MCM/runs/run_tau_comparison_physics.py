@@ -28,6 +28,9 @@ except ImportError:
     from src.analyze_results import MarkovAnalyzer
     from src.partitioners import PhysicsAwarePartitioner
 
+IMAGES_DIR = os.path.join(PROJECT_ROOT, 'images', 'tau_studies')
+os.makedirs(IMAGES_DIR, exist_ok=True)
+
 # ══════════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════════
@@ -106,7 +109,7 @@ partitioner = PhysicsAwarePartitioner(n_cells=N_CELLS, velocity_weight=VELOCITY_
 # 5. Tracé comparatif RSD vs tau
 # ══════════════════════════════════════════════════════════════════════
 
-save_name = f"/kaggle/working/rsd_tau_physics_{diam_label.lower()}_comparison.png"
+save_name = os.path.join(IMAGES_DIR, f"rsd_tau_physics_{diam_label.lower()}_comparison.png")
 
 analyzer.plot_rsd_vs_tau_comparison(
     partitioner=partitioner,
