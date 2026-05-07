@@ -24,8 +24,12 @@ import matplotlib.pyplot as plt
 import argparse
 import re
 
-from analyze_results import MarkovAnalyzer
-from partitioners import PhysicsAwarePartitioner
+try:
+    from analyze_results import MarkovAnalyzer
+    from partitioners import PhysicsAwarePartitioner
+except ImportError:
+    from src.analyze_results import MarkovAnalyzer
+    from src.partitioners import PhysicsAwarePartitioner
 
 IMAGES_DIR = os.path.join(PROJECT_ROOT, 'images', 'velocity_weight')
 os.makedirs(IMAGES_DIR, exist_ok=True)
