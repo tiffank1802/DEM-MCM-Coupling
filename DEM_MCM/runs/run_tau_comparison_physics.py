@@ -44,8 +44,10 @@ START = 250
 def build_folder_name(tau, diameter):
     """Construit le nom du folder pour une config donnée."""
     diameter_str = str(diameter).replace(".", "")
+    vw = VELOCITY_WEIGHT
+    suffix = "withvel" if vw != 0 else "pos"
     return (
-        f"physics_{N_CELLS}cells_withvel_NLT{NLT}_step{STEP}_"
+        f"physics_{N_CELLS}cells_{suffix}_vw{vw}_NLT{NLT}_step{STEP}_"
         f"dt{DT}_tau{tau}_start{START}_d{diameter_str}"
     )
 

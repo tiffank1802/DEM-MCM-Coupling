@@ -46,45 +46,42 @@ DT = 2
 TAU = 50
 START = 250
 
-# Couleurs pour les courbes velocity_weight
 VW_COLORS = plt.cm.viridis(np.linspace(0.1, 0.9, len(VELOCITY_WEIGHTS)))
 
 
 def build_folder_name(vw, diameter):
-    vw_str = f"{vw:.1f}".replace(".", "p")
+    """Construit le nom du folder pour une config donnée."""
+    vw_suffix = f"vw{vw:.1f}"
+    suffix = "withvel" if vw != 0 else "pos"
     diameter_str = str(diameter).replace(".", "")
     return (
-        f"physics_{N_CELLS}cells_withvel_NLT{NLT}_step{STEP}_"
+        f"physics_{N_CELLS}cells_{suffix}_{vw_suffix}_NLT{NLT}_step{STEP}_"
         f"dt{DT}_tau{TAU}_start{START}_d{diameter_str}"
     )
 
 
 def extract_velocity_weight(folder_name):
-    vw_match = re.search(r'physics_\d+cells_withvel', folder_name)
-    if not vw_match:
-        return None
-    for vw in VELOCITY_WEIGHTS:
-        vw_str = f"{vw:.1f}".replace(".", "p")
-        if f"vw{vw_str}" in folder_name or f"vel{vw_str}" in folder_name:
-            return vw
+    """Extrait velocity_weight depuis le nom du dossier."""
+    match = re.search(r'_vw(\d+\.?\d*)_', folder_name)
+    if match:
+        return float(match.group(1))
     return None
 
 
 def find_matching_folders(analyzer, diameter):
+    """Trouve les dossiers physics correspondant à un diamètre donné."""
     diameter_str = str(diameter).replace(".", "")
     matching = []
-    for vw in VELOCITY_WEIGHTS:
-        for folder_name in analyzer.results:
-            if f"_d{diameter_str}" not in folder_name:
-                continue
-            if "physics" not in folder_name:
-                continue
-            if "withvel" not in folder_name:
-                continue
-            folder_vw = analyzer.results[folder_name].get("params", {}).get("method_kwargs", {}).get("velocity_weight")
-            if folder_vw is not None and abs(folder_vw - vw) < 0.01:
-                matching.append((vw, folder_name))
-                break
+    for folder_name in analyzer.results:
+        if f"_d{diameter_str}" not in folder_name:
+            continue
+        if "physics_" not in folder_name:
+            continue
+        folder_vw = analyzer.results[folder_name].get("params", {}).get("method_kwargs", {}).get("velocity_weight")
+        if folder_vw is None:
+            folder_vw = extract_velocity_weight(folder_name)
+        if folder_vw is not None and folder_vw in VELOCITY_WEIGHTS:
+            matching.append((folder_vw, folder_name))
     return matching
 
 
@@ -133,30 +130,23 @@ for vw, folder in available:
 
 fig, ax = plt.subplots(figsize=(14, 8))
 
-partitioner_base = PhysicsAwarePartitioner(n_cells=N_CELLS, velocity_weight=0.0)
+results_data = {}
 
 for i, (vw, folder) in enumerate(sorted(available, key=lambda x: x[0])):
     vw_color = VW_COLORS[i]
     result = analyzer.results[folder]
     matrix = result["matrix"]
-    params = result.get("params", {})
-    stats = result.get("stats", {})
 
     step_match = re.search(r'step(\d+)', folder)
     markov_step = int(step_match.group(1)) if step_match else STEP
-
-    start_match = re.search(r'start(\d+)', folder)
-    initial_time = int(start_match.group(1)) if start_match else START
 
     dt_markov_seconds = markov_step * 0.01
     n_steps = int(max_time_seconds / dt_markov_seconds)
     time_seconds = np.arange(n_steps) * dt_markov_seconds
 
     n_states = matrix.shape[0]
-    C0 = np.ones(n_states) / n_states
-    C = C0.copy()
+    C = np.ones(n_states) / n_states
     rsd_values = []
-    rsd_initial = np.sqrt(np.mean((C - 1.0/n_states)**2)) / np.mean(C) if np.mean(C) > 0 else 0
 
     for k in range(n_steps):
         C = matrix @ C
@@ -166,9 +156,12 @@ for i, (vw, folder) in enumerate(sorted(available, key=lambda x: x[0])):
             rsd = np.sqrt(np.mean((C_norm - 1.0/n_states)**2)) / np.mean(C_norm) if np.mean(C_norm) > 0 else 0
             rsd_values.append(rsd * 100)
 
-    rsd_initial_pct = analyzer.rsd_percent(C0) if hasattr(analyzer, 'rsd_percent') else (rsd_initial * 100)
-    if rsd_values:
-        rsd_values = [rsd_values[0] * (r / rsd_values[0]) if rsd_values[0] > 0 else r for r in [rsd_initial_pct] + rsd_values[1:]]
+    results_data[vw] = {
+        'time_seconds': time_seconds[:len(rsd_values)],
+        'rsd_values': rsd_values,
+        'stats': result.get("stats", {}),
+        'folder': folder,
+    }
 
     label = f"v_w={vw:.1f}"
     ax.plot(time_seconds[:len(rsd_values)], rsd_values,
@@ -205,12 +198,13 @@ print(f"{'='*70}")
 print(f"{'velocity_weight':>15s} | {'P(stay)':>8s} | {'λ₂':>8s} | {'Spectral gap':>12s} | {'RSD final (%)':>13s}")
 print("-" * 70)
 
-for vw, folder in sorted(available, key=lambda x: x[0]):
-    stats = analyzer.results[folder].get("stats", {})
+for vw in sorted(results_data.keys()):
+    data = results_data[vw]
+    stats = data['stats']
+    rsd_final = data['rsd_values'][-1] if data['rsd_values'] else 0
     p_stay = stats.get("p_stay", "N/A")
     lambda2 = stats.get("lambda_2", "N/A")
     spectral_gap = stats.get("spectral_gap", "N/A")
-    rsd_final = rsd_values[-1] if rsd_values else "N/A"
 
     if isinstance(p_stay, (int, float)):
         p_stay = f"{p_stay:.4f}"
@@ -218,9 +212,7 @@ for vw, folder in sorted(available, key=lambda x: x[0]):
         lambda2 = f"{lambda2:.4f}"
     if isinstance(spectral_gap, (int, float)):
         spectral_gap = f"{spectral_gap:.4f}"
-    if isinstance(rsd_final, (int, float)):
-        rsd_final = f"{rsd_final:.2f}"
 
-    print(f"{vw:>15.1f} | {p_stay:>8s} | {lambda2:>8s} | {spectral_gap:>12s} | {rsd_final:>13s}")
+    print(f"{vw:>15.1f} | {p_stay:>8s} | {lambda2:>8s} | {spectral_gap:>12s} | {rsd_final:>13.2f}")
 
 print(f"\n✅ Étude velocity_weight terminée!")
