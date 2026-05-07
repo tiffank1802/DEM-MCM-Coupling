@@ -1,40 +1,39 @@
+# -*- coding: utf-8 -*-
+"""
+Point d'entrée principal pour lancer les configurations d'expériences.
+
+Structure du projet:
+    configs/   — Fichiers de configuration d'expériences
+    runs/      — Scripts de lancement des études comparatives
+    images/    — Sorties graphiques des runs
+
+Usage:
+    # Lancer une config spécifique:
+    python configs/config_physics_tau.py
+    python configs/config_physics_velocity_weight.py
+    python configs/configs_tau_study.py
+
+    # Lancer une étude comparative:
+    python runs/run_tau_comparison_physics.py --diameter 0.004
+    python runs/run_velocity_weight_comparison.py --diameter 0.004
+"""
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
+
 from src import run_sweep as r_s
 
-
-configs = [
-    # ══════════════════════════════════════════════════════════════════════
-    # PHYSICS — SMALL (d=0.004) — Étude tau avec intégration des vitesses
-    # velocity_weight=0.5, nlt=20, step=50, dt=2, start=250
-    # ══════════════════════════════════════════════════════════════════════
-
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, nlt=20, tau=10,  step=50, dt=2, start_index=250, particle_diameter=0.004),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, nlt=20, tau=25,  step=50, dt=2, start_index=250, particle_diameter=0.004),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, nlt=20, tau=50,  step=50, dt=2, start_index=250, particle_diameter=0.004),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, nlt=20, tau=100, step=50, dt=2, start_index=250, particle_diameter=0.004),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, nlt=20, tau=150, step=50, dt=2, start_index=250, particle_diameter=0.004),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, nlt=20, tau=200, step=50, dt=2, start_index=250, particle_diameter=0.004),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, nlt=20, tau=300, step=50, dt=2, start_index=250, particle_diameter=0.004),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, nlt=20, tau=500, step=50, dt=2, start_index=250, particle_diameter=0.004),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, nlt=20, tau=750, step=50, dt=2, start_index=250, particle_diameter=0.004),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, nlt=20, tau=1000, step=50, dt=2, start_index=250, particle_diameter=0.004),
-
-    # ══════════════════════════════════════════════════════════════════════
-    # PHYSICS — BIG (d=0.008) — Étude tau avec intégration des vitesses
-    # velocity_weight=0.5, nlt=20, step=50, dt=2, start=250
-    # ══════════════════════════════════════════════════════════════════════
-
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, nlt=20, tau=10,  step=50, dt=2, start_index=250, particle_diameter=0.008),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, nlt=20, tau=25,  step=50, dt=2, start_index=250, particle_diameter=0.008),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, nlt=20, tau=50,  step=50, dt=2, start_index=250, particle_diameter=0.008),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, nlt=20, tau=100, step=50, dt=2, start_index=250, particle_diameter=0.008),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, nlt=20, tau=150, step=50, dt=2, start_index=250, particle_diameter=0.008),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, nlt=20, tau=200, step=50, dt=2, start_index=250, particle_diameter=0.008),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, nlt=20, tau=300, step=50, dt=2, start_index=250, particle_diameter=0.008),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, nlt=20, tau=500, step=50, dt=2, start_index=250, particle_diameter=0.008),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, nlt=20, tau=750, step=50, dt=2, start_index=250, particle_diameter=0.008),
-    r_s.ExperimentConfig(method="physics", method_kwargs={"n_cells": 30, "velocity_weight": 0.5}, nlt=20, tau=1000, step=50, dt=2, start_index=250, particle_diameter=0.008),
-
-]
-
-
-r_s.run_markov_sweep("physics", configs=configs, particle_diameter=None)
+print("📂 Structure du projet:")
+print("   configs/     — Configurations d'expériences")
+print("   runs/        — Scripts d'études comparatives")
+print("   images/      — Sorties graphiques")
+print()
+print("📋 Configurations disponibles:")
+print("   python configs/config_physics_tau.py           — Étude tau (physics)")
+print("   python configs/config_physics_velocity_weight.py — Étude velocity_weight (physics)")
+print("   python configs/configs_tau_study.py            — Étude tau (cylindrical)")
+print()
+print("📊 Runs comparatifs:")
+print("   python runs/run_tau_comparison_physics.py --diameter 0.004")
+print("   python runs/run_tau_comparison.py")
+print("   python runs/run_velocity_weight_comparison.py --diameter 0.004")
