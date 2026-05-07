@@ -324,6 +324,7 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
         
         # Sauvegarder
         os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
+        print(f"   🔍 DEBUG visualize_3d_rotation: has_ffmpeg={has_ffmpeg}, fps={fps}, frames={n_frames}")
         
         # Utiliser le writer disponible
         if has_ffmpeg:
