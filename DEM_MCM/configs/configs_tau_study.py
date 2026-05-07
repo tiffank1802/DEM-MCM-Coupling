@@ -1,4 +1,11 @@
-from src import run_sweep as r_s
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src'))
+
+try:
+    from src import run_sweep as r_s
+except ImportError:
+    import run_sweep as r_s
 
 # ══════════════════════════════════════════════════════════════════════
 # ÉTUDE DE L'INFLUENCE DU PAS DE TEMPS (tau) SUR LA CINÉTIQUE DE MÉLANGE

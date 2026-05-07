@@ -12,7 +12,10 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src'))
 
-from src import run_sweep as r_s
+try:
+    from src import run_sweep as r_s
+except ImportError:
+    import run_sweep as r_s
 
 VELOCITY_WEIGHTS = [0.0, 0.1, 0.2, 0.3, 0.5, 0.7, 1.0, 1.5, 2.0, 3.0]
 
