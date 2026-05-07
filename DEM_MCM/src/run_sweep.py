@@ -963,11 +963,15 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, partic
     # ── Diamètres pour visualize ──
     sample_diameters = None
     try:
-        with fs.open(files[5], "rb") as fh:
-            df = pl.read_csv(fh)
-            if "Diameter" in df.columns:
-                sample_diameters = df["Diameter"].to_numpy()
-                print(f"   📏 Diamètres chargés: {len(sample_diameters)} particules")
+        all_diameters = []
+        for f in tqdm(files[5::SAMPLE_RATE], desc="   Échantillonnage diamètres", leave=False):
+            with fs.open(f, "rb") as fh:
+                df = pl.read_csv(fh)
+                if "Diameter" in df.columns:
+                    all_diameters.append(df["Diameter"].to_numpy())
+        if all_diameters:
+            sample_diameters = np.concatenate(all_diameters)
+            print(f"   📏 Diamètres chargés: {len(sample_diameters)} particules")
     except Exception as e:
         print(f"   ⚠️  Diamètres non chargés: {e}")
 
