@@ -2173,18 +2173,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
                 print(f"⚠️  Mismatch velocities ({len(vel)}) vs coordinates ({len(coordinates)}), fallback to positions only")
         return self._fit_internal(coordinates)
 
-    def fit_with_physics(self:PhysicsAwarePartitioner, positions:np.ndarray, velocities:np.ndarray)->PhysicsAwarePartitioner:
-        """
-        Fit sur positions + vitesse complète (vx, vy, vz).
-
-        Args:
-            positions: (N, 3)
-            velocities: (N, 3)
-        """
-        vel = velocities * self.velocity_weight
-        features = np.hstack([positions, vel])
-        self._n_features = 6
-        return self._fit_internal(features)
+    
 
     def _fit_internal(self:PhysicsAwarePartitioner, features:np.ndarray)->PhysicsAwarePartitioner:
         from sklearn.cluster import MiniBatchKMeans
