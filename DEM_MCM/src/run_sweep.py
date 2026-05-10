@@ -25,6 +25,7 @@ from tqdm import tqdm
 from typing import Optional
 from dataclasses import dataclass, field, asdict
 from huggingface_hub import HfFileSystem
+from functools import lru_cache
 
 # from partitioners import create_partitioner, REGISTRY  
 # from bucket_io import save_experiment_to_bucket, BUCKET_BASE
@@ -558,7 +559,7 @@ def _get_default_kwargs(method):
 # CHARGEMENT DES DONNÉES
 # =============================================================================
 
-
+@lru_cache(maxsize=1)
 def sample_coordinates(files, fs, sample_rate=SAMPLE_RATE):
     """
     Échantillonne des coordonnées pour le fit des partitionneurs.
@@ -579,7 +580,7 @@ def sample_coordinates(files, fs, sample_rate=SAMPLE_RATE):
         )
         all_coords.append(coords)
     return np.vstack(all_coords)
-
+@lru_cache(maxsize=1)
 def sample_velocities(files, fs, sample_rate=SAMPLE_RATE):
     """
     Échantillonne des coordonnées pour le fit des partitionneurs.
@@ -725,7 +726,7 @@ def run_experiment(config, partitioner, files, fs, device):
     except Exception as e:
         print(f"   ⚠️  Erreur lors du chargement des espèces: {e}")
         species_labels = None
-    
+    @lru_cache(maxsize=1)
     def load_coords(file_path):
         with fs.open(file_path, "rb") as fh:
             df = pl.read_csv(fh)
@@ -735,6 +736,7 @@ def run_experiment(config, partitioner, files, fs, device):
             df["coordinates:1"].to_numpy(),
             df["coordinates:2"].to_numpy()
         )
+    @lru_cache(maxsize=1)
     def load_velocities(file_path):
         with fs.open(file_path, "rb") as fh:
             df = pl.read_csv(fh)
@@ -956,8 +958,8 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, partic
 
     # ── Coordonnées pour fit ──
     print("\n🔍 Échantillonnage des coordonnées pour le fit...")
-    sample_coords = sample_coordinates(files, fs)
-    s_velocities = sample_velocities(files, fs)
+    sample_coords = sample_coordinates(tuple(files), fs)
+    s_velocities = sample_velocities(tuple(files), fs)
     print(f"   {len(sample_coords)} points échantillonnés")
 
     # ── Diamètres pour visualize ──
@@ -1035,23 +1037,23 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, partic
                     print(f"   ⚠️  Visualisation échouée: {e}")
 
             # ✅ Générer la vidéo 3D avec rotation
-            video_path = None
-            print(f"   🔍 DEBUG: Entrée bloc vidéo, méthode existe: {hasattr(partitioner, 'visualize_3d_rotation')}")
-            if hasattr(partitioner, 'visualize_3d_rotation'):
-                try:
-                    safe_label = partitioner.label.replace('=', '_').replace(' ', '_').replace('/', '_')
-                    video_output = os.path.join("images", "3d_rotation", f"{safe_label}_rotation.mp4")
-                    os.makedirs(os.path.dirname(video_output), exist_ok=True)
-                    print(f"   🎥 Génération vidéo 3D: {video_output}")
-                    video_path = partitioner.visualize_3d_rotation(
-                        sample_coords[:, 0], sample_coords[:, 1], sample_coords[:, 2],
-                        particle_diameters=sample_diameters if sample_diameters is not None else None,
-                        output_path=video_output,
-                        duration=10, fps=60
-                    )
-                    print(f"   ✅ Vidéo générée: {video_path}")
-                except Exception as e:
-                    print(f"   ⚠️  Vidéo échouée: {e}")
+            # video_path = None
+            # print(f"   🔍 DEBUG: Entrée bloc vidéo, méthode existe: {hasattr(partitioner, 'visualize_3d_rotation')}")
+            # if hasattr(partitioner, 'visualize_3d_rotation'):
+            #     try:
+            #         safe_label = partitioner.label.replace('=', '_').replace(' ', '_').replace('/', '_')
+            #         video_output = os.path.join("images", "3d_rotation", f"{safe_label}_rotation.mp4")
+            #         os.makedirs(os.path.dirname(video_output), exist_ok=True)
+            #         print(f"   🎥 Génération vidéo 3D: {video_output}")
+            #         video_path = partitioner.visualize_3d_rotation(
+            #             sample_coords[:, 0], sample_coords[:, 1], sample_coords[:, 2],
+            #             particle_diameters=sample_diameters if sample_diameters is not None else None,
+            #             output_path=video_output,
+            #             duration=10, fps=60
+            #         )
+            #         print(f"   ✅ Vidéo générée: {video_path}")
+            #     except Exception as e:
+            #         print(f"   ⚠️  Vidéo échouée: {e}")
 
             # Lancer l'expérience
             P, stats = run_experiment(config, partitioner, files, fs, device)

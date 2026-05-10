@@ -1,6 +1,7 @@
 import pytest
 import numpy as np
-from ...partitioners import CylindricalPartitioner as Cyl
+from MyStudio.DEM_MCM.src.partitioners import CylindricalPartitioner as Cyl
+
 
 """
 Hypothèses sur le partitionnement:la numérotation
@@ -11,6 +12,22 @@ la numérotation se fait partant des rayons, puis vers les angles et enfin vers 
 #=======================================================================
 #vérification des numérotations suivant les rayons
 #=======================================================================
+
+def test_heritage_markov_class():
+    """l'attribut species_labels est typique de la classe MarkovAnalyzer car ne se trouve pas 
+    dans la classe CylindricalPartitioner"""
+    P=Cyl()
+    np.testing.assert_(hasattr(P,'species_labels'),True)
+
+
+def test_center_position():
+    """Verifie que le centre a bien les coordonnées (0,0,0)"""
+    coordinates=np.random.rand(100,3)
+    P=Cyl()
+    P.fit(coordinates=coordinates)
+    np.testing.assert_((P._x_center,P._y_center),(0,0))
+
+
 
 def test_compute_state_coord_r_0():
     """vérifie que la particule de coordonnées en r=0 est bien dans la partition d'indice 0"""

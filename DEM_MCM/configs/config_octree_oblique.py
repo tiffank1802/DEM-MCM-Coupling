@@ -17,7 +17,7 @@ except ImportError:
     import run_sweep as r_s
 
 OBLIQUE_METHODS = ["axis", "pca", "kmeans2", "2medians", "random", "svm"]
-BASE_KWARGS = {"max_particles": 100, "max_depth": 3}
+BASE_KWARGS = {"max_particles": 90, "max_depth": 3}
 BASE_PARAMS = {"nlt": 10, "step": 10, "dt": 2, "tau": 50, "start_index": 250}
 
 configs = []
