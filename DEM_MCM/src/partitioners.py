@@ -19,7 +19,7 @@
      physics      — K-means sur position + champs physiques
 ===================================================================================
 """
-
+from __future__ import annotations
 import numpy as np
 import os
 import io
@@ -61,9 +61,11 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
     """Interface commune pour tous les partitionneurs."""
     def __init__(self):
         self._y_split=0
+        self.y_seuil=None
         self._splitting_method = None
         super().__init__()
         self.PARTICLE_NUMBER=1030
+        self.particle_diameters=None
         
     # analyzer=ar.MarkovAnalyzer()
 
@@ -80,7 +82,7 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
         ...
 
     @abstractmethod
-    def fit(self, coordinates: np.ndarray)->object:
+    def fit(self, coordinates: np.ndarray)->BasePartitioner:
         """
         Apprend le partitionnement sur des données représentatives.
 
@@ -103,7 +105,7 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
         """
         ...
 
-    def save(self, path: str):
+    def save(self, path: str)->None:
         """Sauvegarde le partitionneur dans un dossier."""
         os.makedirs(path, # The above code is not valid Python code. It appears to be a comment with
         # the text "ex" followed by multiple pound symbols.
@@ -117,19 +119,19 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
             json.dump(meta, f, indent=2)
         self._save_data(path)
 
-    def _save_data(self, path):
+    def _save_data(self, path: str):
         pass
 
-    def load(self, path):
+    def load(self, path: str)->BasePartitioner:
         """Charge le partitionneur depuis un dossier."""
         self._load_data(path)
         return self
 
-    def _load_data(self, path):
+    def _load_data(self, path: str):
         pass
 
-    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="partition_visualization",
-                  particle_diameters=None, use_diameter=True, **kwargs):
+    def visualize(self, x:np.ndarray, y: np.ndarray, z: np.ndarray, plot_types: list=["3d", "2d_xy"], save_prefix: str="partition_visualization",
+                  particle_diameters=None, use_diameter: bool=True, **kwargs: dict):
         """
         Génère des visualisations des particules coloriées par état,
         avec taille proportionnelle au diamètre si disponible.
@@ -192,7 +194,7 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
             ax2.set_aspect('equal', adjustable='box')
             plt.colorbar(sc2, ax=ax2, label='État', shrink=0.8)
 
-            plt.tight_layout(rect=[0, 0.03, 1, 1])
+            plt.tight_layout(rect=(0.0, 0.03, 1.0, 1.0))
             buf = io.BytesIO()
             plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
             buf.seek(0)
@@ -208,7 +210,7 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
             fig.text(0.02, 0.01, info, fontsize=9, style='italic', alpha=0.7,
                      transform=fig.transFigure)
 
-            ax = fig.add_subplot(111, projection='3d')
+            ax:Axes3D = fig.add_subplot(111, projection='3d')
             sc = ax.scatter(x, y, z, c=states, cmap='tab20', s=sizes, alpha=0.7,
                             edgecolors='black', linewidth=0.3)
             ax.set_xlim(xmin, xmax)
@@ -218,6 +220,7 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
             ax.set_ylabel('Y (m)', fontsize=12, fontweight='bold')
             ax.set_zlabel('Z (m)', fontsize=12, fontweight='bold')
             ax.set_title(f'3D - {self.label}', fontsize=14, fontweight='bold')
+        
             ax.xaxis.pane.fill = False
             ax.yaxis.pane.fill = False
             ax.zaxis.pane.fill = False
@@ -233,9 +236,9 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
 
         return image_data
 
-    def visualize_3d_rotation(self, x, y, z, particle_diameters=None,
-                              output_path="rotation_video.mp4",
-                              duration=10, fps=60, use_diameter=True):
+    def visualize_3d_rotation(self, x: np.ndarray, y: np.ndarray, z: np.ndarray, particle_diameters=None,
+                              output_path: str="rotation_video.mp4",
+                              duration: int=10, fps: int=60, use_diameter: bool=True):
         """
         Génère une vidéo 3D du mélangeur avec rotation lente.
         
@@ -286,7 +289,7 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
         angles = np.linspace(0, 360, n_frames)
         
         # Créer la figure
-        fig = plt.figure(figsize=(12, 10))
+        fig = plt.figure(figsize=(12, 10)) # pyright: ignore[reportPossiblyUnboundVariable]
         ax = fig.add_subplot(111, projection='3d')
         
         # Limites
@@ -305,9 +308,9 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
         ax.set_ylabel('Y (m)', fontsize=12, fontweight='bold')
         ax.set_zlabel('Z (m)', fontsize=12, fontweight='bold')
         ax.set_title(f'3D Rotation - {self.label}', fontsize=14, fontweight='bold')
-        ax.xaxis.pane.fill = False
-        ax.yaxis.pane.fill = False
-        ax.zaxis.pane.fill = False
+        ax.xaxis.pane.fill=False # type: ignore
+        ax.xaxis.pane.fill=False # type: ignore
+        ax.xaxis.pane.fill=False # type: ignore
         ax.grid(True, alpha=0.3)
         plt.colorbar(sc, ax=ax, label='État', shrink=0.6)
         
@@ -668,7 +671,7 @@ class CartesianPartitioner(BasePartitioner):
         iz = np.clip(
             ((z - zmin) * self.nz / (zmax - zmin)).astype(np.int64), 0, self.nz - 1
         )
-        n=int(len(x)/self.PARTICLE_NUMBER)
+        #n=int(len(x)/self.PARTICLE_NUMBER)
         self.states=ix + iy * self.nx + iz * self.nx * self.ny
         return self.states#[np.tile(self.species_labels,n)]
 
@@ -836,7 +839,7 @@ class CylindricalPartitioner(BasePartitioner):
         iz = np.clip(
             ((z - self._z_min) / dz).astype(np.int64), 0, self.nz - 1
         )
-        n=int(len(x)/self.PARTICLE_NUMBER)
+        #n=int(len(x)/self.PARTICLE_NUMBER)
         self.states=ir + itheta * self.nr + iz * self.nr * self.ntheta
         return  self.states#[np.tile(self.species_labels,n)] # la numérotation des partitons se fait partant des rayons, puis les angles et enfin les hauteurs z
 
@@ -996,7 +999,7 @@ class VoronoiPartitioner(BasePartitioner):
         coords = np.column_stack(
             [np.asarray(x), np.asarray(y), np.asarray(z)]
         )
-        n=int(len(x)/self.PARTICLE_NUMBER)
+        #n=int(len(x)/self.PARTICLE_NUMBER)
 
         _, indices = self._tree.query(coords)
         self.states=indices.astype(np.int64)
@@ -1134,7 +1137,7 @@ class QuantileGridPartitioner(BasePartitioner):
         iz = np.clip(
             np.searchsorted(self._z_edges, z, side="right") - 1, 0, self.nz - 1
         )
-        n=int(len(x)/self.PARTICLE_NUMBER)
+        #n=int(len(x)/self.PARTICLE_NUMBER)
         self.states= ix + iy * self.nx + iz * self.nx * self.ny
         return self.states#[np.tile(self.species_labels,n)]
 
@@ -1232,7 +1235,7 @@ class OctreePartitioner(BasePartitioner):
     Inconvénient : nombre de cellules non contrôlé a priori.
     """
 
-    def __init__(self, max_particles=100, max_depth=5, transform_type=0, oblique_method=None):
+    def __init__(self: OctreePartitioner, max_particles=100, max_depth=5, transform_type=0, oblique_method: str=None)->None:
         """
         Parameters
         ----------
@@ -1263,27 +1266,27 @@ class OctreePartitioner(BasePartitioner):
         self._splitting_method = f"octree_{om}"
 
     @property
-    def n_cells(self):
+    def n_cells(self: OctreePartitioner)-> int:
         """Nombre de feuilles (cellules) dans l'arbre oblique ou axial."""
         if self._oblique_root is not None:
             return self._count_tree_leaves(self._oblique_root)
         return len(self._leaves) if self._leaves else 0
 
     @property
-    def label(self):
+    def label(self:OctreePartitioner)-> str:
         """Étiquette descriptive incluant les hyperparamètres et la méthode de coupe."""
         om = self.oblique_method or "axis"
         return f"octree_mp{self.max_particles}_md{self.max_depth}_{om}"
 
     # ── Helpers arbre oblique ──────────────────────────────────────────
 
-    def _count_tree_leaves(self, node):
+    def _count_tree_leaves(self: OctreePartitioner, node: dict)-> int:
         """Parcourt récursivement l'arbre binaire oblique et compte les feuilles."""
         if node["type"] == "leaf":
             return 1
         return self._count_tree_leaves(node["left"]) + self._count_tree_leaves(node["right"])
 
-    def _flatten_tree(self, node):
+    def _flatten_tree(self: OctreePartitioner, node: dict)->list:
         """Concatène récursivement toutes les feuilles de l'arbre oblique en une liste plate."""
         if node["type"] == "leaf":
             return [node]
@@ -1291,7 +1294,7 @@ class OctreePartitioner(BasePartitioner):
 
     # ── Transformation ─────────────────────────────────────────────────
 
-    def _apply_transform(self, coords):
+    def _apply_transform(self: OctreePartitioner, coords:np.ndarray)->np.ndarray:
         """Normalisation éventuelle des coordonnées avant découpage."""
         if self.transform_type == 'normalize':
             return (coords - self._stats["min"]) / (self._stats["max"] - self._stats["min"])
@@ -1299,7 +1302,7 @@ class OctreePartitioner(BasePartitioner):
 
     # ── Fit ────────────────────────────────────────────────────────────
 
-    def fit(self, coordinates):
+    def fit(self: OctreePartitioner, coordinates: np.ndarray)-> OctreePartitioner:
         """
         Construit l'arbre de partitionnement à partir des coordonnées 3D.
 
@@ -1345,7 +1348,7 @@ class OctreePartitioner(BasePartitioner):
 
     # ── Subdivision axiale (octree classique) ──────────────────────────
 
-    def _subdivide(self, coords, bounds, depth):
+    def _subdivide(self: OctreePartitioner, coords: np.ndarray, bounds:tuple, depth:int)->None:
         """
         Subdivision axiale récursive : coupe chaque cellule en 8 octants
         selon les médianes des coordonnées x, y, z.
@@ -1406,7 +1409,7 @@ class OctreePartitioner(BasePartitioner):
 
     # ── Plan de coupe oblique ──────────────────────────────────────────
 
-    def _find_splitting_plane(self, coords, method):
+    def _find_splitting_plane(self: OctreePartitioner, coords: np.ndarray, method: str)-> tuple[np.ndarray,float]:
         """
         Calcule un plan de coupe (normale, offset) pour séparer les
         particules en deux groupes, selon la méthode spécifiée.
@@ -1440,9 +1443,9 @@ class OctreePartitioner(BasePartitioner):
             # 3. Le vecteur propre de plus grande valeur propre = direction
             #    de plus grande dispersion.
             # 4. On coupe à la médiane des projections sur cette normale.
-            cov = np.cov(coords, rowvar=False)
+            cov = np.cov(coords, rowvar=False) # car coords est une matrice (N,3) 3: represente les variables donc les colonnes
             eigvals, eigvecs = np.linalg.eigh(cov)
-            normal = eigvecs[:, np.argmax(eigvals)]
+            normal = eigvecs[:, np.argmax(eigvals)] # la normale est la direction de valeur propre maximale
             proj = coords @ normal
             offset = np.median(proj)
 
@@ -1583,8 +1586,8 @@ class OctreePartitioner(BasePartitioner):
         # Calcul du plan de coupe
         normal, offset = self._find_splitting_plane(coords, self.oblique_method)
         proj = coords @ normal
-        left_mask = proj <= offset
-        right_mask = proj > offset
+        left_mask = (proj <= offset)
+        right_mask =  (proj > offset)
         left_coords = coords[left_mask]
         right_coords = coords[right_mask]
 
@@ -1646,14 +1649,14 @@ class OctreePartitioner(BasePartitioner):
             states[unassigned] = idx
         return states
 
-    def _compute_states_oblique_inlined(self, coords):
+    def _compute_states_oblique_inlined(self: OctreePartitioner, coords: np.ndarray)->np.ndarray:
         """
         Version inline de l'assignation oblique (sans appeler
         _assign_state_by_halfspaces). Même logique.
         Conservée comme alternative — actuellement non utilisée
         car la version avec `compute_states` ci-dessous prime.
         """
-        leaves = self._flatten_tree(self._oblique_root)
+        leaves = self._flatten_tree(self._oblique_root) #type: ignore
         n = len(coords)
         states = np.full(n, -1, dtype=np.int64)
         for cell_id, leaf in enumerate(leaves):
@@ -1668,7 +1671,7 @@ class OctreePartitioner(BasePartitioner):
         unassigned = states == -1
         if unassigned.any():
             centers = np.array([l["centroid"] for l in leaves])
-            from scipy.spatial import cKDTree
+            from scipy.spatial import cKDTree #type: ignore
             tree = cKDTree(centers)
             _, idx = tree.query(coords[unassigned])
             states[unassigned] = idx
@@ -1681,7 +1684,7 @@ class OctreePartitioner(BasePartitioner):
     # _assign_state_by_halfspaces. À nettoyer : garder une seule version.
     # ───────────────────────────────────────────────────────────────────
 
-    def compute_states(self, x, y, z):
+    def compute_states(self: OctreePartitioner, x: np.ndarray, y: np.ndarray, z: np.ndarray)->np.ndarray: #type: ignore
         """
         Assigne un état (indice de cellule) à chaque particule.
 
@@ -1717,7 +1720,7 @@ class OctreePartitioner(BasePartitioner):
                 states[mask] = cell_id
             unassigned = states == -1
             if unassigned.any():
-                from scipy.spatial import cKDTree
+                from scipy.spatial import cKDTree #type: ignore
                 centers = np.array([
                     ((b[0] + b[1]) / 2, (b[2] + b[3]) / 2, (b[4] + b[5]) / 2)
                     for b in self._leaves
@@ -1735,7 +1738,7 @@ class OctreePartitioner(BasePartitioner):
     # lieu d'évaluer toutes les feuilles) mais ne sont pas utilisées
     # actuellement. _assign_cell_ids est clairement inachevée.
 
-    def _traverse_tree(self, coords, node, states, mask):
+    def _traverse_tree(self: OctreePartitioner, coords: np.ndarray, node: dict, states: np.ndarray, mask:np.ndarray)->None:
         """
         Parcourt récursivement l'arbre oblique en suivant le plan de
         coupe à chaque nœud. Évite d'évaluer toutes les feuilles.
@@ -1757,7 +1760,7 @@ class OctreePartitioner(BasePartitioner):
         Tentative d'assigner les cell_ids aux feuilles après
         une première traversée.
         """
-        leaves = self._flatten_tree(self._oblique_root)
+        leaves = self._flatten_tree(self._oblique_root) #type: ignore
         for cell_id, leaf in enumerate(leaves):
             leaf["cell_id"] = cell_id
 
@@ -1767,7 +1770,7 @@ class OctreePartitioner(BasePartitioner):
     # C'est cette version qui est effective à l'exécution.
     # TODO: Supprimer la redondance et garder une seule méthode propre.
 
-    def compute_states(self, x, y, z):
+    def compute_states(self: OctreePartitioner, x: np.ndarray, y: np.ndarray, z: np.ndarray)->np.ndarray:
         coords = np.column_stack([
             np.asarray(x, dtype=np.float64),
             np.asarray(y, dtype=np.float64),
@@ -1819,7 +1822,7 @@ class OctreePartitioner(BasePartitioner):
 
     # ── Save / Load ────────────────────────────────────────────────────
 
-    def _save_data(self, path):
+    def _save_data(self: OctreePartitioner, path: str)->None:
         """Sauvegarde l'arbre (oblique ou axial) sur disque.
 
         Mode oblique : pickle de l'arbre binaire + fichier texte
@@ -1846,7 +1849,7 @@ class OctreePartitioner(BasePartitioner):
         with open(os.path.join(path, "oblique_tree.pkl"), "wb") as f:
             pk.dump(self._oblique_root, f, protocol=pk.HIGHEST_PROTOCOL)
 
-    def _load_data(self, path):
+    def _load_data(self: OctreePartitioner, path: str)->None:
         """Charge un arbre préalablement sauvegardé.
 
         Détecte automatiquement le mode (oblique ou axial) via le
@@ -1881,7 +1884,7 @@ class OctreePartitioner(BasePartitioner):
 
     # ── Polygones 2D (pour visualisation) ──────────────────────────────
 
-    def _get_cell_polygons_2d(self, view='xy'):
+    def _get_cell_polygons_2d(self: OctreePartitioner, view: str='xy')-> list:
         """
         Retourne les polygones 2D des feuilles pour la visualisation.
 
@@ -1923,7 +1926,7 @@ class OctreePartitioner(BasePartitioner):
 
     # ── Polyèdres 3D (pour visualisation) ──────────────────────────────
 
-    def _get_cell_polyhedra_3d(self):
+    def _get_cell_polyhedra_3d(self: OctreePartitioner)-> list:
         """
         Retourne les polyèdres 3D des feuilles pour visualisation.
 
@@ -2031,7 +2034,7 @@ class OctreePartitioner(BasePartitioner):
             info = f"Méthode de découpage : octree_{method}"
             fig.text(0.02, 0.01, info, fontsize=9, style='italic', alpha=0.7,
                      transform=fig.transFigure)
-            plt.tight_layout(rect=[0, 0.03, 1, 1])
+            plt.tight_layout(rect=(0, 0.03, 1, 1))
             buf = io.BytesIO()
             plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
             buf.seek(0)
@@ -2062,7 +2065,7 @@ class OctreePartitioner(BasePartitioner):
             info = f"Méthode de découpage : octree_{method}"
             fig.text(0.02, 0.01, info, fontsize=9, style='italic', alpha=0.7,
                      transform=fig.transFigure)
-            plt.tight_layout(rect=[0, 0.03, 1, 1])
+            plt.tight_layout(rect=(0, 0.03, 1, 1))
             buf = io.BytesIO()
             plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
             buf.seek(0)
@@ -2088,7 +2091,7 @@ class OctreePartitioner(BasePartitioner):
                 conc[:n_states // 2] = 1.0
                 conc = conc / conc.sum()
                 om_rsd = []
-                for _ in range(n_steps):
+                for _ in range(n_steps): #type: ignore
                     conc = om_P.T @ conc
                     mean_c = conc.mean()
                     std_c = conc.std()
@@ -2132,26 +2135,26 @@ class PhysicsAwarePartitioner(BasePartitioner):
 
     def __init__(self, n_cells=125, velocity_weight=0.5, random_state=42):
         super().__init__()
-        self._n_cells = n_cells
-        self.velocity_weight = velocity_weight
-        self.random_state = random_state
-        self._centroids = None
+        self._n_cells:int = n_cells
+        self.velocity_weight:float = velocity_weight
+        self.random_state:int  = random_state
+        self._centroids:np.ndarray = None #type:ignore
         self._tree = None
-        self._mean = None
-        self._std = None
-        self._n_features = 3
-        self._splitting_method = "physics"
+        self._mean:np.ndarray = None #type: ignore
+        self._std:np.ndarray = None #type: ignore
+        self._n_features:int = 3
+        self._splitting_method: str = "physics"
 
     @property
-    def n_cells(self):
+    def n_cells(self:PhysicsAwarePartitioner)-> int:
         return self._n_cells
 
     @property
-    def label(self):
+    def label(self:PhysicsAwarePartitioner)-> str:
         suffix = "pos" if self.velocity_weight == 0 else "withvel"
         return f"physics_{self._n_cells}cells_{suffix}_vw{self.velocity_weight}"
 
-    def fit(self, coordinates, use_velocities=False):
+    def fit(self:PhysicsAwarePartitioner, coordinates: np.ndarray, use_velocities:bool=False)->PhysicsAwarePartitioner:
         """
         Fit sur positions seules ou positions + vitesses DEM.
 
@@ -2170,7 +2173,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
                 print(f"⚠️  Mismatch velocities ({len(vel)}) vs coordinates ({len(coordinates)}), fallback to positions only")
         return self._fit_internal(coordinates)
 
-    def fit_with_physics(self, positions, velocities):
+    def fit_with_physics(self:PhysicsAwarePartitioner, positions:np.ndarray, velocities:np.ndarray)->PhysicsAwarePartitioner:
         """
         Fit sur positions + vitesse complète (vx, vy, vz).
 
@@ -2183,9 +2186,9 @@ class PhysicsAwarePartitioner(BasePartitioner):
         self._n_features = 6
         return self._fit_internal(features)
 
-    def _fit_internal(self, features):
+    def _fit_internal(self:PhysicsAwarePartitioner, features:np.ndarray)->PhysicsAwarePartitioner:
         from sklearn.cluster import MiniBatchKMeans
-        from scipy.spatial import cKDTree
+        from scipy.spatial import cKDTree # type: ignore
 
         self._n_features = features.shape[1]
 
@@ -2215,38 +2218,38 @@ class PhysicsAwarePartitioner(BasePartitioner):
         self._tree = cKDTree(self._centroids)
         return self
 
-    def compute_states(self, x, y, z):
+    def compute_states(self:PhysicsAwarePartitioner, x: np.ndarray, y: np.ndarray, z: np.ndarray)->np.ndarray:
         """Assigne les états (position seule, vitesse=0 si fitté avec vitesses)."""
         coords = np.column_stack([np.asarray(x), np.asarray(y), np.asarray(z)])
         if self._n_features > 3:
             padding = np.zeros((len(coords), self._n_features - 3))
             coords = np.hstack([coords, padding])
 
-        X = (coords - self._mean) / self._std
-        _, indices = self._tree.query(X)
+        X = (coords - self._mean) / self._std  
+        _, indices = self._tree.query(X) #type: ignore
         self.states = indices.astype(np.int64)
         return self.states
 
-    def compute_states_with_physics(self, x, y, z, vx, vy, vz):
+    def compute_states_with_physics(self:PhysicsAwarePartitioner, x: np.ndarray, y: np.ndarray, z: np.ndarray, vx: np.ndarray, vy: np.ndarray, vz: np.ndarray)->np.ndarray:
         """Assigne les états avec vitesse complète (vx, vy, vz)."""
         pos = np.column_stack([np.asarray(x), np.asarray(y), np.asarray(z)])
         vel = np.column_stack([np.asarray(vx), np.asarray(vy), np.asarray(vz)]) * self.velocity_weight
         features = np.hstack([pos, vel])
 
         X = (features - self._mean) / self._std
-        _, indices = self._tree.query(X)
+        _, indices = self._tree.query(X) # type: ignore
         self.states = indices.astype(np.int64)
         return self.states
 
-    def _save_data(self, path):
+    def _save_data(self:PhysicsAwarePartitioner, path:str)->None:
         np.save(os.path.join(path, "centroids.npy"), self._centroids)
         np.save(os.path.join(path, "mean.npy"), self._mean)
         np.save(os.path.join(path, "std.npy"), self._std)
         with open(os.path.join(path, "physics_params.json"), "w") as f:
             json.dump({"n_features": self._n_features}, f)
 
-    def _load_data(self, path):
-        from scipy.spatial import cKDTree
+    def _load_data(self:PhysicsAwarePartitioner, path: str)->None:
+        from scipy.spatial import cKDTree # type: ignore
 
         self._centroids = np.load(os.path.join(path, "centroids.npy"))
         self._mean = np.load(os.path.join(path, "mean.npy"))
@@ -2256,14 +2259,12 @@ class PhysicsAwarePartitioner(BasePartitioner):
         with open(os.path.join(path, "physics_params.json")) as f:
             self._n_features = json.load(f)["n_features"]
 
-    def visualize(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="partition_visualization",
-                  particle_diameters=None, use_diameter=True, **kwargs):
+    def visualize(self:PhysicsAwarePartitioner, x: np.ndarray, y: np.ndarray, z: np.ndarray, plot_types: list=["3d", "2d_xy"], save_prefix: str="partition_visualization",
+                  particle_diameters=None, use_diameter: bool=True, **kwargs: dict)-> dict:
         """
         Génère des visualisations - NE refitte PAS si déjà fitté.
         """
-        import matplotlib.pyplot as plt
-        import io
-        from scipy.spatial import Voronoi
+        
         
         if self._centroids is None:
             raise ValueError("Partitioner not fitted! Call fit_with_physics() first.")
@@ -2320,7 +2321,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
             ax2.set_aspect('equal', adjustable='box')
             plt.colorbar(sc2, ax=ax2, label='État', shrink=0.8)
 
-            plt.tight_layout(rect=[0, 0.03, 1, 1])
+            plt.tight_layout(rect=(0, 0.03, 1, 1))
             buf = io.BytesIO()
             plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
             buf.seek(0)
@@ -2335,7 +2336,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
                      transform=fig.transFigure)
 
             ax = fig.add_subplot(111, projection='3d')
-            sc = ax.scatter(x, y, z, c=states, cmap='tab20', s=sizes, alpha=0.7,
+            sc = ax.scatter(x, y, z, c=states, cmap='tab20', s=sizes, alpha=0.7, # type: ignore
                            edgecolors='black', linewidth=0.3)
             ax.set_xlim(xmin, xmax)
             ax.set_ylim(ymin, ymax)
@@ -2353,7 +2354,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
 
         return image_data
 
-    def _get_cell_polygons_2d(self, view='xy'):
+    def _get_cell_polygons_2d(self:PhysicsAwarePartitioner, view: str='xy')-> list:
         pos_centroids = self._centroids[:, :3]
         if view == 'xy':
             pts_2d = pos_centroids[:, :2]
@@ -2361,7 +2362,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
             pts_2d = pos_centroids[:, 1:]
         else:
             return []
-        vor = Voronoi(pts_2d)
+        vor = Voronoi(pts_2d)# Voronoi de scipy.spatial
         results = []
         for state_id in range(self._n_cells):
             region_idx = vor.point_region[state_id]
@@ -2372,7 +2373,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
             results.append((state_id, polygon_pts))
         return results
 
-    def _get_cell_polyhedra_3d(self):
+    def _get_cell_polyhedra_3d(self:PhysicsAwarePartitioner)-> list:
         pos_centroids = self._centroids[:, :3]
         vor = Voronoi(pos_centroids)
         results = []
@@ -2416,13 +2417,13 @@ class AdaptivePartitioner(BasePartitioner):
     
     def __init__(
         self,
-        y_split: float = None,
+        y_split: float = None,#type: ignore
         y_split_mode: str = "quantile",
         n_cells_top: int = 1,
         top_method: str = "single",
-        top_kwargs: dict = None,
+        top_kwargs: dict = None,#type: ignore
         bottom_method: str = "cylindrical",
-        bottom_kwargs: dict = None,
+        bottom_kwargs: dict = None,#type: ignore
     ):
         self._splitting_method = "adaptive"
         self.y_split_input = y_split
@@ -2444,13 +2445,13 @@ class AdaptivePartitioner(BasePartitioner):
         self._n_cells_bottom = None
     
     @property
-    def n_cells(self):
+    def n_cells(self:AdaptivePartitioner)-> int:
         if self._n_cells_top is None or self._n_cells_bottom is None:
             return 0
         return self._n_cells_top + self._n_cells_bottom
     
     @property
-    def label(self):
+    def label(self:AdaptivePartitioner)-> str:
         """Propriété manquante nécessaire à l'instanciation"""
         return (
             f"adaptive_y_{self.bottom_method}"
@@ -2458,7 +2459,7 @@ class AdaptivePartitioner(BasePartitioner):
             f"_split{self.y_split_input}_mode{self.y_split_mode}"
         )
     
-    def fit(self, coordinates: np.ndarray):
+    def fit(self:AdaptivePartitioner, coordinates: np.ndarray)->AdaptivePartitioner:
         coordinates = np.asarray(coordinates)
         y = coordinates[:, 1]  # Utilisation de la coordonnée y
         
@@ -2505,8 +2506,9 @@ class AdaptivePartitioner(BasePartitioner):
             if len(coords_top) > 0:
                 self._top_partitioner.fit(coords_top)
             self._n_cells_top = self._top_partitioner.n_cells
+        return self
     
-    def compute_states(self, x, y, z):
+    def compute_states(self:AdaptivePartitioner, x: np.ndarray, y: np.ndarray, z: np.ndarray)->np.ndarray:
         # ── Convertir en numpy arrays pour éviter les erreurs de masquage booléen ──
         x = np.asarray(x, dtype=np.float64)
         y = np.asarray(y, dtype=np.float64)
@@ -2520,7 +2522,7 @@ class AdaptivePartitioner(BasePartitioner):
         
         # ── Zone basse : états 0 à n_cells_bottom-1 ──
         if mask_bottom.any():
-            states[mask_bottom] = self._bottom_partitioner.compute_states(
+            states[mask_bottom] = self._bottom_partitioner.compute_states( # type: ignore
                 x[mask_bottom], y[mask_bottom], z[mask_bottom]
             )
         
@@ -2533,12 +2535,12 @@ class AdaptivePartitioner(BasePartitioner):
                     x[mask_top], y[mask_top], z[mask_top]
                 )
                 states[mask_top] = top_states + self._n_cells_bottom
-        # n=int(len(x)/self.PARTICLE_NUMBER)
+        # #n=int(len(x)/self.PARTICLE_NUMBER)
         self.states= states # Les méthode de découpage hybrides comme le adaptive et le multizone ne necessite pas l'application de masque car
         # elles appellent déjà d'autres méthode de computestate des classes de découpage qu'elle instancient.
         return self.states
 
-    def _get_cell_polygons_2d(self, view='xy'):
+    def _get_cell_polygons_2d(self:AdaptivePartitioner, view: str='xy')-> list:
         results = []
         if self._bottom_partitioner is not None:
             for state_id, pts in self._bottom_partitioner._get_cell_polygons_2d(view):
@@ -2552,7 +2554,7 @@ class AdaptivePartitioner(BasePartitioner):
             results.append((offset, np.array([[0, 0], [1, 0], [1, 1], [0, 1]])))
         return results
 
-    def _get_cell_polyhedra_3d(self):
+    def _get_cell_polyhedra_3d(self:AdaptivePartitioner)-> list:
         results = []
         if self._bottom_partitioner is not None:
             for state_id, vertices, faces in self._bottom_partitioner._get_cell_polyhedra_3d():
@@ -2586,27 +2588,27 @@ class MultiZonePartitioner(BasePartitioner):
     """
     
     def __init__(
-        self,
+        self:MultiZonePartitioner,
         zones: list,
         y_mode: str = "absolute"
     ):
-        self._splitting_method = "multizone"
+        self._splitting_method:str = "multizone"
         self.zones_config = zones
         self.y_mode = y_mode
-        self._zones = []  # [(y_min, y_max, partitioner), ...]
-        self._cell_offsets = []
-        self._total_cells = 0
+        self._zones:list = []  # [(y_min, y_max, partitioner), ...]
+        self._cell_offsets:list = []
+        self._total_cells:int = 0
     
     @property
-    def n_cells(self):
+    def n_cells(self:MultiZonePartitioner)->int:
         return self._total_cells
     
     @property
-    def label(self):
+    def label(self:MultiZonePartitioner)-> str:
         methods = "_".join(z["method"] for z in self.zones_config)
         return f"multizone_{len(self.zones_config)}zones_{methods}"
     
-    def fit(self, coordinates):
+    def fit(self:MultiZonePartitioner, coordinates: np.ndarray)->MultiZonePartitioner:
         coordinates = np.asarray(coordinates)
         y = coordinates[:, 1]  # Utilisation de l'axe Y (index 1)
         
@@ -2654,7 +2656,7 @@ class MultiZonePartitioner(BasePartitioner):
         
         return self
     
-    def compute_states(self, x, y, z):
+    def compute_states(self:MultiZonePartitioner, x: np.ndarray, y: np.ndarray, z: np.ndarray)->np.ndarray:
         x = np.asarray(x, dtype=np.float64)
         y = np.asarray(y, dtype=np.float64)
         z = np.asarray(z, dtype=np.float64)
@@ -2675,11 +2677,11 @@ class MultiZonePartitioner(BasePartitioner):
                 )
                 states[mask] = zone_states + self._cell_offsets[i]
                 assigned[mask] = True
-        # n=int(len(x)/self.PARTICLE_NUMBER)
+        # #n=int(len(x)/self.PARTICLE_NUMBER)
         self.states= states
         return self.states
     
-    def _save_data(self, path):
+    def _save_data(self:MultiZonePartitioner, path:str)->None:
         config = {
             "zones_config": self.zones_config,
             "y_mode": self.y_mode,
@@ -2693,7 +2695,7 @@ class MultiZonePartitioner(BasePartitioner):
             zone_path = os.path.join(path, f"zone_{i}")
             partitioner.save(zone_path)
     
-    def _load_data(self, path):
+    def _load_data(self:MultiZonePartitioner, path: str)->None:
         with open(os.path.join(path, "multizone_config.json")) as f:
             config = json.load(f)
         
@@ -2718,7 +2720,7 @@ class MultiZonePartitioner(BasePartitioner):
             
             self._zones.append((y_min, y_max, partitioner))
 
-    def _get_cell_polygons_2d(self, view='xy'):
+    def _get_cell_polygons_2d(self:MultiZonePartitioner, view:str='xy')-> list:
         results = []
         for zone_idx, (y_min, y_max, partitioner) in enumerate(self._zones):
             offset = self._cell_offsets[zone_idx]
@@ -2726,7 +2728,7 @@ class MultiZonePartitioner(BasePartitioner):
                 results.append((state_id + offset, pts))
         return results
 
-    def _get_cell_polyhedra_3d(self):
+    def _get_cell_polyhedra_3d(self:MultiZonePartitioner)-> list:
         results = []
         for zone_idx, (y_min, y_max, partitioner) in enumerate(self._zones):
             offset = self._cell_offsets[zone_idx]
@@ -2742,26 +2744,26 @@ class MultiZonePartitioner(BasePartitioner):
 class SingleCellPartitioner(BasePartitioner):
     """Une seule cellule pour tout le domaine."""
 
-    def __init__(self, **kwargs):
+    def __init__(self:SingleCellPartitioner, **kwargs)->None:
         super().__init__(**kwargs)
         self._splitting_method = "single"
 
     @property
-    def n_cells(self):
+    def n_cells(self:SingleCellPartitioner)-> int:
         return 1
 
     @property
-    def label(self):
+    def label(self:SingleCellPartitioner)-> str:
         return "single_cell"
 
-    def fit(self, coordinates):
+    def fit(self:SingleCellPartitioner, coordinates:np.ndarray)->SingleCellPartitioner:
         return self
 
-    def compute_states(self, x, y, z):
+    def compute_states(self:SingleCellPartitioner, x: np.ndarray, y: np.ndarray, z: np.ndarray)->np.ndarray:
         self.states= np.zeros(len(np.asarray(x)), dtype=np.int64)
         return self.states
 
-    def _get_cell_polygons_2d(self, view='xy'):
+    def _get_cell_polygons_2d(self:SingleCellPartitioner, view: str='xy')-> list:
         if hasattr(self, '_data_bounds') and self._data_bounds is not None:
             xmin, xmax, ymin, ymax, zmin, zmax = self._data_bounds
         else:
@@ -2774,7 +2776,7 @@ class SingleCellPartitioner(BasePartitioner):
             return []
         return [(0, pts)]
 
-    def _get_cell_polyhedra_3d(self):
+    def _get_cell_polyhedra_3d(self:SingleCellPartitioner)-> list:
         if hasattr(self, '_data_bounds') and self._data_bounds is not None:
             xmin, xmax, ymin, ymax, zmin, zmax = self._data_bounds
         else:

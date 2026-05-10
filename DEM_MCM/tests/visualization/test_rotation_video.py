@@ -45,7 +45,7 @@ class Test3DRotationVideo:
         z = np.random.rand(n_particles) * 1.0
         diameters = np.random.choice([0.004, 0.008], n_particles)
         
-        output = os.path.join(self.output_dir, "cartesian_rotation.mp4")
+        output = os.path.join(self.output_dir, "cartesian_rotation.gif")
         result = partitioner.visualize_3d_rotation(
             x, y, z, particle_diameters=diameters,
             output_path=output, duration=10, fps=60  # 10s à 60fps = 600 frames
@@ -68,7 +68,7 @@ class Test3DRotationVideo:
         z = np.random.rand(n_particles) * 1.0
         diameters = np.random.choice([0.004, 0.008], n_particles)
         
-        output = os.path.join(self.output_dir, "cylindrical_rotation.mp4")
+        output = os.path.join(self.output_dir, "cylindrical_rotation.gif")
         result = partitioner.visualize_3d_rotation(
             x, y, z, particle_diameters=diameters,
             output_path=output, duration=10, fps=60
@@ -89,7 +89,7 @@ class Test3DRotationVideo:
         x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
         diameters = np.random.choice([0.004, 0.008], n_particles)
         
-        output = os.path.join(self.output_dir, "voronoi_rotation.mp4")
+        output = os.path.join(self.output_dir, "voronoi_rotation.gif")
         result = partitioner.visualize_3d_rotation(
             x, y, z, particle_diameters=diameters,
             output_path=output, duration=10, fps=60
@@ -109,7 +109,7 @@ class Test3DRotationVideo:
         z = [0.5, 0.5]
         diameters = [0.004, 0.008]
         
-        output = os.path.join(self.output_dir, "size_test_rotation.mp4")
+        output = os.path.join(self.output_dir, "size_test_rotation.gif")
         result = partitioner.visualize_3d_rotation(
             x, y, z, particle_diameters=diameters,
             output_path=output, duration=10, fps=60
