@@ -16,7 +16,14 @@ try:
 except ImportError:
     import run_sweep as r_s
 
-OBLIQUE_METHODS = ["axis", "pca", "kmeans2", "2medians", "random", "svm"]
+OBLIQUE_METHODS = [
+    # "axis",
+    #   "pca",
+    #     "kmeans2",
+    #     "2medians", 
+        "random",
+        #   "svm"
+          ]
 BASE_KWARGS = {"max_particles": 90, "max_depth": 3}
 BASE_PARAMS = {"nlt": 10, "step": 10, "dt": 2, "tau": 50, "start_index": 250}
 
@@ -33,14 +40,14 @@ for om in OBLIQUE_METHODS:
     )
 
 # BIG (d=0.008)
-for om in OBLIQUE_METHODS:
-    kw = {**BASE_KWARGS, "oblique_method": om}
-    configs.append(
-        r_s.ExperimentConfig(
-            method="octree", method_kwargs=kw,
-            **BASE_PARAMS, particle_diameter=0.008
-        )
-    )
+# for om in OBLIQUE_METHODS:
+#     kw = {**BASE_KWARGS, "oblique_method": om}
+#     configs.append(
+#         r_s.ExperimentConfig(
+#             method="octree", method_kwargs=kw,
+#             **BASE_PARAMS, particle_diameter=0.008
+#         )
+#     )
 
 print(f"\n📋 {len(configs)} configurations octree oblique:")
 print(f"{'─' * 70}")
