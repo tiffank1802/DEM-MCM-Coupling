@@ -230,7 +230,7 @@ def get_configs(method, particle_diameter=None):
 
     elif method == "physics":
         # Sweep n_cells avec velocity_weight par défaut
-        for nc in [200,300,400,500]:
+        for nc in [20,30,40,50]:
             configs.append(
                 ExperimentConfig(
                     method="physics",
@@ -581,26 +581,27 @@ def sample_coordinates(files, fs, sample_rate=SAMPLE_RATE):
         all_coords.append(coords)
     return np.vstack(all_coords)
 @lru_cache(maxsize=1)
-def sample_velocities(files, fs, sample_rate=SAMPLE_RATE):
+def sample_velocities(files, fs,partitioner, sample_rate=SAMPLE_RATE):
     """
     Échantillonne des coordonnées pour le fit des partitionneurs.
 
     Returns:
         np.ndarray shape (N, 3)
     """
-    all_coords = []
+    all_velocities = []
     for f in tqdm(files[5::sample_rate], desc="   Échantillonnage", leave=False):
         with fs.open(f, "rb") as fh:
             df = pl.read_csv(fh)
-        coords = np.column_stack(
+        velocities = np.column_stack(
             [
                 df["Velocity:0"].to_numpy(),
                 df["Velocity:1"].to_numpy(),
                 df["Velocity:2"].to_numpy(),
             ]
         )
-        all_coords.append(coords)
-    return np.vstack(all_coords)
+        all_velocities.append(velocities)
+    partitioner.dem_velocities=np.vstack(all_velocities)
+    return np.vstack(all_velocities)
 
 
 # =============================================================================
@@ -741,6 +742,11 @@ def run_experiment(config, partitioner, files, fs, device):
         with fs.open(file_path, "rb") as fh:
             df = pl.read_csv(fh)
         # ✅ Indexation directe plus rapide que select(), et conversion immédiate
+        partitioner.dem_velocities=np.column_stack([
+                        df["Velocity:0"].to_numpy(),
+                        df["Velocity:1"].to_numpy(),
+                        df["Velocity:2"].to_numpy(),
+                    ])
         return (
             df["Velocity:0"].to_numpy(),
             df["Velocity:1"].to_numpy(),
@@ -826,8 +832,8 @@ def run_experiment(config, partitioner, files, fs, device):
             vel_prev = load_velocities(files[idx_prev])
             vel_curr = load_velocities(files[idx_curr])
 
-            states_prev = partitioner.compute_states_with_physics(*coords_prev, *vel_prev)
-            states_curr = partitioner.compute_states_with_physics(*coords_curr, *vel_curr)
+            states_prev = partitioner.compute_states(*coords_prev, *vel_prev)
+            states_curr = partitioner.compute_states(*coords_curr, *vel_curr)
         else:
         
             states_prev = partitioner.compute_states(*coords_prev)
@@ -959,7 +965,6 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, partic
     # ── Coordonnées pour fit ──
     print("\n🔍 Échantillonnage des coordonnées pour le fit...")
     sample_coords = sample_coordinates(tuple(files), fs)
-    s_velocities = sample_velocities(tuple(files), fs)
     print(f"   {len(sample_coords)} points échantillonnés")
 
     # ── Diamètres pour visualize ──
@@ -973,6 +978,7 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, partic
                     all_diameters.append(df["Diameter"].to_numpy())
         if all_diameters:
             sample_diameters = np.concatenate(all_diameters)
+            
             print(f"   📏 Diamètres chargés: {len(sample_diameters)} particules")
     except Exception as e:
         print(f"   ⚠️  Diamètres non chargés: {e}")
@@ -1009,12 +1015,15 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, partic
             partitioner = create_partitioner(config.method, **config.method_kwargs)
             print(f"   🔧 Fit partitionneur...")
             if config.method=='physics':
-                partitioner.fit_with_physics(sample_coords, s_velocities)
+                s_velocities = sample_velocities(tuple(files), fs,partitioner=partitioner)
+
+                partitioner.fit(sample_coords,use_velocities=True)
+                diag = partitioner.diagnostics(sample_coords,s_velocities)
             else:
                 partitioner.fit(sample_coords)
+                diag = partitioner.diagnostics(sample_coords)
 
             # ✅ Diagnostics (maintenant disponible)
-            diag = partitioner.diagnostics(sample_coords)
             print(
                 f"   📊 {partitioner.n_cells} cellules | "
                 f"{diag['n_visited']} visitées | "
@@ -1028,9 +1037,15 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, partic
                 try:
                     x, y, z = sample_coords[:, 0], sample_coords[:, 1], sample_coords[:, 2]
                     safe_label = partitioner.label.replace('=', '_').replace(' ', '_').replace('/', '_')
-                    vis_kwargs = {"x": x, "y": y, "z": z, "save_prefix": f"partition_vis_{safe_label}"}
+                    vis_kwargs = {"x": x, "y": y, "z": z, "save_prefix": f"partition_vis_{safe_label}","particle_diameters":all_diameters}
                     if sample_diameters is not None and len(sample_diameters) == len(x):
                         vis_kwargs["particle_diameters"] = sample_diameters
+                        if config.method=='physics':
+                            
+                            s_velocities = sample_velocities(tuple(files), fs,partitioner=partitioner)
+                            vx,vy,vz=s_velocities[:,0],s_velocities[:,1],s_velocities[:,2]
+                            vis_kwargs = {"x": x, "y": y, "z": z,"vx":vx,"vy":vy,"vz":vz ,"save_prefix": f"partition_vis_{safe_label}","particle_diameters":all_diameters}
+                            image_data=partitioner.visualize(**vis_kwargs)
                     image_data = partitioner.visualize(**vis_kwargs)
                     print(f"   🎨 {len(image_data)} images générées")
                 except Exception as e:

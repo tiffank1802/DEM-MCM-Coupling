@@ -39,7 +39,7 @@ class Test3DRotationVideo:
         
         # Données de test
         np.random.seed(42)
-        n_particles = 500
+        n_particles = 5_000
         x = np.random.randn(n_particles) * 0.5
         y = np.random.randn(n_particles) * 0.5
         z = np.random.rand(n_particles) * 1.0
@@ -60,7 +60,7 @@ class Test3DRotationVideo:
         partitioner = CylindricalPartitioner(nr=3, ntheta=8, nz=2)
         
         np.random.seed(42)
-        n_particles = 500
+        n_particles = 5_000
         r = np.random.rand(n_particles) * 0.5
         theta = np.random.rand(n_particles) * 2 * np.pi
         x = r * np.cos(theta)
@@ -83,7 +83,7 @@ class Test3DRotationVideo:
         partitioner = VoronoiPartitioner(n_cells=50)
         
         np.random.seed(42)
-        n_particles = 500
+        n_particles = 5_000
         coords = np.random.randn(n_particles, 3) * 0.5
         coords[:, 2] = np.random.rand(n_particles) * 1.0  # Z entre 0 et 1
         x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
