@@ -561,6 +561,7 @@ def _get_default_kwargs(method):
 # =============================================================================
 # CHARGEMENT DES DONNÉES
 # =============================================================================
+datas=None
 
 @lru_cache(maxsize=1)
 def sample_coordinates(files, fs, sample_rate=SAMPLE_RATE):
@@ -592,6 +593,7 @@ def sample_coordinates(files, fs, sample_rate=SAMPLE_RATE):
                     
             # 4. On fusionne tous les morceaux en un seul DataFrame final
             df = pd.concat(list_dfs, ignore_index=True)
+            datas=df
             coords = np.column_stack(
                 [
                     df["coordinates:0"].to_numpy(),
