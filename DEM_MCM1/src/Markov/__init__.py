@@ -5,7 +5,11 @@ import pyarrow.parquet as pq
 from tqdm import tqdm
 import pyvista as pv
 # import streamlit as st
-# import stpyvista as stpv
+from stpyvista import stpyvista 
+import threading
+import uvicorn
+from fastapi import FastAPI
+import subprocess
 
 try:
     from .analyze_results import MarkovAnalyzer
@@ -39,6 +43,15 @@ except ImportError:
         HF_FOLDER,
     )
 
+
+api = FastAPI()
+SHARED_DATA = {"mesh": None}
+
+@api.get("/get_mesh")
+def get_mesh():
+    # Streamlit viendra chercher le mesh ici en mémoire
+    # On le convertit en dictionnaire VTK pour le transfert réseau rapide
+    return {"points": SHARED_DATA["mesh"].points.tolist()}
 class Markov:
     """
     On choisit la classe de partitionnement qu'on veut attribuer au constructeur lors de l'instanciation de l'objet Markov
@@ -74,6 +87,8 @@ class Markov:
         self.indices:list=[]
         self.vtp_states:pv.PolyData=pv.PolyData()
         self.states:np.ndarray=np.empty(1030)
+        self.fichiers_cibles:pd.Series[bool]=pd.Series()
+
 
 
     def load_dem_data(self):
@@ -107,8 +122,8 @@ class Markov:
         if self.datas.empty:
             self.datas=self.load_dem_data()
         self.indices=indices
-        fichiers_cibles=self.datas['Fichier_Source'].isin([f'data_{indice}.csv' for indice in self.indices])
-        self.coords=self.datas.loc[fichiers_cibles ,['coordinates:0','coordinates:1','coordinates:2']].to_numpy()
+        self.fichiers_cibles=self.datas['Fichier_Source'].isin([f'data_{indice}.csv' for indice in self.indices])
+        self.coords=self.datas.loc[self.fichiers_cibles ,['coordinates:0','coordinates:1','coordinates:2']].to_numpy()
         return self.coords
     def get_velocities(
             self,
@@ -117,8 +132,8 @@ class Markov:
         if self.datas.empty:
             self.datas=self.load_dem_data()
         self.indices=indices
-        fichiers_cibles=self.datas['Fichier_Source'].isin([f'data_{indice}.csv' for indice in self.indices])
-        self.velocities=self.datas.loc[fichiers_cibles ,['Velocity:0', 'Velocity:1','Velocity:2']].to_numpy()
+        self.fichiers_cibles=self.datas['Fichier_Source'].isin([f'data_{indice}.csv' for indice in self.indices])
+        self.velocities=self.datas.loc[self.fichiers_cibles ,['Velocity:0', 'Velocity:1','Velocity:2']].to_numpy()
         return self.velocities
     def get_states(self):
         if self.coords.shape[0]==0:
@@ -131,9 +146,29 @@ class Markov:
             _=self.get_states()
         self.vtp_states=pv.PolyData(self.coords)
         self.vtp_states.point_data['partitions']=self.states
+        self.vtp_states.point_data.set_array(data=self.datas.loc[self.fichiers_cibles,['Diameter']].to_numpy(),name='Diameter')
+        self.vtp_states.point_data.set_array(data=self.datas.loc[self.fichiers_cibles,['Velocity:0', 'Velocity:1','Velocity:2']].to_numpy(),name='Velocity')
+        self.vtp_states.point_data.set_array(data=self.datas.loc[self.fichiers_cibles,['Angular_velocity:0', 'Angular_velocity:1','Angular_velocity:2']].to_numpy(),name='Angular_Velocity')
+        self.vtp_states.point_data.set_array(data=self.datas.loc[self.fichiers_cibles,['Orientation:0', 'Orientation:1', 'Orientation:2']].to_numpy(),name='Orientation')
+        self.vtp_states.point_data.set_array(data=self.datas.loc[self.fichiers_cibles,['Collision_force:0','Collision_force:1', 'Collision_force:2']].to_numpy(),name='Collision_forces')
+        self.vtp_states.point_data.set_array(data=self.datas.loc[self.fichiers_cibles,['Particle_Rank']].to_numpy(),name='Particle_Rank')
+        self.vtp_states.point_data.set_array(data=self.datas.loc[self.fichiers_cibles,['Particle_Phase_ID']].to_numpy(),name='Particle_Phase_ID')
+        self.vtp_states.point_data.set_array(data=self.datas.loc[self.fichiers_cibles,['Particle_ID']].to_numpy(),name='Particle_ID')
+        self.vtp_states.point_data.set_array(data=self.datas.loc[self.fichiers_cibles,['Residence_Time']].to_numpy(),name='Residence_Time')
         return self.vtp_states
         
-
+    def visualize(self):
+        import streamlit as st
+        st.subheader("Visualisation des particules")
+        if self.vtp_states.is_empty:
+            _=self.get_vtp()
+        pv.start_xvfb()
+        pv.OFF_SCREEN=True
+        pv.global_theme.trame.jupyter_extension_enabled = False
+        pl=pv.Plotter(window_size=[400,400],notebook=False)
+        pl.add_mesh(self.vtp_states)
+        return stpyvista(pl)
+        
     
    
 
