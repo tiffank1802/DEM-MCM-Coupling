@@ -14,6 +14,7 @@ scikit-learn>=1.0.0
 
 # Visualization
 matplotlib>=3.4.0
+nest_asyncio2>=1.0.0
 
 # Data management and bucket operations
 huggingface-hub>=0.4.0

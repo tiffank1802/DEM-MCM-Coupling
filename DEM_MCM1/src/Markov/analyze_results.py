@@ -24,10 +24,10 @@ from huggingface_hub import HfFileSystem
 
 try:
     from .import bucket_io as b_io
-    from .utils import apply_species_mask
+    from .utils import apply_species_mask,load_parquet_as_timestep_dict
 except ImportError:
     import bucket_io as b_io
-    from utils import apply_species_mask
+    from utils import apply_species_mask,load_parquet_as_timestep_dict
 
 # =============================================================================
 # CONFIGURATION
@@ -344,101 +344,8 @@ class MarkovAnalyzer:
     # ─────────────────────────────────────────────────────────────────────
 
     def load_dem_snapshots(self, file_indices=None, sample_every=1):
-        import polars as pl
-
-        if not hasattr(self, '_dem_fs'):
-            self._dem_fs = HfFileSystem()
-            self._dem_files = sorted(
-                self._dem_fs.glob("hf://buckets/ktongue/DEM_MCM/Output Paraview/*.csv")
-            )
-            print(f"{len(self._dem_files)} fichiers DEM disponibles")
-
-        if file_indices is None:
-            file_indices = list(range(0, min(len(self._dem_files), 500), 10))
-
-        self.dem_snapshots = []
-        self.dem_file_indices = file_indices
-
-        print(f"📂 Chargement de {len(file_indices)} snapshots DEM...")
-        for i, idx in enumerate(file_indices):
-            with self._dem_fs.open(self._dem_files[idx], "rb") as f:
-                df = pl.read_csv(f)
-                coords = np.column_stack([
-                    df["coordinates:0"].to_numpy(),
-                    df["coordinates:1"].to_numpy(),
-                    df["coordinates:2"].to_numpy(),
-                ])[::sample_every]
-
-                if i == 0:
-                    self.dem_diameters = df["Diameter"].to_numpy()[::sample_every]
-                    print(f"   Diamètres chargés : {len(self.dem_diameters)} particules")
-                    self.dem_velocities = np.column_stack([
-                        df["Velocity:0"].to_numpy(),
-                        df["Velocity:1"].to_numpy(),
-                        df["Velocity:2"].to_numpy(),
-                    ])[::sample_every]
-                    print(f"   Vitesses chargées : {self.dem_velocities.shape}")
-                    if "Angular_velocity:0" in df.columns:
-                        self.dem_angular_velocities = np.column_stack([
-                            df["Angular_velocity:0"].to_numpy(),
-                            df["Angular_velocity:1"].to_numpy(),
-                            df["Angular_velocity:2"].to_numpy(),
-                        ])[::sample_every]
-                        print(f"   Vitesses angulaires chargées : {self.dem_angular_velocities.shape}")
-
-                self.dem_snapshots.append({"t": idx, "coords": coords})
-
-            if (i + 1) % 10 == 0 or i == len(file_indices) - 1:
-                print(f"   [{i+1}/{len(file_indices)}] t={idx}: {len(coords)} particules")
-
-        self.n_particles = len(self.dem_snapshots[0]["coords"])
-        print(f"✅ {len(self.dem_snapshots)} snapshots | {self.n_particles} particules/snapshot")
-        return self.dem_snapshots
-
-    def label_species(self, criterion="small", custom_labels=None):
-        if custom_labels is not None:
-            self.species_labels = np.asarray(custom_labels, dtype=bool)
-            n_a = self.species_labels.sum()
-            print(f"✅ Labels custom: {n_a} A / {len(self.species_labels) - n_a} B")
-            return self.species_labels
-
-        diameters = self.dem_diameters
-
-        unique_vals = np.unique(diameters)
-        if len(unique_vals) != 2:
-            print(f"⚠️ Attention : {len(unique_vals)} diamètres différents trouvés (attendu 2).")
-            small_val, large_val = unique_vals[0], unique_vals[-1]
-        else:
-            small_val, large_val = unique_vals[0], unique_vals[1]
-
-        print(f"📏 Diamètres détectés : {small_val:.4f} m et {large_val:.4f} m")
-
-        if criterion == "large":
-            labels = diameters == large_val
-        elif criterion == "small":
-            labels = diameters == small_val
-        elif criterion == "auto":
-            labels = diameters == large_val
-        else:
-            raise ValueError(f"Critère '{criterion}' non reconnu. Utilisez 'large', 'small' ou 'auto'.")
-
-        self.species_labels = labels
-        n_a = labels.sum()
-        print(f"✅ Espèces ({criterion}): {n_a} particules A / {len(labels) - n_a} particules B")
-        return self.species_labels
-
-    def create_partitioner_for_comparison(self, method, method_kwargs):
-        from .partitioners import create_partitioner
-
-        all_coords = np.vstack([s["coords"] for s in self.dem_snapshots])
-        part = create_partitioner(method, **method_kwargs)
-        part.fit(all_coords)
-
-        diag = part.diagnostics(all_coords)
-        print(f"🔧 {part.label}: {part.n_cells} cellules | "
-              f"{diag['n_visited']} visitées | "
-              f"pop μ={diag['pop_mean']:.0f} σ={diag['pop_std']:.0f}")
-        return part
+        
+        return load_parquet_as_timestep_dict()
 
     def compute_dem_rsd(self, partitioner, species_labels=None, partitioner_name=None):
         if partitioner is None:
@@ -492,7 +399,8 @@ class MarkovAnalyzer:
 
             C = np.zeros(n_states)
             mask = n_total > 0
-            C[mask] = n_A[mask] / n_total[mask]
+            C[mask] = n_A[mask] 
+            # C[mask] = n_A[mask] / n_total[mask]
 
             concentrations.append(C.copy())
             populations.append(n_total.copy())
@@ -711,3 +619,5 @@ class MarkovAnalyzer:
         plt.show()
 
         return fig, ax
+    
+

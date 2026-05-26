@@ -31,6 +31,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import mpl_toolkits
 from scipy.spatial import ConvexHull, Voronoi
 import matplotlib.animation as animation
+import streamlit as st
 
 # Imports relatifs (notebooks) vs absolus (script direct)
 try:
@@ -84,7 +85,10 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
         ...
 
     @abstractmethod
-    def fit(self:BasePartitioner, coordinates: np.ndarray)->BasePartitioner:
+    @st.cache_data(
+        hash_funcs={"__main__.BasePartitioner":lambda x:x.label}
+    )
+    def fit(_self:BasePartitioner, coordinates: np.ndarray)->BasePartitioner:
         """
         Apprend le partitionnement sur des données représentatives.
 
@@ -96,6 +100,9 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
         ...
 
     @abstractmethod
+    @st.cache_data(
+        hash_funcs={"__main__.BasePartitioner":lambda x:x.label}
+    )
     def compute_states(self:BasePartitioner, x:np.ndarray, y:np.ndarray, z:np.ndarray,vx: np.ndarray=None,vy: np.ndarray=None,vz: np.ndarray=None)->np.ndarray: #type: ignore   
         """
         Assigne un indice d'état à chaque particule.

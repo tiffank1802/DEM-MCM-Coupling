@@ -47,7 +47,7 @@ if __name__=="__main__":
     # folder_name ="voronoi_400cells_NLT10_step10_dt2_tau50_start250"
     # 1. Créer analyzer et charger DEM
     analyzer = MarkovAnalyzer()
-    analyzer.load_single_folder(folder_name) # charge la matrice de transition
+    analyzer._load_experiment(folder_name) # charge la matrice de transition
     for Time in range(250,251):
         
         analyzer.load_dem_snapshots(file_indices=[Time])

@@ -38,13 +38,13 @@ try:
     from .import partitioners as part     # pour le notebook  .ipynb
     from .bucket_io import save_experiment_to_bucket, BUCKET_BASE
     from .partitioners import create_partitioner, REGISTRY            # pour le terminal et fichiers .py
-    from .utils import apply_species_mask
+    from .utils import apply_species_mask,load_parquet_as_timestep_dict
 except ImportError:
     # Imports absolus quand lancé directement comme script
     import partitioners as part
     from bucket_io import save_experiment_to_bucket, BUCKET_BASE
     from partitioners import create_partitioner, REGISTRY
-    from utils import apply_species_mask
+    from utils import apply_species_mask,load_parquet_as_timestep_dict
 
 
 
@@ -191,7 +191,7 @@ def get_configs(method, particle_diameter=None):
 
     elif method == "voronoi":
         # for nc in [8, 10, 12, 14, 16, 18, 20, 24, 27, 30, 64, 100]:
-        for nc in [ 200,300]:
+        for nc in [ 20,30]:
             configs.append(
                 ExperimentConfig(
                     method="voronoi",
@@ -212,7 +212,7 @@ def get_configs(method, particle_diameter=None):
 
     elif method == "octree":
         # max_particles variable
-        for mp in [20, 40, 80, 16, 32, 64, 100,200]:
+        for mp in [20, 40, 80, 16, 32, 64, 28,50]:
             configs.append(
                 ExperimentConfig(
                     method="octree",
@@ -222,7 +222,7 @@ def get_configs(method, particle_diameter=None):
             )
         # max_depth variable
         # for md in [3, 4, 5, 6, 7]:
-        for md in [3, 2,1,4]:
+        for md in [3, 2,1]:
             configs.append(
                 ExperimentConfig(
                     method="octree",
@@ -246,7 +246,7 @@ def get_configs(method, particle_diameter=None):
             configs.append(
                 ExperimentConfig(
                     method="physics",
-                    method_kwargs={"n_cells": 300, "velocity_weight": vw},
+                    method_kwargs={"n_cells": 30, "velocity_weight": vw},
                     particle_diameter=particle_diameter,
                 )
             )
@@ -316,7 +316,7 @@ def get_configs(method, particle_diameter=None):
             )
 
         # ── Sweep ntheta zone basse ──────────────────────────────────
-        for nth in [1, 4, 8, 12, 16,20,30,21,23,22,35,37,39,40,50,60,70,80,90,100,120,130,140]:
+        for nth in [1, 4, 8, 12, 16,20,30,21,23,22,35,37,39,40,50,60,70,80,90,10,12,23,40]:
             configs.append(
                 ExperimentConfig(
                     method="adaptive",
@@ -363,7 +363,7 @@ def get_configs(method, particle_diameter=None):
             )
 
         # ── Voronoï en bas au lieu de cylindrique ────────────────────
-        for nc in [10, 20, 30, 50, 64, 100, 125, 250, 500]:
+        for nc in [10, 20, 30, 50, 64, 15, 35, 25, 50]:
             configs.append(
                 ExperimentConfig(
                     method="adaptive",
@@ -518,10 +518,10 @@ def _get_default_kwargs(method):
             "nr": 3, "ntheta": 8, "nz": 1,
             "radial_mode": "equal_area",
         },
-        "voronoi": {"n_cells": 400},
+        "voronoi": {"n_cells": 40},
         "quantile": {"nx": 5, "ny": 5, "nz": 5},
-        "octree": {"max_particles": 100, "max_depth": 2},
-        "physics": {"n_cells": 125, "velocity_weight": 0.5},
+        "octree": {"max_particles": 100, "max_depth": 1},
+        "physics": {"n_cells": 30, "velocity_weight": 0.5},
         "adaptive": {
             "y_split": 0.90,
             "y_split_mode": "quantile",
@@ -561,62 +561,7 @@ def _get_default_kwargs(method):
 # =============================================================================
 # CHARGEMENT DES DONNÉES
 # =============================================================================
-datas=None
 
-@lru_cache(maxsize=1)
-def sample_coordinates(files, fs, sample_rate=SAMPLE_RATE):
-    """
-    Échantillonne des coordonnées pour le fit des partitionneurs.
-
-    Returns:
-        np.ndarray shape (N, 3)
-    """
-    all_coords,all_velocities,all_diameters = [],[],[]
-    with fs.open(HF_FOLDER, "rb") as fh:
-            # 1. On ouvre le fichier avec PyArrow sans charger les données en mémoire
-            fichier_parquet = pq.ParquetFile(fh)
-            
-            # 2. On récupère le nombre total de groupes de lignes (Row Groups)
-            nb_groupes = fichier_parquet.num_row_groups
-            
-            list_dfs = []
-        
-            # 3. On configure tqdm sur le nombre de groupes à lire
-            with tqdm(total=nb_groupes, desc='Chargement du fichier (Groupes)', unit='bloc') as bar_progression:
-                for i in range(nb_groupes):
-                    # Lecture du groupe i et conversion immédiate en DataFrame Pandas
-                    df_groupe = fichier_parquet.read_row_group(i).to_pandas()
-                    list_dfs.append(df_groupe)
-                    
-                    # On met à jour la barre de progression d'une unité
-                    bar_progression.update(1)
-                    
-            # 4. On fusionne tous les morceaux en un seul DataFrame final
-            df = pd.concat(list_dfs, ignore_index=True)
-            datas=df
-            coords = np.column_stack(
-                [
-                    df["coordinates:0"].to_numpy(),
-                    df["coordinates:1"].to_numpy(),
-                    df["coordinates:2"].to_numpy(),
-                ]
-            )
-            velocities = np.column_stack(
-                [
-                    df["Velocity:0"].to_numpy(),
-                    df["Velocity:1"].to_numpy(),
-                    df["Velocity:2"].to_numpy(),
-                ]
-            )
-            all_coords.append(coords)
-            all_velocities.append(velocities)
-            all_diameters.append(df['Diameter'])
-        
-
-    print(f"   📏 Diamètres chargés: {len(df['Diameter'])} particules")
-    
-    return np.vstack(all_coords),np.vstack(all_velocities),np.vstack(all_diameters)
-# @lru_cache(maxsize=1)
 
 
 # =============================================================================
@@ -683,223 +628,6 @@ def compute_P_matrix_torch(states_prev, states_curr, n_states, device="cpu", spe
 
 
 
-
-# =============================================================================
-# EXPÉRIENCE
-# =============================================================================
-def run_experiment(config, partitioner, files, fs, device):
-    """
-    Exécute une expérience complète avec raffinage temporel.
-
-    Logique temporelle :
-    - NLT blocs principaux séparés de `step`
-    - Dans chaque bloc : int(step/dt) apprentissages avec décalage `dt`
-    - Chaque apprentissage : paire (start, start + tau)
-    - En fin de fichier : int((endfile-end)/dt) au lieu de int(step/dt)
-
-    Exemple: NLT=2, step=100, dt=20, tau=50, start=0
-
-    Bloc 1 (base=0):
-        (0,50), (20,70), (40,90), (60,110), (80,130)    # 5 apprentissages
-    Bloc 2 (base=100):  
-        (100,150), (120,170), (140,190), (160,210), (180,230)
-    """
-    n_states = partitioner.n_cells
-    tau = config.tau
-    step = config.step
-    dt = config.dt
-    start_base = config.start_index
-    idx_prev = start_base  # Initialize properly
-    idx_curr = start_base+tau
-
-    print(f"   📐 Configuration: NLT={config.nlt}, step={step}, dt={dt}, tau={tau}")
-    
-    # ════════════════════════════════════════════════════════════════════
-    # CHARGER SPECIES_LABELS POUR LE MASQUE
-    # ════════════════════════════════════════════════════════════════════
-    species_labels = None
-    try:
-        # Charger les données DEM et récupérer les espèces
-        print(f"   🔬 Chargement des espèces (diamètres) depuis DEM...")
-        # Charger juste le premier fichier pour récupérer les diamètres
-        with fs.open(files[start_base], "rb") as fh:
-            df = pl.read_csv(fh)
-            diameters = df["Diameter"].to_numpy() if "Diameter" in df.columns else None
-        
-        if diameters is not None:
-            # Déterminer automatiquement les deux tailles
-            unique_vals = np.unique(diameters)
-            if len(unique_vals) == 2:
-                large_val = unique_vals[-1]  # Plus grande taille
-                species_labels = (diameters == large_val)  # True pour les grosses particules
-                n_large = species_labels.sum()
-                n_small = len(diameters) - n_large
-                print(f"   ✅ Espèces détectées: {n_large} grandes / {n_small} petites particules")
-            else:
-                print(f"   ⚠️  {len(unique_vals)} diamètres trouvés (attendu 2) - masque non appliqué")
-        else:
-            print(f"   ⚠️  Colonne 'Diameter' non trouvée - masque non appliqué")
-    except Exception as e:
-        print(f"   ⚠️  Erreur lors du chargement des espèces: {e}")
-        species_labels = None
-    @lru_cache(maxsize=1)
-    def load_coords(file_path):
-        with fs.open(file_path, "rb") as fh:
-            df = pl.read_csv(fh)
-        # ✅ Indexation directe plus rapide que select(), et conversion immédiate
-        return (
-            df["coordinates:0"].to_numpy(),
-            df["coordinates:1"].to_numpy(),
-            df["coordinates:2"].to_numpy()
-        )
-    @lru_cache(maxsize=1)
-    def load_velocities(file_path):
-        with fs.open(file_path, "rb") as fh:
-            df = pl.read_csv(fh)
-        # ✅ Indexation directe plus rapide que select(), et conversion immédiate
-        partitioner.dem_velocities=np.column_stack([
-                        df["Velocity:0"].to_numpy(),
-                        df["Velocity:1"].to_numpy(),
-                        df["Velocity:2"].to_numpy(),
-                    ])
-        return (
-            df["Velocity:0"].to_numpy(),
-            df["Velocity:1"].to_numpy(),
-            df["Velocity:2"].to_numpy()
-        )
-
-
-    # ── Construire toutes les paires ──
-    all_pairs = []
-    
-    for nlt_idx in range(config.nlt):
-        # Start de base pour ce bloc NLT
-        current_start_base = start_base + nlt_idx * step
-        
-        # Calculer combien d'apprentissages dans ce bloc
-        if nlt_idx == config.nlt - 1:  # Dernier bloc
-            # Vérifier combien on peut faire avant la fin des fichiers
-            max_end_possible = len(files) - 1
-            max_start_possible = max_end_possible - tau
-            
-            if current_start_base > max_start_possible:
-                # Ce bloc ne peut pas commencer
-                print(f"   ⚠️  Bloc {nlt_idx+1} ignoré (start={current_start_base} > max={max_start_possible})")
-                break
-                
-            # Nombre d'apprentissages possibles dans ce dernier bloc
-            remaining_range = max_start_possible - current_start_base
-            n_apprentissages = min(step // dt, remaining_range // dt) + 1 # important de noter que nous choisissons le minimum entre le nombre cycles d'apprentissages
-                    # entre ceux initialement prévus et ceux effectivement disponibles
-            
-        else:
-            # Bloc normal : int(step/dt) apprentissages
-            n_apprentissages = step // dt
-            
-        # Générer les paires pour ce bloc
-        for i in range(n_apprentissages):
-            start_idx = current_start_base + i * dt
-            end_idx = start_idx + tau
-            
-            if end_idx >= len(files):
-                print(f"   ⚠️  Paire ({start_idx},{end_idx}) ignorée (dépasse les fichiers)")
-                break
-                
-            all_pairs.append((start_idx, end_idx))
-    
-    if not all_pairs:
-        raise ValueError("Aucune paire possible avec ces paramètres")
-    
-    print(f"   📊 {len(all_pairs)} paires générées:")
-    print(f"      Premier: files[{all_pairs[0][0]}] → files[{all_pairs[0][1]}]")
-    print(f"      Dernier: files[{all_pairs[-1][0]}] → files[{all_pairs[-1][1]}]")
-    
-    # Analyser la structure
-    n_paires_par_step = step // dt
-    n_blocs_complets = len(all_pairs) // n_paires_par_step
-    n_paires_dernier_bloc = len(all_pairs) % n_paires_par_step
-    
-    print(f"      Structure: {n_blocs_complets} blocs complets de {n_paires_par_step} paires")
-    if n_paires_dernier_bloc > 0:
-        print(f"                 1 bloc partiel de {n_paires_dernier_bloc} paires")
-
-    # ── Accumulateur ──
-    P_acc = torch.zeros(
-        (n_states, n_states), dtype=torch.float64, device=device
-    )
-    states_prev_acc=np.array([])
-    states_curr_acc=np.array([])
-
-     # ── Traitement des paires ──
-    for i, (idx_prev, idx_curr) in enumerate(tqdm(all_pairs, desc="   Paires", leave=False)):
-        # ✅ Charger les coordonnées pour cette paire
-        coords_prev = load_coords(files[idx_prev])
-        coords_curr = load_coords(files[idx_curr])
-        
-        # Lecture des fichiers
-        # with fs.open(files[idx_prev], "rb") as f:
-        #     df_prev = pl.read_csv(f)
-        # with fs.open(files[idx_curr], "rb") as f:
-        #     df_curr = pl.read_csv(f)
-
-        # ✅ Conversion immédiate en numpy (un seul appel à to_numpy())
-        if isinstance(partitioner, part.PhysicsAwarePartitioner):
-            vel_prev = load_velocities(files[idx_prev])
-            vel_curr = load_velocities(files[idx_curr])
-
-            states_prev = partitioner.compute_states(*coords_prev, *vel_prev)
-            states_curr = partitioner.compute_states(*coords_curr, *vel_curr)
-        else:
-        
-            states_prev = partitioner.compute_states(*coords_prev)
-            states_curr = partitioner.compute_states(*coords_curr)
-
-        # ✅ Appliquer le filtre espèce AVANT accumulation (si fourni)
-        if species_labels is not None:
-            states_prev = states_prev[species_labels]
-            states_curr = states_curr[species_labels]
-
-        states_prev_acc = np.concatenate((states_prev_acc, np.asarray(states_prev)))
-        states_curr_acc = np.concatenate((states_curr_acc, np.asarray(states_curr)))
-
-         # Calcul de la matrice de transition (species_labels=None car masque déjà appliqué)
-    P_acc = compute_P_matrix_torch(states_prev_acc, states_curr_acc, n_states, device, species_labels=None)
-
-    # ── Moyenne ──
-    P = P_acc 
-    P_np = P.cpu().numpy()
-
-    # ── Statistiques ──
-    column_sums = P_np.sum(axis=0)
-    visited = column_sums > 0
-    diag = np.diag(P_np)
-
-    stats = {
-        "n_pairs_used": len(all_pairs),
-        "n_nlt_requested": config.nlt,
-        "n_blocs_complets": n_blocs_complets,
-        "n_paires_dernier_bloc": n_paires_dernier_bloc,
-        "n_states": n_states,
-        "n_states_visited": int(visited.sum()),
-        "n_states_empty": int((~visited).sum()),
-        "fraction_visited": round(float(visited.sum()) / n_states, 4),
-        "column_sum_min": float(column_sums[visited].min()) if visited.any() else 0,
-        "column_sum_max": float(column_sums[visited].max()) if visited.any() else 0,
-        "column_sum_mean": float(column_sums[visited].mean()) if visited.any() else 0,
-        "diagonal_mean": float(diag.mean()),
-        "diagonal_std": float(diag.std()),
-        "method": config.method,
-        "tau": tau,
-        "step": step,
-        "dt": dt,
-        "raffinage_ratio": step // dt,
-        "plage_temporelle": int(all_pairs[-1][1] - all_pairs[0][0]),
-        "start_index": config.start_index,
-        "first_pair": list(all_pairs[0]),
-        "last_pair": list(all_pairs[-1]),
-    }
-
-    return P_np, stats
 def save_results(config, partitioner, P, stats, image_data=None, folder_name=None):  # ← Changé image_paths en image_data
     """Sauvegarde les résultats dans le bucket HuggingFace."""
     
@@ -954,70 +682,226 @@ def save_results(config, partitioner, P, stats, image_data=None, folder_name=Non
                   "SMALL" if config.particle_diameter == 0.004 else \
                   "Experiments"
     print(f"   💾 Bucket: {bucket_name}/{folder_name}/")
-# =============================================================================
-# FONCTION PRINCIPALE
-# =============================================================================
 
 
-def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, particle_diameter: float = None, base_dir=BASE_OUTPUT_DIR) -> list[dict]: # type: ignore
+
+
+
+
+
+# ════════════════════════════════════════════════════════════════════
+# sample_coordinates — utilise le dict déjà chargé
+# ════════════════════════════════════════════════════════════════════
+def sample_coordinates(timestep_dict: dict[int, pd.DataFrame]):
     """
-    Lance le sweep Markovien pour une méthode de partitionnement.
+    Retourne coords, velocities, diameters empilés sur tous les timesteps.
     """
+    all_coords, all_velocities, all_diameters = [], [], []
+
+    for idx in sorted(timestep_dict.keys()):
+        df = timestep_dict[idx]
+        all_coords.append(np.column_stack([
+            df["coordinates:0"].to_numpy(),
+            df["coordinates:1"].to_numpy(),
+            df["coordinates:2"].to_numpy(),
+        ]))
+        all_velocities.append(np.column_stack([
+            df["Velocity:0"].to_numpy(),
+            df["Velocity:1"].to_numpy(),
+            df["Velocity:2"].to_numpy(),
+        ]))
+        all_diameters.append(df["Diameter"].to_numpy())
+
+    print(f"   📏 Diamètres chargés: {sum(len(d) for d in all_diameters)} particules")
+    return (
+        np.vstack(all_coords),
+        np.vstack(all_velocities),
+        np.concatenate(all_diameters),
+    )
+
+
+# ════════════════════════════════════════════════════════════════════
+# run_experiment — utilise le dict déjà chargé
+# ════════════════════════════════════════════════════════════════════
+def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], device="cpu"):
+    """
+    Exécute une expérience complète avec raffinage temporel.
+    timestep_dict : {idx: DataFrame} issu de load_parquet_as_timestep_dict()
+    """
+    n_states   = partitioner.n_cells
+    tau        = config.tau
+    step       = config.step
+    dt         = config.dt
+    start_base = config.start_index
+    n_timesteps = max(timestep_dict.keys()) + 1   # borne supérieure d'index
+
+    print(f"   📐 Configuration: NLT={config.nlt}, step={step}, dt={dt}, tau={tau}")
+    print(f"   📦 {len(timestep_dict)} timesteps disponibles "
+          f"(index {min(timestep_dict)} → {max(timestep_dict)})")
+
+    # ── Species labels (depuis le premier timestep disponible) ──────
+    species_labels = None
+    try:
+        df_init = timestep_dict[start_base]
+        diameters = df_init["Diameter"].to_numpy() if "Diameter" in df_init.columns else None
+        if diameters is not None:
+            unique_vals = np.unique(diameters)
+            if len(unique_vals) == 2:
+                large_val      = unique_vals[-1]
+                species_labels = (diameters == large_val)
+                print(f"   ✅ Espèces: {species_labels.sum()} grandes / "
+                      f"{(~species_labels).sum()} petites")
+            else:
+                print(f"   ⚠️  {len(unique_vals)} diamètres trouvés (attendu 2) — masque non appliqué")
+        else:
+            print("   ⚠️  Colonne 'Diameter' non trouvée — masque non appliqué")
+    except KeyError:
+        print(f"   ⚠️  Timestep {start_base} absent du dict — masque non appliqué")
+    except Exception as e:
+        print(f"   ⚠️  Erreur espèces: {e}")
+
+    # ── Accesseurs rapides ───────────────────────────────────────────
+    def get_coords(idx: int):
+        df = timestep_dict[idx]
+        return (
+            df["coordinates:0"].to_numpy(),
+            df["coordinates:1"].to_numpy(),
+            df["coordinates:2"].to_numpy(),
+        )
+
+    def get_velocities(idx: int):
+        df = timestep_dict[idx]
+        vx = df["Velocity:0"].to_numpy()
+        vy = df["Velocity:1"].to_numpy()
+        vz = df["Velocity:2"].to_numpy()
+        partitioner.dem_velocities = np.column_stack([vx, vy, vz])
+        return vx, vy, vz
+
+    # ── Construction des paires ─────────────────────────────────────
+    all_pairs = []
+    for nlt_idx in range(config.nlt):
+        current_start_base = start_base + nlt_idx * step
+
+        if nlt_idx == config.nlt - 1:   # dernier bloc
+            max_end_possible   = max(timestep_dict.keys())
+            max_start_possible = max_end_possible - tau
+
+            if current_start_base > max_start_possible:
+                print(f"   ⚠️  Bloc {nlt_idx+1} ignoré "
+                      f"(start={current_start_base} > max={max_start_possible})")
+                break
+
+            remaining_range  = max_start_possible - current_start_base
+            n_apprentissages = min(step // dt, remaining_range // dt) + 1
+        else:
+            n_apprentissages = step // dt
+
+        for i in range(n_apprentissages):
+            start_idx = current_start_base + i * dt
+            end_idx   = start_idx + tau
+
+            if end_idx not in timestep_dict:
+                print(f"   ⚠️  Paire ({start_idx},{end_idx}) ignorée (absent du dict)")
+                break
+            if start_idx not in timestep_dict:
+                print(f"   ⚠️  Paire ({start_idx},{end_idx}) ignorée (absent du dict)")
+                break
+
+            all_pairs.append((start_idx, end_idx))
+
+    if not all_pairs:
+        raise ValueError("Aucune paire possible avec ces paramètres")
+
+    print(f"   📊 {len(all_pairs)} paires générées:")
+    print(f"      Premier: data_{all_pairs[0][0]} → data_{all_pairs[0][1]}")
+    print(f"      Dernier: data_{all_pairs[-1][0]} → data_{all_pairs[-1][1]}")
+
+    n_paires_par_step    = step // dt
+    n_blocs_complets     = len(all_pairs) // n_paires_par_step
+    n_paires_dernier_bloc = len(all_pairs) % n_paires_par_step
+    print(f"      Structure: {n_blocs_complets} blocs complets de {n_paires_par_step} paires"
+          + (f" + 1 bloc partiel de {n_paires_dernier_bloc}" if n_paires_dernier_bloc else ""))
+
+    # ── Traitement des paires ───────────────────────────────────────
+    states_prev_acc = np.array([])
+    states_curr_acc = np.array([])
+
+    for idx_prev, idx_curr in tqdm(all_pairs, desc="   Paires", leave=False):
+        coords_prev = get_coords(idx_prev)
+        coords_curr = get_coords(idx_curr)
+
+        if isinstance(partitioner, part.PhysicsAwarePartitioner):
+            states_prev = partitioner.compute_states(*coords_prev, *get_velocities(idx_prev))
+            states_curr = partitioner.compute_states(*coords_curr, *get_velocities(idx_curr))
+        else:
+            states_prev = partitioner.compute_states(*coords_prev)
+            states_curr = partitioner.compute_states(*coords_curr)
+
+        if species_labels is not None:
+            states_prev = states_prev[species_labels]
+            states_curr = states_curr[species_labels]
+
+        states_prev_acc = np.concatenate((states_prev_acc, np.asarray(states_prev)))
+        states_curr_acc = np.concatenate((states_curr_acc, np.asarray(states_curr)))
+
+    P_np = compute_P_matrix_torch(
+        states_prev_acc, states_curr_acc, n_states, device, species_labels=None
+    ).cpu().numpy()
+
+    # ── Statistiques ────────────────────────────────────────────────
+    column_sums = P_np.sum(axis=0)
+    visited     = column_sums > 0
+    diag        = np.diag(P_np)
+
+    stats = {
+        "n_pairs_used":          len(all_pairs),
+        "n_nlt_requested":       config.nlt,
+        "n_blocs_complets":      n_blocs_complets,
+        "n_paires_dernier_bloc": n_paires_dernier_bloc,
+        "n_states":              n_states,
+        "n_states_visited":      int(visited.sum()),
+        "n_states_empty":        int((~visited).sum()),
+        "fraction_visited":      round(float(visited.sum()) / n_states, 4),
+        "column_sum_min":        float(column_sums[visited].min()) if visited.any() else 0,
+        "column_sum_max":        float(column_sums[visited].max()) if visited.any() else 0,
+        "column_sum_mean":       float(column_sums[visited].mean()) if visited.any() else 0,
+        "diagonal_mean":         float(diag.mean()),
+        "diagonal_std":          float(diag.std()),
+        "method":                config.method,
+        "tau": tau, "step": step, "dt": dt,
+        "raffinage_ratio":       step // dt,
+        "plage_temporelle":      int(all_pairs[-1][1] - all_pairs[0][0]),
+        "start_index":           config.start_index,
+        "first_pair":            list(all_pairs[0]),
+        "last_pair":             list(all_pairs[-1]),
+    }
+    return P_np, stats
+
+
+# ════════════════════════════════════════════════════════════════════
+# run_markov_sweep
+# ════════════════════════════════════════════════════════════════════
+def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None,
+                     particle_diameter: float = None, base_dir=BASE_OUTPUT_DIR) -> list[dict]:
 
     print("=" * 70)
     print(f"  SWEEP MARKOVIEN — méthode: {method.upper()}")
     print("=" * 70)
-    
-    # ── Device ──
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"🖥️  Device: {device}")
 
-    # ── Fichiers ──
+    # ── Chargement unique du parquet ─────────────────────────────────
     fs = HfFileSystem()
-    # files = sorted(fs.glob(f"{HF_FOLDER}/*.csv"))
-    files=[f'data_{i}' for i in range(6000)]
-    print(f"📁 Fichiers disponibles: {len(files)}")
+    print("\n📦 Chargement du fichier Parquet...")
+    timestep_dict = load_parquet_as_timestep_dict(HF_FOLDER, fs)
 
-    # ── Coordonnées pour fit ──
+    # ── Coordonnées pour fit ─────────────────────────────────────────
     print("\n🔍 Échantillonnage des coordonnées pour le fit...")
-    sample_coords,s_velocities,all_diameters = sample_coordinates(tuple(files), fs) # type: ignore
+    sample_coords, s_velocities, all_diameters = sample_coordinates(timestep_dict)
     print(f"   {len(sample_coords)} points échantillonnés")
 
-    # ── Diamètres pour visualize ──
-    sample_diameters = None
-    try:
-        """
-        A t-on besoin de charger ce gros dataset pour afficher le nombre de diamètres chargés? 
-        Je pense que je dois supprimer cela.
-        """
-    #     all_diameters = []
-    #     with fs.open(HF_FOLDER, "rb") as fh:
-    #         # 1. On ouvre le fichier avec PyArrow sans charger les données en mémoire
-    #         fichier_parquet = pq.ParquetFile(fh)
-            
-    #         # 2. On récupère le nombre total de groupes de lignes (Row Groups)
-    #         nb_groupes = fichier_parquet.num_row_groups
-            
-    #         list_dfs = []
-        
-    #         # 3. On configure tqdm sur le nombre de groupes à lire
-    #         with tqdm(total=nb_groupes, desc='Chargement du fichier (Groupes)', unit='bloc') as bar_progression:
-    #             for i in range(nb_groupes):
-    #                 # Lecture du groupe i et conversion immédiate en DataFrame Pandas
-    #                 df_groupe = fichier_parquet.read_row_group(i).to_pandas()
-    #                 list_dfs.append(df_groupe)
-                    
-    #                 # On met à jour la barre de progression d'une unité
-    #                 bar_progression.update(1)
-                    
-    #         # 4. On fusionne tous les morceaux en un seul DataFrame final
-    #         df = pd.concat(list_dfs, ignore_index=True)
-        
-    #     print(f"   📏 Diamètres chargés: {len(df['Diameter'])} particules")
-    except Exception as e:
-        print(f"   ⚠️  Diamètres non chargés: {e}")
-
-    # ── Configs ──
+    # ── Configs ──────────────────────────────────────────────────────
     if method == "all":
         methods = list(REGISTRY.keys())
     else:
@@ -1033,96 +917,42 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, partic
     print(f"\n📋 {len(all_configs)} expériences à lancer:")
     print("-" * 70)
 
-    # ── Boucle principale (SANS CACHE) ──
+    # ── Boucle principale ────────────────────────────────────────────
     results = []
     for i, config in enumerate(all_configs):
-        # ✅ Générer le nom du dossier (pas un chemin)
         if config.method in ["adaptive", "multizone", "physics"]:
             folder_name = config.output_folder(base_dir=base_dir, sample_coords=sample_coords)
         else:
             folder_name = config.output_folder(base_dir)
-        
-        print(f"\n[{i + 1}/{len(all_configs)}] {folder_name}")
+
+        print(f"\n[{i+1}/{len(all_configs)}] {folder_name}")
 
         try:
-            # ✅ Créer et fitter le partitionneur (pas de cache)
             partitioner = create_partitioner(config.method, **config.method_kwargs)
-            print(f"   🔧 Fit partitionneur...")
-            if config.method=='physics':
-                # s_velocities = sample_velocities(tuple(files), fs,partitioner=partitioner)
-
-                partitioner.fit(sample_coords,use_velocities=True) # type: ignore
-                # diag = partitioner.diagnostics(sample_coords,s_velocities)
-                diag = partitioner.diagnostics(s_velocities) # cette ligne permet de ne considerer que les vitesses pour l'attribution des partitions (labels) aux particules
+            print("   🔧 Fit partitionneur...")
+            if config.method == "physics":
+                partitioner.fit(sample_coords, use_velocities=True)
+                diag = partitioner.diagnostics(s_velocities)
             else:
                 partitioner.fit(sample_coords)
                 diag = partitioner.diagnostics(sample_coords)
 
-            # ✅ Diagnostics (maintenant disponible)
             print(
                 f"   📊 {partitioner.n_cells} cellules | "
                 f"{diag['n_visited']} visitées | "
                 f"pop: [{diag['pop_min']}, {diag['pop_max']}] "
                 f"μ={diag['pop_mean']:.0f} σ={diag['pop_std']:.0f}"
             )
-            
-            # ✅ Générer les visualisations
-            image_data = None
-            # if hasattr(partitioner, 'visualize'):
-            #     try:
-            #         x, y, z = sample_coords[:, 0], sample_coords[:, 1], sample_coords[:, 2]
-            #         safe_label = partitioner.label.replace('=', '_').replace(' ', '_').replace('/', '_')
-            #         vis_kwargs = {"x": x, "y": y, "z": z, "save_prefix": f"partition_vis_{safe_label}","particle_diameters":all_diameters} # type: ignore
-            #         if sample_diameters is not None and len(sample_diameters) == len(x):
-            #             vis_kwargs["particle_diameters"] = sample_diameters
-            #             if config.method=='physics':
-                            
-            #                 # s_velocities = sample_velocities(files[250], fs,partitioner=partitioner)
-            #                 vx,vy,vz=s_velocities[:,0],s_velocities[:,1],s_velocities[:,2]
-            #                 # vis_kwargs = {"x": x, "y": y, "z": z,"vx":vx,"vy":vy,"vz":vz ,"save_prefix": f"partition_vis_{safe_label}","particle_diameters":all_diameters} # type: ignore
-            #                 vis_kwargs = {"x": vx, "y": vy, "z": vz ,"save_prefix": f"partition_vis_{safe_label}","particle_diameters":all_diameters} # type: ignore
-            #                 image_data=partitioner.visualize(**vis_kwargs)
-            #         image_data = partitioner.visualize(**vis_kwargs)
-            #         print(f"   🎨 {len(image_data)} images générées")
-            #     except Exception as e:
-            #         print(f"   ⚠️  Visualisation échouée: {e}")
 
-            # ✅ Générer la vidéo 3D avec rotation
-            # video_path = None
-            # print(f"   🔍 DEBUG: Entrée bloc vidéo, méthode existe: {hasattr(partitioner, 'visualize_3d_rotation')}")
-            # if hasattr(partitioner, 'visualize_3d_rotation'):
-            #     try:
-            #         safe_label = partitioner.label.replace('=', '_').replace(' ', '_').replace('/', '_')
-            #         video_output = os.path.join("images", "3d_rotation", f"{safe_label}_rotation.mp4")
-            #         os.makedirs(os.path.dirname(video_output), exist_ok=True)
-            #         print(f"   🎥 Génération vidéo 3D: {video_output}")
-            #         video_path = partitioner.visualize_3d_rotation(
-            #             sample_coords[:, 0], sample_coords[:, 1], sample_coords[:, 2],
-            #             particle_diameters=sample_diameters if sample_diameters is not None else None,
-            #             output_path=video_output,
-            #             duration=10, fps=60
-            #         )
-            #         print(f"   ✅ Vidéo générée: {video_path}")
-            #     except Exception as e:
-            #         print(f"   ⚠️  Vidéo échouée: {e}")
+            # ── run_experiment reçoit le dict, plus fs ni parquet_path ──
+            P, stats = run_experiment(config, partitioner, timestep_dict, device)
 
-            # Lancer l'expérience
-            P, stats = run_experiment(config, partitioner, files, fs, device)
-
-            # Sauvegarder
             save_results(
-                config=config, 
-                partitioner=partitioner, 
-                P=P, 
-                stats=stats,
-                image_data=image_data,
-                folder_name=folder_name
+                config=config, partitioner=partitioner, P=P,
+                stats=stats, image_data=None, folder_name=folder_name
             )
 
-            results.append(
-                {"config": asdict(config), "stats": stats, "success": True}
-            )
-            
+            results.append({"config": asdict(config), "stats": stats, "success": True})
             print(
                 f"   ✅ {stats['n_states_visited']}/{stats['n_states']} états | "
                 f"P(rester)={stats['diagonal_mean']:.4f} | "
@@ -1132,20 +962,13 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, partic
 
         except Exception as e:
             print(f"   ❌ Erreur: {e}")
-            results.append(
-                {
-                    "config": asdict(config),
-                    "stats": None,
-                    "success": False,
-                    "error": str(e),
-                }
-            )
+            results.append({"config": asdict(config), "stats": None,
+                            "success": False, "error": str(e)})
 
-    # ── Résumé ──
+    # ── Résumé ───────────────────────────────────────────────────────
     print("\n" + "=" * 70)
     print("RÉSUMÉ")
     print("=" * 70)
-
     ok = [r for r in results if r["success"]]
     ko = [r for r in results if not r["success"]]
     print(f"\n✅ Réussies: {len(ok)}/{len(results)}")
@@ -1154,29 +977,26 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None, partic
         for r in ko:
             print(f"   - {r['config']['method']}: {r.get('error', '?')}")
 
-    # ✅ Sauvegarder le résumé dans le bucket
     summary_data = {
-        "method": method,
-        "total": len(results),
-        "success": len(ok),
-        "failed": len(ko),
-        "results": results
+        "method": method, "total": len(results),
+        "success": len(ok), "failed": len(ko), "results": results,
     }
-    
     try:
         save_experiment_to_bucket(
             folder_name=f"_summary_{method}",
-            matrix=np.array([]),  # Pas de matrice pour un résumé
+            matrix=np.array([]),
             stats=summary_data,
-            config={"type": "summary", "method": method}
+            config={"type": "summary", "method": method},
         )
-        print(f"\n💾 Résumé sauvegardé dans le bucket: _summary_{method}/")
+        print(f"\n💾 Résumé sauvegardé: _summary_{method}/")
     except Exception as e:
         print(f"\n⚠️  Impossible de sauvegarder le résumé: {e}")
-    
-    print("✨ Terminé!")
 
+    print("✨ Terminé!")
     return results
+# =============================================================================
+# FONCTION PRINCIPALE
+# =============================================================================
 
 # =============================================================================
 # CLI
