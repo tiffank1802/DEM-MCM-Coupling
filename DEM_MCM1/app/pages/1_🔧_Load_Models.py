@@ -102,10 +102,14 @@ st.subheader("📦 Modèles Disponibles")
 with st.spinner("🔄 Recherche modèles sur HuggingFace..."):
     try:
         analyzer = MarkovAnalyzer()
-        models_list = analyzer.list_available_models(
-            particle_diameters=selected_diameters,
-            methods=selected_methods,
-        )
+        models_list = []
+        for diameter in selected_diameters:
+            for method in selected_methods:
+                models = analyzer.list_available_models(
+                    method=method,
+                    particle_diameter=diameter,
+                )
+                models_list.extend(models)
     except Exception as e:
         st.error(f"❌ Erreur: {e}")
         models_list = []
