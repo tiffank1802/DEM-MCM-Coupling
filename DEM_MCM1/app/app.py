@@ -24,9 +24,17 @@ Examples:
     grâce au système multipage de Streamlit.
 """
 
+import sys
+import os
+from pathlib import Path
+
+# Add project root to sys.path to enable 'src' imports
+project_root = str(Path(__file__).parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 import streamlit as st
 import logging
-from pathlib import Path
 
 # Internal imports
 from components.session_manager import (
