@@ -2797,7 +2797,7 @@ class SingleCellPartitioner(BasePartitioner):
         elif view == 'yz':
             pts = np.array([[ymin, zmin], [ymax, zmin], [ymax, zmax], [ymin, zmax]])
         else:
-            return []
+            return []   
         return [(0, pts)]
 
     def _get_cell_polyhedra_3d(self:SingleCellPartitioner)-> list:

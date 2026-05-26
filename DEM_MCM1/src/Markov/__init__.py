@@ -1,15 +1,14 @@
 from __future__ import annotations
+import asyncio
+asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
 import pandas as pd
 import numpy as np
 import pyarrow.parquet as pq
 from tqdm import tqdm
 import pyvista as pv
-# import streamlit as st
+import streamlit as st
 from stpyvista import stpyvista 
-import threading
-import uvicorn
-from fastapi import FastAPI
-import subprocess
+
 
 try:
     from .analyze_results import MarkovAnalyzer
@@ -18,15 +17,17 @@ try:
         get_api,get_fs
     )
     from .partitioners import(
-        
         create_partitioner,
         REGISTRY,
-    
 )
     from .run_sweep import (
         get_configs,
+        ExperimentConfig,
         HF_FOLDER,
+        run_experiment,
     )
+ 
+    from .utils import load_parquet_as_timestep_dict
 except ImportError:
     from analyze_results import MarkovAnalyzer
     from bucket_io import(
@@ -40,18 +41,18 @@ except ImportError:
 )
     from run_sweep import (
         get_configs,
+        ExperimentConfig,
         HF_FOLDER,
+        run_experiment,
     )
+    from utils import load_parquet_as_timestep_dict
 
+@st.cache_data(show_spinner="Chargement des données DEM...")
+def _load_dem_data_cached() -> dict[int, pd.DataFrame]:
+    """Fonction standalone pour bénéficier du cache Streamlit."""
+    
+    return load_parquet_as_timestep_dict(parquet_path=HF_FOLDER,fs=get_fs())
 
-api = FastAPI()
-SHARED_DATA = {"mesh": None}
-
-@api.get("/get_mesh")
-def get_mesh():
-    # Streamlit viendra chercher le mesh ici en mémoire
-    # On le convertit en dictionnaire VTK pour le transfert réseau rapide
-    return {"points": SHARED_DATA["mesh"].points.tolist()}
 class Markov:
     """
     On choisit la classe de partitionnement qu'on veut attribuer au constructeur lors de l'instanciation de l'objet Markov
@@ -79,82 +80,66 @@ class Markov:
         self.default_config=get_configs(method=method) # renvoie une liste des configurations par défaut normalement un nombre dont il faut se rassurer pour le choisir
         # dans ce cas nous choisissons juste la première configuration de la liste
         # on pourraàit aussi bien choisir la dernière ou n'importe la quelle de la liste des configurations
+        
         self.partitioner=create_partitioner(self.default_config[0].method,**self.default_config[0].method_kwargs)
 
-        self.datas:pd.DataFrame=pd.DataFrame()
+        self.datas:dict[int,pd.DataFrame]={0:pd.DataFrame()}
         self.coords:np.ndarray=np.empty((0,3))
         self.velocities:np.ndarray=np.empty((0,3))
         self.indices:list=[]
         self.vtp_states:pv.PolyData=pv.PolyData()
-        self.states:np.ndarray=np.empty(1030)
+        self.states:np.ndarray=np.array([])
         self.fichiers_cibles:pd.Series[bool]=pd.Series()
 
 
-
+    
     def load_dem_data(self):
-        fs=get_fs()
-        with fs.open(HF_FOLDER, "rb") as fh:
-            # 1. On ouvre le fichier avec PyArrow sans charger les données en mémoire
-            fichier_parquet = pq.ParquetFile(fh)
-            
-            # 2. On récupère le nombre total de groupes de lignes (Row Groups)
-            nb_groupes = fichier_parquet.num_row_groups
-            
-            list_dfs = []
-        
-            # 3. On configure tqdm sur le nombre de groupes à lire
-            with tqdm(total=nb_groupes, desc='Chargement du fichier (Groupes)', unit='bloc') as bar_progression:
-                for i in range(nb_groupes):
-                    # Lecture du groupe i et conversion immédiate en DataFrame Pandas
-                    df_groupe = fichier_parquet.read_row_group(i).to_pandas()
-                    list_dfs.append(df_groupe)
-                    
-                    # On met à jour la barre de progression d'une unité
-                    bar_progression.update(1)
-                    
-            # 4. On fusionne tous les morceaux en un seul DataFrame final
-            self.datas = pd.concat(list_dfs, ignore_index=True)
+        # Délègue à la fonction cachée — le résultat est réutilisé entre les reruns
+        self.datas = _load_dem_data_cached()
         return self.datas
     def get_coords(
             self,
             indices: list=[250]
             ):
-        if self.datas.empty:
+        if self.datas[0].empty:
             self.datas=self.load_dem_data()
-        self.indices=indices
-        self.fichiers_cibles=self.datas['Fichier_Source'].isin([f'data_{indice}.csv' for indice in self.indices])
-        self.coords=self.datas.loc[self.fichiers_cibles ,['coordinates:0','coordinates:1','coordinates:2']].to_numpy()
+        if not self.indices:
+            self.indices=indices
+        self.coords=self.datas[indices[0]][['coordinates:0','coordinates:1','coordinates:2']].to_numpy()
         return self.coords
     def get_velocities(
             self,
             indices: list=[250]
             ):
-        if self.datas.empty:
+        if self.datas[0].empty:
             self.datas=self.load_dem_data()
-        self.indices=indices
-        self.fichiers_cibles=self.datas['Fichier_Source'].isin([f'data_{indice}.csv' for indice in self.indices])
-        self.velocities=self.datas.loc[self.fichiers_cibles ,['Velocity:0', 'Velocity:1','Velocity:2']].to_numpy()
+        if not self.indices:
+            self.indices=indices
+        self.velocities=self.datas[indices[0]][['Velocity:0', 'Velocity:1','Velocity:2']].to_numpy()
         return self.velocities
-    def get_states(self):
+
+    def get_states(self,indices=[250]):
+        self.indices=indices
         if self.coords.shape[0]==0:
-            self.coords=self.get_coords()
+            self.coords=self.get_coords(self.indices)
         self.partitioner.fit(self.coords)
         self.states=self.partitioner.compute_states(self.coords[:,0],self.coords[:,1],self.coords[:,2])
         return self.states
-    def get_vtp(self):
-        if not self.indices:
-            _=self.get_states()
+    def get_vtp(self,indices=[250]):
+        self.indices=indices
+        if not self.states:
+            _=self.get_states(self.indices)
         self.vtp_states=pv.PolyData(self.coords)
         self.vtp_states.point_data['partitions']=self.states
-        self.vtp_states.point_data.set_array(data=self.datas.loc[self.fichiers_cibles,['Diameter']].to_numpy(),name='Diameter')
-        self.vtp_states.point_data.set_array(data=self.datas.loc[self.fichiers_cibles,['Velocity:0', 'Velocity:1','Velocity:2']].to_numpy(),name='Velocity')
-        self.vtp_states.point_data.set_array(data=self.datas.loc[self.fichiers_cibles,['Angular_velocity:0', 'Angular_velocity:1','Angular_velocity:2']].to_numpy(),name='Angular_Velocity')
-        self.vtp_states.point_data.set_array(data=self.datas.loc[self.fichiers_cibles,['Orientation:0', 'Orientation:1', 'Orientation:2']].to_numpy(),name='Orientation')
-        self.vtp_states.point_data.set_array(data=self.datas.loc[self.fichiers_cibles,['Collision_force:0','Collision_force:1', 'Collision_force:2']].to_numpy(),name='Collision_forces')
-        self.vtp_states.point_data.set_array(data=self.datas.loc[self.fichiers_cibles,['Particle_Rank']].to_numpy(),name='Particle_Rank')
-        self.vtp_states.point_data.set_array(data=self.datas.loc[self.fichiers_cibles,['Particle_Phase_ID']].to_numpy(),name='Particle_Phase_ID')
-        self.vtp_states.point_data.set_array(data=self.datas.loc[self.fichiers_cibles,['Particle_ID']].to_numpy(),name='Particle_ID')
-        self.vtp_states.point_data.set_array(data=self.datas.loc[self.fichiers_cibles,['Residence_Time']].to_numpy(),name='Residence_Time')
+        self.vtp_states.point_data.set_array(data=self.datas[indices[0]][['Diameter']].to_numpy(),name='Diameter')
+        self.vtp_states.point_data.set_array(data=self.datas[indices[0]][['Velocity:0', 'Velocity:1','Velocity:2']].to_numpy(),name='Velocity')
+        self.vtp_states.point_data.set_array(data=self.datas[indices[0]][['Angular_velocity:0', 'Angular_velocity:1','Angular_velocity:2']].to_numpy(),name='Angular_Velocity')
+        self.vtp_states.point_data.set_array(data=self.datas[indices[0]][['Orientation:0', 'Orientation:1', 'Orientation:2']].to_numpy(),name='Orientation')
+        self.vtp_states.point_data.set_array(data=self.datas[indices[0]][['Collision_force:0','Collision_force:1', 'Collision_force:2']].to_numpy(),name='Collision_forces')
+        self.vtp_states.point_data.set_array(data=self.datas[indices[0]][['Particle_Rank']].to_numpy(),name='Particle_Rank')
+        self.vtp_states.point_data.set_array(data=self.datas[indices[0]][['Particle_Phase_ID']].to_numpy(),name='Particle_Phase_ID')
+        self.vtp_states.point_data.set_array(data=self.datas[indices[0]][['Particle_ID']].to_numpy(),name='Particle_ID')
+        self.vtp_states.point_data.set_array(data=self.datas[indices[0]][['Residence_Time']].to_numpy(),name='Residence_Time')
         return self.vtp_states
         
     def visualize(self):
@@ -166,10 +151,63 @@ class Markov:
         pv.OFF_SCREEN=True
         pv.global_theme.trame.jupyter_extension_enabled = False
         pl=pv.Plotter(window_size=[400,400],notebook=False)
-        pl.add_mesh(self.vtp_states)
+        # # --- Glyphs : une sphère par particule, taille = Diameter ---
+        sphere = pv.Sphere(theta_resolution=8, phi_resolution=8)  # résolution basse = perf
+
+        self.glyphs = self.vtp_states.glyph(
+            geom=sphere,
+            scale="Diameter",      # colonne qui pilote la taille
+            orient=False,          # pas d'orientation des sphères
+            factor=1.0,            # multiplicateur global si besoin d'ajuster
+        )
+        pl.add_mesh(self.glyphs,
+                    scalars='partitions',
+                    cmap="tab10",
+                    show_scalar_bar=True,
+                    label='Clipped',
+                    # style='wireframe',
+                    # show_edges=True,
+                    )
+        if st.checkbox("Coupe"):
+            option=st.selectbox("Direction du plan",['xy','yz','xz','oblique'])
+
+            pl.clear()
+            if option=='xy':
+                normal=(0,0,.1)
+            elif option=='yz':
+                normal=(.1,0,0)
+            elif option=='xz':
+                normal=(0,.1,0)
+            else:
+                normal=(.1,.1,0)
+            plane=pv.Plane(i_size=30,j_size=30,direction=normal)
+            self.crinkled=self.glyphs.clip(normal=normal,crinkle=True)
+            pl.add_mesh(self.crinkled,
+                    scalars='partitions',
+                    cmap="tab10",
+                    show_scalar_bar=True,
+                    label='Clipped',
+                    # style='wireframe',
+                    # show_edges=True,
+                    )
+            pl.add_mesh(plane.extract_feature_edges(), color='r')
+
+        pl.camera_position = pv.CameraPosition(
+            position=(0.24, 0.32, 0.7),
+            focal_point=(0.02, 0.03, -0.02),
+            viewup=(-0.12, 0.93, -0.34),
+        )
         return stpyvista(pl)
+
+
         
     
+        
+    """
+    On a besoin de définir un objet qui construit et analyse la matrice de transition et les vecteurs d'état
+    """
+    analyzer=MarkovAnalyzer()
+
    
 
 

@@ -40,7 +40,7 @@ def _get_bucket_prefix_from_particle_diameter(particle_diameter):
     elif particle_diameter == 0.004:
         return "SMALL"
     else:
-        return "Experiments"
+        return "Experiment"
 
 def _get_current_branch():
     """

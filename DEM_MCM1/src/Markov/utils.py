@@ -1,90 +1,112 @@
 """
-Utilitaires généraux pour le module DEM_MCM.
+utils.py — Utilitaires généraux pour le module DEM_MCM.
 """
-
+from __future__ import annotations
 import numpy as np
-import polars as pl
+import pandas as pd
+import pyarrow.parquet as pq
+from tqdm import tqdm
 from typing import Optional, Tuple
 
 
-def apply_species_mask(states, species_labels):
+def load_parquet_as_timestep_dict(
+    parquet_path: str,
+    fs,
+) -> dict[int, pd.DataFrame]:
     """
-    Filtre un vecteur d'états pour garder seulement les particules matchant le masque species_labels.
-    
-    Cette fonction est évolutive et fonctionne avec n'importe quel nombre de particules
-    et de snapshots en répétant le masque au besoin.
-    
+    Charge le fichier Parquet entier et retourne un dict {idx: DataFrame}.
+
+    L'index est extrait de la colonne Fichier_Source ("data_{idx}.csv").
+
     Args:
-        states (np.ndarray): Vecteur d'états assignées aux particules. Shape: (n_particles,)
-                            Valeurs entières représentant les cellules/partitions.
-        species_labels (np.ndarray or None): Masque booléen pour filtrer les espèces.
-                                            Shape: (n_unique_particles,)
-                                            Si None, aucun filtrage n'est appliqué.
-    
+        parquet_path : chemin HuggingFace (hf://buckets/...)
+        fs           : HfFileSystem déjà instancié
+
     Returns:
-        np.ndarray: Vecteur d'états filtrées. 
-                   - Si species_labels is None: returns states (pas de filtrage)
-                   - Sinon: returns states[mask] avec le masque répété au besoin
-    
-    Examples:
-        >>> states = np.array([0, 1, 2, 0, 1])  # 5 particules
-        >>> labels = np.array([True, False, True])  # 3 particules uniques
-        >>> # Répète le masque: [True, False, True, True, False]
-        >>> result = apply_species_mask(states, labels)
-        >>> # Garde seulement les indices 0, 2, 3 → states[[0,2,3]]
+        dict[int, pd.DataFrame] — une entrée par timestep disponible
+    """
+    with fs.open(parquet_path, "rb") as fh:
+        pf       = pq.ParquetFile(fh)
+        list_dfs = []
+        with tqdm(
+            total=pf.num_row_groups,
+            desc="   Chargement parquet",
+            unit="bloc",
+        ) as bar:
+            for i in range(pf.num_row_groups):
+                list_dfs.append(pf.read_row_group(i).to_pandas())
+                bar.update(1)
+
+    df_full = pd.concat(list_dfs, ignore_index=True)
+
+    timestep_dict: dict[int, pd.DataFrame] = {}
+    for source, group_df in df_full.groupby("Fichier_Source"):
+        # "data_42.csv" → 42
+        idx = int(
+            str(source)
+            .replace("data_", "")
+            .replace(".csv", "")
+        )
+        timestep_dict[idx] = group_df.reset_index(drop=True)
+
+    print(
+        f"   📦 {len(timestep_dict)} timesteps indexés "
+        f"(index {min(timestep_dict)} → {max(timestep_dict)})"
+    )
+    return timestep_dict
+
+
+def apply_species_mask(
+    states: np.ndarray,
+    species_labels: Optional[np.ndarray],
+) -> np.ndarray:
+    """
+    Filtre un vecteur d'états pour garder seulement les particules
+    correspondant au masque species_labels.
+
+    Args:
+        states         : (n_particles,) — états assignés
+        species_labels : (n_unique_particles,) bool ou None
+
+    Returns:
+        np.ndarray — états filtrés, ou states inchangé si species_labels is None
     """
     if species_labels is None:
-        return states  # Pas de filtrage si pas de masque
-    
-    # Calculer le nombre de répétitions nécessaires
+        return states
+
     n_repeats = len(states) // len(species_labels)
     mask = np.tile(species_labels, n_repeats)
-    
+
     # Gérer le cas où len(states) n'est pas un multiple exact
     if len(mask) < len(states):
         remaining = len(states) - len(mask)
         mask = np.concatenate([mask, species_labels[:remaining]])
-    
+
     return states[mask]
 
 
 def filter_by_diameter(
-    df: pl.DataFrame, 
-    diameter: float
-) -> Tuple[pl.DataFrame, np.ndarray]:
+    df: "pl.DataFrame",
+    diameter: float,
+) -> Tuple["pl.DataFrame", np.ndarray]:
     """
-    Filtre les particules par diamètre et retourne le dataframe filtré + IDs conservés.
-    
+    Filtre un DataFrame Polars par diamètre de particule.
+
     Args:
-        df: DataFrame Polars chargé depuis un fichier CSV (1030 lignes × 24 colonnes)
-        diameter: Diamètre cible en mètres (0.004 ou 0.008)
-    
+        df       : DataFrame Polars chargé depuis un fichier CSV
+        diameter : diamètre cible en mètres (0.004 ou 0.008)
+
     Returns:
-        tuple:
-            - filtered_df: DataFrame avec seulement les particules matchant le diamètre
-            - particle_ids_kept: np.ndarray des valeurs Particle_ID conservées
-    
-    Raises:
-        ValueError: Si le diamètre n'est pas dans [0.004, 0.008]
-    
-    Example:
-        >>> df_filtered, ids = filter_by_diameter(df, diameter=0.004)
-        >>> len(df_filtered)  # ~515 particules (environ la moitié)
-        515
-        >>> len(ids)
-        515
-        >>> assert all(d == 0.004 for d in df_filtered["Diameter"])
+        (filtered_df, particle_ids_kept)
     """
-    # Valider le diamètre
     valid_diameters = [0.004, 0.008]
     if diameter not in valid_diameters:
-        raise ValueError(f"diameter doit être dans {valid_diameters}, reçu {diameter}")
-    
-    # Filtrer par diamètre
-    mask = df["Diameter"] == diameter
+        raise ValueError(
+            f"diameter doit être dans {valid_diameters}, reçu {diameter}"
+        )
+
+    mask        = df["Diameter"] == diameter
     filtered_df = df.filter(mask)
-    
-    # Extraire les Particle_IDs (comme tableau numpy pour les métadonnées)
     particle_ids_kept = filtered_df["Particle_ID"].to_numpy()
-    
+
     return filtered_df, particle_ids_kept

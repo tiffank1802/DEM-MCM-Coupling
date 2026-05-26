@@ -15,7 +15,7 @@ from pathlib import Path
 from huggingface_hub import HfApi, HfFileSystem
 
 # Configuration
-BUCKET_ID = "ktongue/DEM_MCM"
+BUCKET_ID = "ktongue/DEM_MCM/_Good"
 
 # ============================================================================
 # DÉTECTION DYNAMIQUE DU BUCKET SELON LE MASQUE APPLIQUÉ (particle_diameter)
