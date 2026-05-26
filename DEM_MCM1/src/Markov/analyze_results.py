@@ -19,6 +19,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import json
 import io
+import logging
 from collections import defaultdict
 from huggingface_hub import HfFileSystem
 
@@ -28,6 +29,8 @@ try:
 except ImportError:
     import bucket_io as b_io
     from utils import apply_species_mask,load_parquet_as_timestep_dict
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # CONFIGURATION
@@ -340,12 +343,337 @@ class MarkovAnalyzer:
         return self.results[folder_name]["matrix"]
 
     # ─────────────────────────────────────────────────────────────────────
+    # SPECIES LABELING
+    # ─────────────────────────────────────────────────────────────────────
+    
+    def label_species(self, criterion: str = "small") -> np.ndarray:
+        """
+        Label particles as "species A" (True) or "species B" (False).
+        
+        Args:
+            criterion: Labeling criterion
+                - "small": Diameter < 0.006 m (small particles)
+                - "first_half": First half of particles (index-based)
+                - "spatial_bottom": Bottom half (z-coordinate)
+                
+        Returns:
+            Boolean array, shape (N_particles,)
+        """
+        if not self.dem_snapshots:
+            raise ValueError("❌ No DEM snapshots loaded. Call load_dem_snapshots() first.")
+        
+        snap_0 = self.dem_snapshots[0]
+        df_0 = snap_0.get("df")
+        
+        if df_0 is None:
+            logger.warning("⚠️  DataFrame not available in snapshot, cannot label species")
+            self.species_labels = np.ones(self.n_particles, dtype=bool)
+            return self.species_labels
+        
+        if criterion == "small":
+            # Label small particles (diameter < 0.006 m)
+            if "Diameter" in df_0.columns:
+                self.species_labels = df_0["Diameter"].values < 0.006
+            else:
+                logger.warning("⚠️  'Diameter' column not found, using first_half criterion")
+                self.species_labels = np.arange(self.n_particles) < self.n_particles // 2
+                
+        elif criterion == "first_half":
+            # Label first half of particles
+            self.species_labels = np.arange(self.n_particles) < self.n_particles // 2
+            
+        elif criterion == "spatial_bottom":
+            # Label bottom half by z-coordinate
+            z_coords = snap_0["coords"][:, 2]
+            self.species_labels = z_coords < np.median(z_coords)
+        else:
+            raise ValueError(f"Unknown criterion: {criterion}")
+        
+        logger.info(
+            f"✅ Species labeled: {criterion} → "
+            f"{self.species_labels.sum()} / {len(self.species_labels)} particles"
+        )
+        
+        return self.species_labels
+
+    # ─────────────────────────────────────────────────────────────────────
     # DONNÉES DEM
     # ─────────────────────────────────────────────────────────────────────
 
-    def load_dem_snapshots(self, file_indices=None, sample_every=1):
+    def load_dem_snapshots(
+        self,
+        file_indices: list | None = None,
+        sample_every: int = 1,
+        particle_diameter: float | None = None,
+    ) -> list[dict]:
+        """
+        Charger les snapshots DEM depuis HuggingFace.
         
-        return load_parquet_as_timestep_dict()
+        Convertit le parquet HF (Dict[timestep, DataFrame]) en liste de dicts
+        avec format {t: timestep_index, coords: (N, 3) array}.
+        
+        Args:
+            file_indices: List of timestep indices to load (e.g., [250, 300, 350, ...]).
+                         If None, defaults to [250, 300, ..., 6000] (50-step intervals)
+            sample_every: Sample every Nth timestep (default=1, no sampling)
+            particle_diameter: Filter by diameter (0.004, 0.008, None for all).
+                              If None, inferred from stats.json if available.
+            
+        Returns:
+            List of dicts with structure:
+            [
+                {"t": 250, "coords": (N, 3) array},
+                {"t": 300, "coords": (N, 3) array},
+                ...
+            ]
+            
+        Raises:
+            FileNotFoundError: If HF bucket not accessible
+            ValueError: If file_indices is empty or invalid
+            
+        Examples:
+            >>> analyzer = MarkovAnalyzer()
+            >>> # Load standard timesteps
+            >>> snapshots = analyzer.load_dem_snapshots()
+            >>> print(f"Loaded {len(snapshots)} snapshots")
+            >>> 
+            >>> # Load specific timesteps, filter diameter
+            >>> snapshots = analyzer.load_dem_snapshots(
+            ...     file_indices=[250, 500, 1000],
+            ...     particle_diameter=0.004
+            ... )
+        """
+        # Default timesteps if not provided
+        if file_indices is None:
+            file_indices = list(range(250, 6001, 50))  # 250 to 6000, every 50
+        
+        if not file_indices:
+            raise ValueError("❌ file_indices cannot be empty")
+        
+        # Apply sampling
+        if sample_every > 1:
+            file_indices = file_indices[::sample_every]
+        
+        # Determine bucket prefix from particle diameter
+        if particle_diameter is None:
+            # Try to infer from stats if available
+            try:
+                if self.results:
+                    for folder_data in self.results.values():
+                        if "stats" in folder_data and folder_data["stats"]:
+                            particle_diameter = folder_data["stats"].get("particle_diameter")
+                            if particle_diameter:
+                                break
+            except:
+                pass
+        
+        bucket_prefix = _get_bucket_prefix_from_particle_diameter(particle_diameter)
+        bucket_base = f"hf://buckets/{BUCKET_ID}/{bucket_prefix}"
+        parquet_path = f"{bucket_base}/simulation_complete.parquet"
+        
+        logger.info(
+            f"📦 Chargement DEM snapshots: "
+            f"indices={file_indices[0]}-{file_indices[-1]}, "
+            f"prefix={bucket_prefix}"
+        )
+        
+        try:
+            # Load timestep dict from HF
+            timestep_dict = load_parquet_as_timestep_dict(
+                parquet_path=parquet_path,
+                fs=self.fs
+            )
+            
+            # Convert to dem_snapshots format
+            dem_snapshots = []
+            missing_indices = []
+            
+            for idx in file_indices:
+                if idx in timestep_dict:
+                    df = timestep_dict[idx]
+                    # Extract coordinates (columns: 'coordinates:0', 'coordinates:1', 'coordinates:2')
+                    coords = np.column_stack([
+                        df['coordinates:0'].values,
+                        df['coordinates:1'].values,
+                        df['coordinates:2'].values,
+                    ])
+                    dem_snapshots.append({
+                        "t": idx,
+                        "coords": coords,
+                        "df": df,  # Keep DataFrame for later access if needed
+                    })
+                else:
+                    missing_indices.append(idx)
+            
+            # Log warnings for missing timesteps
+            if missing_indices:
+                logger.warning(
+                    f"⚠️  {len(missing_indices)} timesteps not found in parquet: "
+                    f"{missing_indices[:5]}{'...' if len(missing_indices) > 5 else ''}"
+                )
+            
+            # Store metadata
+            self.dem_snapshots = dem_snapshots
+            self.dem_file_indices = file_indices
+            if dem_snapshots:
+                self.n_particles = dem_snapshots[0]["coords"].shape[0]
+            
+            logger.info(
+                f"✅ {len(dem_snapshots)} snapshots chargés "
+                f"(N={self.n_particles} particules)"
+            )
+            
+            return dem_snapshots
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur chargement DEM snapshots: {e}")
+            raise
+    
+    def list_available_models(
+        self,
+        method: str | None = None,
+        particle_diameter: float | None = None,
+        fraction_visited_threshold: float = 0.95,
+    ) -> list[dict]:
+        """
+        Lister les modèles disponibles sur HuggingFace avec filtrage.
+        
+        **FILTRE CRITIQUE**: Garde seulement `fraction_visited >= threshold`
+        pour garantir que les données DEM couvrent bien le domaine.
+        
+        Args:
+            method: Filter by partitioning method (e.g., "voronoi", "cartesian").
+                   If None, returns all methods.
+            particle_diameter: Filter by diameter (0.004, 0.008, None for all).
+            fraction_visited_threshold: Min fraction_visited in stats.json.
+                                       Default=0.95 (HF standard).
+            
+        Returns:
+            List of dicts with structure:
+            [
+                {
+                    "folder_name": "voronoi_125_run1",
+                    "method": "voronoi",
+                    "n_states": 125,
+                    "particle_diameter": 0.004,
+                    "fraction_visited": 0.98,
+                    "stats": {...},
+                    "info": {...},
+                },
+                ...
+            ]
+            
+        Examples:
+            >>> analyzer = MarkovAnalyzer()
+            >>> # All models with good fraction_visited
+            >>> models = analyzer.list_available_models()
+            >>> 
+            >>> # Only Voronoi with small particles
+            >>> models = analyzer.list_available_models(
+            ...     method="voronoi",
+            ...     particle_diameter=0.004
+            ... )
+            >>> for m in models:
+            ...     print(f"{m['folder_name']}: {m['n_states']} states, "
+            ...           f"fraction_visited={m['fraction_visited']:.2f}")
+        """
+        available_models = []
+        
+        # Determine buckets to search
+        if particle_diameter is not None:
+            buckets = [
+                f"hf://buckets/{BUCKET_ID}/{_get_bucket_prefix_from_particle_diameter(particle_diameter)}"
+            ]
+        else:
+            buckets = ALL_BUCKET_BASES
+        
+        logger.info(
+            f"🔍 Listage modèles: method={method}, "
+            f"diameter={particle_diameter}, "
+            f"fraction_visited >= {fraction_visited_threshold}"
+        )
+        
+        for bucket_base in buckets:
+            try:
+                folders = self._list_folders(bucket_base)
+                
+                for folder_name in folders:
+                    # Filter by method if specified
+                    if method is not None:
+                        detected = self._detect_method(folder_name)
+                        if detected != method:
+                            continue
+                    
+                    try:
+                        # Load experiment (lightweight: just stats + matrix shape)
+                        data = self._load_experiment(bucket_base, folder_name)
+                        
+                        # Extract stats
+                        stats = data.get("stats", {})
+                        info = data.get("info", {})
+                        
+                        # **CRITICAL FILTER**: fraction_visited
+                        fv = stats.get("fraction_visited", 1.0)
+                        if fv < fraction_visited_threshold:
+                            logger.debug(
+                                f"   ⏭️  {folder_name}: skipped "
+                                f"(fraction_visited={fv:.2f} < {fraction_visited_threshold})"
+                            )
+                            continue
+                        
+                        model_info = {
+                            "folder_name": folder_name,
+                            "method": data.get("method"),
+                            "n_states": data["matrix"].shape[0],
+                            "particle_diameter": stats.get("particle_diameter"),
+                            "fraction_visited": fv,
+                            "stats": stats,
+                            "info": info,
+                        }
+                        
+                        available_models.append(model_info)
+                        logger.debug(f"   ✅ {folder_name} ({model_info['n_states']} states)")
+                        
+                    except Exception as e:
+                        logger.debug(f"   ⚠️  {folder_name}: {e}")
+                        continue
+                        
+            except Exception as e:
+                logger.warning(f"⚠️  Error listing {bucket_base}: {e}")
+                continue
+        
+        logger.info(f"✅ {len(available_models)} models found")
+        return available_models
+    
+    def get_model_lazy(self, folder_name: str) -> dict:
+        """
+        Charger un modèle avec lazy loading des matrices.
+        
+        Retourne un LoadedModel-like dict avec matrices chargées on-demand.
+        
+        Args:
+            folder_name: Name of experiment folder
+            
+        Returns:
+            Dict with structure:
+            {
+                "folder_name": str,
+                "method": PartitioningMethod,
+                "matrix": np.ndarray (lazy-loaded),
+                "stats": dict,
+                "config": dict,
+            }
+        """
+        if folder_name not in self.results:
+            # Try to load it
+            try:
+                data = self._load_experiment(BUCKET_BASE, folder_name)
+                self.results[folder_name] = data
+            except Exception as e:
+                logger.error(f"❌ Could not load {folder_name}: {e}")
+                raise
+        
+        return self.results[folder_name]
 
     def compute_dem_rsd(self, partitioner, species_labels=None, partitioner_name=None):
         if partitioner is None:

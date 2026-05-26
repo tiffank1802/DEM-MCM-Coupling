@@ -5,9 +5,28 @@ import pandas as pd
 import numpy as np
 import pyarrow.parquet as pq
 from tqdm import tqdm
-import pyvista as pv
-import streamlit as st
-from stpyvista import stpyvista 
+
+# Optional imports
+try:
+    import pyvista as pv
+    HAS_PYVISTA = True
+except ImportError:
+    HAS_PYVISTA = False
+    pv = None
+
+try:
+    import streamlit as st
+    HAS_STREAMLIT = True
+except ImportError:
+    HAS_STREAMLIT = False
+    st = None
+
+try:
+    from stpyvista import stpyvista
+    HAS_STPYVISTA = True
+except ImportError:
+    HAS_STPYVISTA = False
+    stpyvista = None
 
 
 try:
@@ -47,11 +66,17 @@ except ImportError:
     )
     from utils import load_parquet_as_timestep_dict
 
-@st.cache_data(show_spinner="Chargement des données DEM...")
-def _load_dem_data_cached() -> dict[int, pd.DataFrame]:
-    """Fonction standalone pour bénéficier du cache Streamlit."""
-    
-    return load_parquet_as_timestep_dict(parquet_path=HF_FOLDER,fs=get_fs())
+# Only define cache function if Streamlit is available
+if HAS_STREAMLIT:
+    @st.cache_data(show_spinner="Chargement des données DEM...")
+    def _load_dem_data_cached() -> dict[int, pd.DataFrame]:
+        """Fonction standalone pour bénéficier du cache Streamlit."""
+        
+        return load_parquet_as_timestep_dict(parquet_path=HF_FOLDER,fs=get_fs())
+else:
+    def _load_dem_data_cached() -> dict[int, pd.DataFrame]:
+        """Fallback when Streamlit not available."""
+        return load_parquet_as_timestep_dict(parquet_path=HF_FOLDER,fs=get_fs())
 
 class Markov:
     """
