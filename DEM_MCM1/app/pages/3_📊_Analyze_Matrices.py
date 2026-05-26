@@ -12,6 +12,15 @@ Analyser les propriétés spectrales des matrices transition:
 - Steady-state analysis
 """
 
+import sys
+import os
+from pathlib import Path
+
+# Add project root to sys.path to enable 'src' imports
+project_root = str(Path(__file__).parent.parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 import streamlit as st
 import pandas as pd
 import numpy as np

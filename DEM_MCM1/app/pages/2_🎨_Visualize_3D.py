@@ -12,6 +12,15 @@ Visualiser et comparer les partitionings en 3D:
 - Plans de coupe optionnels (xy, yz, xz)
 """
 
+import sys
+import os
+from pathlib import Path
+
+# Add project root to sys.path to enable 'src' imports
+project_root = str(Path(__file__).parent.parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 import streamlit as st
 import numpy as np
 import logging
