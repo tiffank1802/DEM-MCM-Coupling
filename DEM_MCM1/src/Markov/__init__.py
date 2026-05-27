@@ -92,29 +92,76 @@ class Markov:
         - Cette classe permet de créér un objet BasePartitionner lors de l'instanciation avec par défaut un CartesianPartitioner
         - Elle utilise les paramètres par défaut définis dans le fichiers run_sweep de la méthode _get_defaut_kwargs
     """
-    def __init__(self,
-                 method: str="cartesian"
+    def __init__(self, method: str = "cartesian") -> None:
+        self.method = method
+        self.default_config = get_configs(method=method)
+        self._config_index = len(self.default_config) - 1  # défaut : dernière config
 
+        self.partitioner = create_partitioner(
+            self.default_config[self._config_index].method,
+            **self.default_config[self._config_index].method_kwargs
+        )
+        self.datas: dict[int, pd.DataFrame] = {0: pd.DataFrame()}
+        self.coords: np.ndarray = np.empty((0, 3))
+        self.velocities: np.ndarray = np.empty((0, 3))
+        self.indices: list = []
+        self.vtp_states: pv.PolyData = pv.PolyData()
+        self.states: np.ndarray = np.array([])
 
-                 ) -> None:
+    # ── Propriété centrale ────────────────────────────────────────────
+    @property
+    def config(self) -> ExperimentConfig:
+        """Config actuellement sélectionnée."""
+        return self.default_config[self._config_index]
+
+    def set_config(self, index: int) -> None:
         """
-        Défini la méthode de partitionnement à adopter par défaut est le cartésien
-
+        Sélectionne une config par son index et recrée le partitionneur.
+        Réinitialise les états calculés pour éviter les incohérences.
         """
-        self.method=method
-        self.default_config=get_configs(method=method) # renvoie une liste des configurations par défaut normalement un nombre dont il faut se rassurer pour le choisir
-        # dans ce cas nous choisissons juste la première configuration de la liste
-        # on pourraàit aussi bien choisir la dernière ou n'importe la quelle de la liste des configurations
-        
-        self.partitioner=create_partitioner(self.default_config[0].method,**self.default_config[0].method_kwargs)
+        if not (0 <= index < len(self.default_config)):
+            raise IndexError(
+                f"Index {index} hors bornes (0–{len(self.default_config)-1})"
+            )
+        self._config_index = index
+        self.partitioner = create_partitioner(
+            self.config.method, **self.config.method_kwargs
+        )
+        # Reset des résultats dépendants de la config
+        self.states = np.array([])
+        self.coords = np.empty((0, 3))
+        self.vtp_states = pv.PolyData()
 
-        self.datas:dict[int,pd.DataFrame]={0:pd.DataFrame()}
-        self.coords:np.ndarray=np.empty((0,3))
-        self.velocities:np.ndarray=np.empty((0,3))
-        self.indices:list=[]
-        self.vtp_states:pv.PolyData=pv.PolyData()
-        self.states:np.ndarray=np.array([])
-        self.fichiers_cibles:pd.Series[bool]=pd.Series()
+    # ── Widget Streamlit ─────────────────────────────────────────────
+    def select_config_widget(self) -> None:
+        """
+        Affiche un selectbox Streamlit permettant de choisir la config.
+        Appelle set_config() automatiquement si la sélection change.
+        """
+        import streamlit as st
+
+        def _label(i: int, c: ExperimentConfig) -> str:
+            p = create_partitioner(c.method, **c.method_kwargs)
+            return (
+                f"[{i}] {p.label} — "
+                f"nlt={c.nlt} τ={c.tau} step={c.step} dt={c.dt}"
+                + (f" d={c.particle_diameter}" if c.particle_diameter else "")
+            )
+
+        options = {_label(i, c): i for i, c in enumerate(self.default_config)}
+
+        current_label = _label(self._config_index, self.config)
+        chosen_label = st.selectbox(
+            label=f"Configuration — méthode **{self.method}** "
+                  f"({len(self.default_config)} configs disponibles)",
+            options=list(options.keys()),
+            index=list(options.keys()).index(current_label),
+            key=f"config_select_{self.method}",
+        )
+        chosen_index = options[chosen_label]
+        if chosen_index != self._config_index:
+            self.set_config(chosen_index)
+            st.rerun()  # force le rechargement avec la nouvelle config
 
 
     
@@ -169,69 +216,115 @@ class Markov:
         
     def visualize(self):
         import streamlit as st
-        st.subheader("Visualisation des particules")
-        if self.vtp_states.is_empty:
-            _=self.get_vtp()
-        pv.start_xvfb()
-        pv.OFF_SCREEN=True
-        pv.global_theme.trame.jupyter_extension_enabled = False
-        pl=pv.Plotter(window_size=[400,400],notebook=False)
-        # # --- Glyphs : une sphère par particule, taille = Diameter ---
-        sphere = pv.Sphere(theta_resolution=8, phi_resolution=8)  # résolution basse = perf
+        from stpyvista import stpyvista
+        import PIL.Image
+        import io
 
+        st.subheader("Visualisation des particules")
+
+        if self.vtp_states.is_empty:
+            _ = self.get_vtp()
+
+        pv.start_xvfb()
+        pv.global_theme.trame.jupyter_extension_enabled = False
+
+        sphere = pv.Sphere(theta_resolution=8, phi_resolution=8)
         self.glyphs = self.vtp_states.glyph(
             geom=sphere,
-            scale="Diameter",      # colonne qui pilote la taille
-            orient=False,          # pas d'orientation des sphères
-            factor=1.0,            # multiplicateur global si besoin d'ajuster
+            scale="Diameter",
+            orient=False,
+            factor=1.0,
         )
-        pl.add_mesh(self.glyphs,
-                    scalars='partitions',
-                    cmap="tab10",
-                    show_scalar_bar=True,
-                    label='Clipped',
-                    # style='wireframe',
-                    # show_edges=True,
-                    )
-        if st.checkbox("Coupe"):
-            option=st.selectbox("Direction du plan",['xy','yz','xz','oblique'])
 
-            pl.clear()
-            if option=='xy':
-                normal=(0,0,.1)
-            elif option=='yz':
-                normal=(.1,0,0)
-            elif option=='xz':
-                normal=(0,.1,0)
-            else:
-                normal=(.1,.1,0)
-            plane=pv.Plane(i_size=30,j_size=30,direction=normal)
-            self.crinkled=self.glyphs.clip(normal=normal,crinkle=True)
-            pl.add_mesh(self.crinkled,
-                    scalars='partitions',
-                    cmap="tab10",
-                    show_scalar_bar=True,
-                    label='Clipped',
-                    # style='wireframe',
-                    # show_edges=True,
-                    )
-            pl.add_mesh(plane.extract_feature_edges(), color='r')
+        MESH_KWARGS = dict(
+            scalars="partitions",
+            cmap="tab10",
+            show_scalar_bar=True,
+        )
 
-        pl.camera_position = pv.CameraPosition(
+        VIEWS_2D = {
+            "xy": "Vue XY — dessus",
+            "xz": "Vue XZ — face",
+            "yz": "Vue YZ — côté",
+        }
+
+        def make_plotter(view=None):
+            pl = pv.Plotter(window_size=[800, 800], notebook=False, off_screen=True)
+            pl.add_mesh(self.glyphs, **MESH_KWARGS)
+            match view:
+                case "xy": pl.view_xy()
+                case "xz": pl.view_xz()
+                case "yz": pl.view_yz()
+                case _:
+                    pl.camera_position = pv.CameraPosition(
+                        position=(0.24, 0.32, 0.7),
+                        focal_point=(0.02, 0.03, -0.02),
+                        viewup=(-0.12, 0.93, -0.34),
+                    )
+            pl.enable_parallel_projection()
+            return pl
+
+        def render_png(view) -> bytes:
+            """Rend une vue off-screen et retourne les bytes PNG."""
+            pl = make_plotter(view=view)
+            img = pl.screenshot(return_img=True)  # numpy array
+            pl.close()
+            buf = io.BytesIO()
+            PIL.Image.fromarray(img).save(buf, format="PNG")
+            return buf.getvalue()
+
+        # --- Vue 3D interactive ---
+        pl_3d = pv.Plotter(window_size=[800, 800], notebook=False)
+        pl_3d.add_mesh(self.glyphs, **MESH_KWARGS)
+        pl_3d.camera_position = pv.CameraPosition(
             position=(0.24, 0.32, 0.7),
             focal_point=(0.02, 0.03, -0.02),
             viewup=(-0.12, 0.93, -0.34),
         )
-        return stpyvista(pl)
+        stpyvista(pl_3d)
 
-
-        
+        # --- Téléchargements 2D ---
+        st.divider()
+        st.caption("Télécharger les vues 2D")
+        cols = st.columns(len(VIEWS_2D))
+        for col, (view, label) in zip(cols, VIEWS_2D.items()):
+            with col:
+                col.download_button(
+                    label=f"⬇️ {label}",
+                    data=render_png(view),
+                    file_name=f"vue_{view}.png",
+                    mime="image/png",
+                )
     
-        
-    """
-    On a besoin de définir un objet qui construit et analyse la matrice de transition et les vecteurs d'état
-    """
-    analyzer=MarkovAnalyzer()
+
+
+    def state_vector(self):
+        return np.bincount(
+            self.states,
+            minlength=self.partitioner.n_cells
+        ).astype(np.float32)
+
+        """
+        On a besoin de définir un objet qui construit et analyse la matrice de transition et les vecteurs d'état
+        """
+    def P_matrix(self):
+        return run_experiment(config=self.default_config[-2],partitioner=self.partitioner,timestep_dict=self.datas)
+    
+    def propagate(self):
+        self.P=self.P_matrix()[0]
+        np.savetxt(f"P.txt_{self.partitioner.label}",self.P)
+        S=self.state_vector()
+        self.S_history=[S]
+        tau=self.default_config[-2].tau
+        start=self.default_config[-2].start_index
+        for i in range(start,6000,tau):
+            S=S@self.P
+            self.S_history.append(S)
+        np.savetxt(f"S_history_{self.partitioner.label}.txt",self.S_history)
+        return np.array(self.S_history)
+
+    
+
 
    
 

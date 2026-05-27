@@ -469,7 +469,7 @@ class MarkovAnalyzer:
         
         bucket_prefix = _get_bucket_prefix_from_particle_diameter(particle_diameter)
         bucket_base = f"hf://buckets/{BUCKET_ID}/{bucket_prefix}"
-        parquet_path = f"{bucket_base}/simulation_complete.parquet"
+        parquet_path = f"hf://buckets/{BUCKET_ID}/simulation_complete.parquet"
         
         logger.info(
             f"📦 Chargement DEM snapshots: "
@@ -493,9 +493,9 @@ class MarkovAnalyzer:
                     df = timestep_dict[idx]
                     # Extract coordinates (columns: 'coordinates:0', 'coordinates:1', 'coordinates:2')
                     coords = np.column_stack([
-                        df['coordinates:0'].values,
-                        df['coordinates:1'].values,
-                        df['coordinates:2'].values,
+                        df['coordinates:0'].to_numpy(),
+                        df['coordinates:1'].to_numpy(),
+                        df['coordinates:2'].to_numpy(),
                     ])
                     dem_snapshots.append({
                         "t": idx,

@@ -739,22 +739,36 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
     print(f"   📦 {len(timestep_dict)} timesteps disponibles "
           f"(index {min(timestep_dict)} → {max(timestep_dict)})")
 
-    # ── Species labels (depuis le premier timestep disponible) ──────
+    # ── Species labels ───────────────────────────────────────────────
     species_labels = None
     try:
-        df_init = timestep_dict[start_base]
+        df_init   = timestep_dict[start_base]
         diameters = df_init["Diameter"].to_numpy() if "Diameter" in df_init.columns else None
+
         if diameters is not None:
             unique_vals = np.unique(diameters)
-            if len(unique_vals) == 2:
-                large_val      = unique_vals[-1]
-                species_labels = (diameters == large_val)
-                print(f"   ✅ Espèces: {species_labels.sum()} grandes / "
-                      f"{(~species_labels).sum()} petites")
+
+            if config.particle_diameter is not None:
+                # ✅ Filtre explicite depuis la config
+                if config.particle_diameter not in unique_vals:
+                    raise ValueError(
+                        f"Diamètre {config.particle_diameter} absent des données "
+                        f"(valeurs trouvées : {unique_vals})"
+                    )
+                species_labels = (diameters == config.particle_diameter)
+                label_str = "SMALL" if config.particle_diameter == unique_vals[0] else "BIG"
+                print(f"   ✅ Filtre diamètre {config.particle_diameter} ({label_str}) : "
+                    f"{species_labels.sum()} particules retenues")
+
+            elif len(unique_vals) == 2:
+                # Comportement legacy : toutes les espèces, pas de filtre
+                print(f"   ℹ️  2 diamètres détectés {unique_vals} — aucun filtre appliqué "
+                    f"(passez particle_diameter pour filtrer)")
             else:
-                print(f"   ⚠️  {len(unique_vals)} diamètres trouvés (attendu 2) — masque non appliqué")
+                print(f"   ⚠️  {len(unique_vals)} diamètres trouvés — masque non appliqué")
         else:
             print("   ⚠️  Colonne 'Diameter' non trouvée — masque non appliqué")
+
     except KeyError:
         print(f"   ⚠️  Timestep {start_base} absent du dict — masque non appliqué")
     except Exception as e:
