@@ -92,76 +92,30 @@ class Markov:
         - Cette classe permet de créér un objet BasePartitionner lors de l'instanciation avec par défaut un CartesianPartitioner
         - Elle utilise les paramètres par défaut définis dans le fichiers run_sweep de la méthode _get_defaut_kwargs
     """
-    def __init__(self, method: str = "cartesian") -> None:
-        self.method = method
-        self.default_config = get_configs(method=method)
-        self._config_index = len(self.default_config) - 1  # défaut : dernière config
+    def __init__(self,
+                 method: str="cartesian"
 
-        self.partitioner = create_partitioner(
-            self.default_config[self._config_index].method,
-            **self.default_config[self._config_index].method_kwargs
-        )
-        self.datas: dict[int, pd.DataFrame] = {0: pd.DataFrame()}
-        self.coords: np.ndarray = np.empty((0, 3))
-        self.velocities: np.ndarray = np.empty((0, 3))
-        self.indices: list = []
-        self.vtp_states: pv.PolyData = pv.PolyData()
-        self.states: np.ndarray = np.array([])
 
-    # ── Propriété centrale ────────────────────────────────────────────
-    @property
-    def config(self) -> ExperimentConfig:
-        """Config actuellement sélectionnée."""
-        return self.default_config[self._config_index]
-
-    def set_config(self, index: int) -> None:
+                 ) -> None:
         """
-        Sélectionne une config par son index et recrée le partitionneur.
-        Réinitialise les états calculés pour éviter les incohérences.
+        Défini la méthode de partitionnement à adopter par défaut est le cartésien
+
         """
-        if not (0 <= index < len(self.default_config)):
-            raise IndexError(
-                f"Index {index} hors bornes (0–{len(self.default_config)-1})"
-            )
-        self._config_index = index
-        self.partitioner = create_partitioner(
-            self.config.method, **self.config.method_kwargs
-        )
-        # Reset des résultats dépendants de la config
-        self.states = np.array([])
-        self.coords = np.empty((0, 3))
-        self.vtp_states = pv.PolyData()
+        self.method=method
+        self.default_configs=get_configs(method=method) # renvoie une liste des configurations par défaut normalement un nombre dont il faut se rassurer pour le choisir
+        # dans ce cas nous choisissons juste la première configuration de la liste
+        # on pourraàit aussi bien choisir la dernière ou n'importe la quelle de la liste des configurations
+        self.config=self.default_configs[-2]
+        
+        self.partitioner=create_partitioner(self.config.method,**self.config.method_kwargs)
 
-    # ── Widget Streamlit ─────────────────────────────────────────────
-    def select_config_widget(self) -> None:
-        """
-        Affiche un selectbox Streamlit permettant de choisir la config.
-        Appelle set_config() automatiquement si la sélection change.
-        """
-        import streamlit as st
-
-        def _label(i: int, c: ExperimentConfig) -> str:
-            p = create_partitioner(c.method, **c.method_kwargs)
-            return (
-                f"[{i}] {p.label} — "
-                f"nlt={c.nlt} τ={c.tau} step={c.step} dt={c.dt}"
-                + (f" d={c.particle_diameter}" if c.particle_diameter else "")
-            )
-
-        options = {_label(i, c): i for i, c in enumerate(self.default_config)}
-
-        current_label = _label(self._config_index, self.config)
-        chosen_label = st.selectbox(
-            label=f"Configuration — méthode **{self.method}** "
-                  f"({len(self.default_config)} configs disponibles)",
-            options=list(options.keys()),
-            index=list(options.keys()).index(current_label),
-            key=f"config_select_{self.method}",
-        )
-        chosen_index = options[chosen_label]
-        if chosen_index != self._config_index:
-            self.set_config(chosen_index)
-            st.rerun()  # force le rechargement avec la nouvelle config
+        self.datas:dict[int,pd.DataFrame]={0:pd.DataFrame()}
+        self.coords:np.ndarray=np.empty((0,3))
+        self.velocities:np.ndarray=np.empty((0,3))
+        self.indices:list=[]
+        self.vtp_states:pv.PolyData=pv.PolyData()
+        self.states:np.ndarray=np.array([])
+        self.fichiers_cibles:pd.Series[bool]=pd.Series()
 
 
     
@@ -308,19 +262,19 @@ class Markov:
         On a besoin de définir un objet qui construit et analyse la matrice de transition et les vecteurs d'état
         """
     def P_matrix(self):
-        return run_experiment(config=self.default_config[-2],partitioner=self.partitioner,timestep_dict=self.datas)
+        return run_experiment(config=self.config,partitioner=self.partitioner,timestep_dict=self.datas)
     
     def propagate(self):
         self.P=self.P_matrix()[0]
-        np.savetxt(f"P.txt_{self.partitioner.label}",self.P)
+        np.savetxt(f"P.txt_{self.partitioner.label[:]}_step{self.config.step}_tau{self.config.tau}_nlt{self.config.nlt}",self.P)
         S=self.state_vector()
         self.S_history=[S]
-        tau=self.default_config[-2].tau
-        start=self.default_config[-2].start_index
+        tau=self.config.tau
+        start=self.config.start_index
         for i in range(start,6000,tau):
             S=S@self.P
             self.S_history.append(S)
-        np.savetxt(f"S_history_{self.partitioner.label}.txt",self.S_history)
+        np.savetxt(f"S_history_{self.partitioner.label[:]}_step{self.config.step}_tau{self.config.tau}_nlt{self.config.nlt}.txt",self.S_history)
         return np.array(self.S_history)
 
     
