@@ -61,3 +61,4 @@ phy2.visualize()
 st.dataframe(phy2.propagate())
 phy2.default_configs
 phy2.partitioner.dem_velocities
+# st.dataframe(np.max([i['Diameter'].to_numpy() for i in phy2.datas.values()]))
