@@ -2176,6 +2176,8 @@ class PhysicsAwarePartitioner(BasePartitioner):
         self._std:np.ndarray = None #type: ignore
         self._n_features:int = 3
         self._splitting_method: str = "physics"
+        self.use_velocity=False
+        self.features: np.ndarray = None 
 
     @property
     def n_cells(self:PhysicsAwarePartitioner)-> int:
@@ -2186,40 +2188,42 @@ class PhysicsAwarePartitioner(BasePartitioner):
         suffix = "pos" if self.velocity_weight == 0 else "withvel"
         return f"physics_{self._n_cells}cells_{suffix}_vw{self.velocity_weight}"
 
-    def fit(self:PhysicsAwarePartitioner, coordinates: np.ndarray, use_velocities:bool=False)->PhysicsAwarePartitioner:
-        """
-        Fit sur positions seules ou positions + vitesses DEM.
-
-        Args:
-            coordinates: (N, 3) positions
-            use_velocities: si True, utilise self.dem_velocities du premier snapshot
-        """
+    def fit(self, coordinates: np.ndarray, use_velocities: bool = None) -> PhysicsAwarePartitioner:
+        use_velocities = self.use_velocity
         coordinates = np.asarray(coordinates)
+
         if use_velocities and self.dem_velocities is not None:
-            # On s'assure que vel est un array NumPy pour permettre la multiplication par un float
-            vel = np.asarray(self.dem_velocities) * self.velocity_weight
+            vel = np.asarray(self.dem_velocities)
             if len(vel) == len(coordinates):
-                features = np.hstack([coordinates, vel])# les positions et les vitesses sont sur une seule ligne: (N,6) (x,y,z,vx,vy,vz)
-                self._n_features = 6
-                return self._fit_internal(features)
+                # ✅ Module du vecteur vitesse : (N,3) → (N,1)
+                speed = np.linalg.norm(vel, axis=1, keepdims=True)  # ‖v‖ = sqrt(vx²+vy²+vz²)
+                self.features = np.hstack([coordinates, speed])  # (N, 4)
+                self._n_features = 4
+                return self._fit_internal(self.features, n_pos=3)
             else:
-                print(f"⚠️  Mismatch velocities ({len(vel)}) vs coordinates ({len(coordinates)}), fallback to positions only")
-        return self._fit_internal(coordinates)
+                print(f"⚠️ Mismatch velocities ({len(vel)}) vs coordinates ({len(coordinates)}), fallback positions only")
+
+        self.features = coordinates
+        return self._fit_internal(coordinates, n_pos=3)
 
     
 
-    def _fit_internal(self:PhysicsAwarePartitioner, features:np.ndarray)->PhysicsAwarePartitioner:
+    def _fit_internal(self: PhysicsAwarePartitioner, features: np.ndarray, n_pos: int = 3) -> PhysicsAwarePartitioner:
         from sklearn.cluster import MiniBatchKMeans
-        from scipy.spatial import cKDTree # type: ignore # type:ignore
+        from scipy.spatial import cKDTree
 
         self._n_features = features.shape[1]
 
         # Normalisation
-        self._mean = features.mean(axis=0) # projection suivant les colonnes pour chaque variable(ou suivant chaque variable) est un vecteur de soit (3,) dans le cas où pas de vitesses ou (6,) avec les vitesses
+        self._mean = features.mean(axis=0)
         self._std = features.std(axis=0)
         self._std[self._std == 0] = 1.0
 
         X = (features - self._mean) / self._std
+
+        # ✅ Appliquer le weight ICI, après normalisation
+        if X.shape[1] > n_pos:
+            X[:, n_pos:] *= self.velocity_weight
 
         # Sous-échantillonner
         rng = np.random.RandomState(self.random_state)
@@ -2232,40 +2236,31 @@ class PhysicsAwarePartitioner(BasePartitioner):
         kmeans = MiniBatchKMeans(
             n_clusters=self._n_cells,
             random_state=self.random_state,
-            batch_size=min(10_000, len(X_fit)), # 1030
+            batch_size=min(10_000, len(X_fit)),
             n_init=10,
         )
-        kmeans.fit(X_fit)# determination des centres des partitions
-        self._centroids = kmeans.cluster_centers_ # coordonnées des centres des clusters
+        kmeans.fit(X_fit)
+        self._centroids = kmeans.cluster_centers_
         self._tree = cKDTree(self._centroids)
         return self
 
-    def compute_states(self: PhysicsAwarePartitioner, 
-                   x: np.ndarray, y: np.ndarray, z: np.ndarray, 
-                   vx: np.ndarray = None, vy: np.ndarray = None, vz: np.ndarray = None) -> np.ndarray: # type: ignore
-        """
-        Assigne les états. Si les vitesses (vx, vy, vz) sont fournies, elles sont intégrées 
-        au calcul. Sinon, un padding de zéros est appliqué.
-        """
-        # 1. Préparation des positions
+    def compute_states(self, x, y, z, vx=None, vy=None, vz=None) -> np.ndarray:
         pos = np.column_stack([np.asarray(x), np.asarray(y), np.asarray(z)])
-        
-        # 2. Gestion des vitesses (physique vs géométrique)
-        if vx is not None and vy is not None and vz is not None:
-            # Cas avec physique : on combine pos et vel (pondéré)
-            vel = np.column_stack([np.asarray(vx), np.asarray(vy), np.asarray(vz)]) * self.velocity_weight
-            features = np.hstack([pos, vel])
-        else:
-            # Cas sans physique : on ajoute des zéros si le modèle attend plus de 3 colonnes
-            features = pos
-            if self._n_features > 3:
-                padding = np.zeros((len(pos), self._n_features - 3))
-                features = np.hstack([pos, padding])
 
-        # 3. Normalisation et Query (Logique commune)
+        if self._n_features == 4 and vx is not None and vy is not None and vz is not None:
+            vel = np.column_stack([np.asarray(vx), np.asarray(vy), np.asarray(vz)])
+            speed = np.linalg.norm(vel, axis=1, keepdims=True)  # (N,1)
+            features = np.hstack([pos, speed])
+        elif self._n_features == 4:
+            # Modèle entraîné avec ‖v‖ mais pas fourni → padding zéro
+            features = np.hstack([pos, np.zeros((len(pos), 1))])
+        else:
+            features = pos
+
         X = (features - self._mean) / self._std
-        _, indices = self._tree.query(X) # type: ignore
-        
+        X[:, 3:] *= self.velocity_weight  # si 4 features
+        _, indices = self._tree.query(X)
+
         self.states = indices.astype(np.int64)
         return self.states
 

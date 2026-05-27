@@ -132,6 +132,7 @@ class Markov:
         if not self.indices:
             self.indices=indices
         self.coords=self.datas[indices[0]][['coordinates:0','coordinates:1','coordinates:2']].to_numpy()
+        self.partitioner.dem_diameters=self.datas[indices[0]][['Diameter']].to_numpy()
         return self.coords
     def get_velocities(
             self,
@@ -146,15 +147,17 @@ class Markov:
 
     def get_states(self,indices=[250]):
         self.indices=indices
-        if self.coords.shape[0]==0:
-            self.coords=self.get_coords(self.indices)
+        self.get_velocities()
+        self.partitioner.dem_velocities=self.velocities
+
+        self.coords=self.get_coords(self.indices)
         self.partitioner.fit(self.coords)
         self.states=self.partitioner.compute_states(self.coords[:,0],self.coords[:,1],self.coords[:,2])
         return self.states
     def get_vtp(self,indices=[250]):
         self.indices=indices
-        if not self.states:
-            _=self.get_states(self.indices)
+        
+        _=self.get_states(self.indices)
         self.vtp_states=pv.PolyData(self.coords)
         self.vtp_states.point_data['partitions']=self.states
         self.vtp_states.point_data.set_array(data=self.datas[indices[0]][['Diameter']].to_numpy(),name='Diameter')
@@ -174,10 +177,11 @@ class Markov:
         import PIL.Image
         import io
 
-        st.subheader("Visualisation des particules")
+        # st.subheader("Visualisation des particules")
 
-        if self.vtp_states.is_empty:
-            _ = self.get_vtp()
+        # if self.vtp_states.is_empty:
+        #     _ = self.get_vtp()
+        _ = self.get_vtp()
 
         pv.start_xvfb()
         pv.global_theme.trame.jupyter_extension_enabled = False
@@ -205,6 +209,7 @@ class Markov:
         def make_plotter(view=None):
             pl = pv.Plotter(window_size=[800, 800], notebook=False, off_screen=True)
             pl.add_mesh(self.glyphs, **MESH_KWARGS)
+            pl.add_title(f'{self.partitioner.label[:]}_step{self.config.step}_tau{self.config.tau}_nlt{self.config.nlt}')
             match view:
                 case "xy": pl.view_xy()
                 case "xz": pl.view_xz()
@@ -230,6 +235,8 @@ class Markov:
         # --- Vue 3D interactive ---
         pl_3d = pv.Plotter(window_size=[800, 800], notebook=False)
         pl_3d.add_mesh(self.glyphs, **MESH_KWARGS)
+        pl_3d.add_title(f'{self.partitioner.label[:]}_step{self.config.step}_tau{self.config.tau}_nlt{self.config.nlt}')
+        pl_3d.enable_parallel_projection()
         pl_3d.camera_position = pv.CameraPosition(
             position=(0.24, 0.32, 0.7),
             focal_point=(0.02, 0.03, -0.02),
@@ -238,17 +245,17 @@ class Markov:
         stpyvista(pl_3d)
 
         # --- Téléchargements 2D ---
-        st.divider()
-        st.caption("Télécharger les vues 2D")
-        cols = st.columns(len(VIEWS_2D))
-        for col, (view, label) in zip(cols, VIEWS_2D.items()):
-            with col:
-                col.download_button(
-                    label=f"⬇️ {label}",
-                    data=render_png(view),
-                    file_name=f"vue_{view}.png",
-                    mime="image/png",
-                )
+        # st.divider()
+        # st.caption("Télécharger les vues 2D")
+        # cols = st.columns(len(VIEWS_2D))
+        # for col, (view, label) in zip(cols, VIEWS_2D.items()):
+        #     with col:
+        #         col.download_button(
+        #             label=f"⬇️ {label}",
+        #             data=render_png(view),
+        #             file_name=f"vue_{view}.png",
+        #             mime="image/png",
+        #         )
     
 
 
@@ -275,9 +282,9 @@ class Markov:
             S=S@self.P
             self.S_history.append(S)
         np.savetxt(f"S_history_{self.partitioner.label[:]}_step{self.config.step}_tau{self.config.tau}_nlt{self.config.nlt}.txt",self.S_history)
-        return np.array(self.S_history)
+        self.S_history=np.array(self.S_history)
+        return self.S_history
 
-    
 
 
    
