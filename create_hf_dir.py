@@ -53,27 +53,27 @@ def screenshot(coords, states):
     pl.add_mesh(glyph, scalars="partitions")
     
     # --- Configuration caméra initiale ---
-    pl.view_xy()
+    pl.view_zy()
     pl.camera.zoom(2)
     
     # --- ÉTAPE 1 : Capture de l'image fixe ---
     pl.screenshot(f"{LOCAL_OUTPUT}/images/mesh.png")
     
     # --- ÉTAPE 2 : Initialisation de la vidéo ---
-    pl.open_movie(f"{LOCAL_OUTPUT}/images/mesh.mp4", framerate=30)
+    # pl.open_movie(f"{LOCAL_OUTPUT}/images/mesh.mp4", framerate=30)
     
-    # --- ÉTAPE 3 : Animation multi-axes (plus lente) ---
-    n_frames = 180  # Double la durée pour un rendu plus fluide (6 sec à 30 fps)
+    # # --- ÉTAPE 3 : Animation multi-axes (plus lente) ---
+    # n_frames = 180  # Double la durée pour un rendu plus fluide (6 sec à 30 fps)
     
-    for i in range(n_frames):
-        pl.camera.azimuth += 1.0    # Rotation autour de l'axe vertical (Z)
-        pl.camera.elevation += 0.5  # Inclinaison haut/bas (axe horizontal)
-        # pl.camera.roll += 0.2     # Décommente pour un léger effet "banjo"
+    # for i in range(n_frames):
+    #     pl.camera.azimuth += 1.0    # Rotation autour de l'axe vertical (Z)
+    #     pl.camera.elevation += 0.5  # Inclinaison haut/bas (axe horizontal)
+    #     # pl.camera.roll += 0.2     # Décommente pour un léger effet "banjo"
         
-        pl.render()                 # Force le rendu avant la capture
-        pl.write_frame()
+    #     pl.render()                 # Force le rendu avant la capture
+    #     pl.write_frame()
         
-    pl.close()
+    # pl.close()
 coords=datas[start][['coordinates:0','coordinates:1','coordinates:2']].to_numpy()
 partitioner.fit(coords)
 states=partitioner.compute_states(coords[:,0],coords[:,1],coords[:,2])
