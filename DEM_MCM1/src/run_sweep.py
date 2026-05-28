@@ -794,7 +794,7 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
     # ── Construction des paires ─────────────────────────────────────
     all_pairs = []
     for nlt_idx in range(config.nlt):
-        current_start_base = start_base + nlt_idx * step
+        current_start_base = start_base + nlt_idx * (step+tau)
 
         if nlt_idx == config.nlt - 1:   # dernier bloc
             max_end_possible   = max(timestep_dict.keys())
