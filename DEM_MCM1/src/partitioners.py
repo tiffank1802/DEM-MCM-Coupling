@@ -32,6 +32,7 @@ import mpl_toolkits
 from scipy.spatial import ConvexHull, Voronoi
 import matplotlib.animation as animation
 import streamlit as st
+from typing import Optional, Dict, Any, List, Tuple
 
 # Imports relatifs (notebooks) vs absolus (script direct)
 try:
@@ -60,35 +61,33 @@ __all__ = [
 # =============================================================================
 
 
-class BasePartitioner(ABC,ar.MarkovAnalyzer):
+class BasePartitioner(ABC):
     """Interface commune pour tous les partitionneurs."""
-    def __init__(self:BasePartitioner)->None:
-        self._y_split:float=0
-        self.y_seuil:float=None # type:ignore
-        self._splitting_method: str = None #type: ignore
-        super().__init__()
-        self.PARTICLE_NUMBER:int=1030
-        self.particle_diameters:np.ndarray=None #type:ignore
-        
-    # analyzer=ar.MarkovAnalyzer()
+    
+    def __init__(self) -> None:
+        self._y_split: float = 0.0
+        self.y_seuil: Optional[float] = None
+        self._splitting_method: Optional[str] = None
+        self.PARTICLE_NUMBER: int = 1030
+        self.particle_diameters: Optional[np.ndarray] = None
+        self.dem_diameters: Optional[np.ndarray] = None
+        self.dem_velocities: Optional[np.ndarray] = None
+        self._data_bounds: Optional[Tuple[float, ...]] = None
 
     @property
     @abstractmethod
-    def n_cells(self:BasePartitioner)-> int:
+    def n_cells(self) -> int:
         """Nombre total d'états."""
         ...
 
     @property
     @abstractmethod
-    def label(self:BasePartitioner)-> str:
+    def label(self) -> str:
         """Identifiant unique (utilisé pour le nom de dossier)."""
         ...
 
     @abstractmethod
-    @st.cache_data(
-        hash_funcs={"__main__.BasePartitioner":lambda x:x.label}
-    )
-    def fit(_self:BasePartitioner, coordinates: np.ndarray)->BasePartitioner:
+    def fit(self, coordinates: np.ndarray) -> "BasePartitioner":
         """
         Apprend le partitionnement sur des données représentatives.
 
@@ -100,25 +99,29 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
         ...
 
     @abstractmethod
-    @st.cache_data(
-        hash_funcs={"__main__.BasePartitioner":lambda x:x.label}
-    )
-    def compute_states(self:BasePartitioner, x:np.ndarray, y:np.ndarray, z:np.ndarray,vx: np.ndarray=None,vy: np.ndarray=None,vz: np.ndarray=None)->np.ndarray: #type: ignore   
+    def compute_states(
+        self, 
+        x: np.ndarray, 
+        y: np.ndarray, 
+        z: np.ndarray,
+        vx: Optional[np.ndarray] = None,
+        vy: Optional[np.ndarray] = None,
+        vz: Optional[np.ndarray] = None
+    ) -> np.ndarray:
         """
         Assigne un indice d'état à chaque particule.
 
         Args:
             x, y, z: arrays ou Polars Series
+            vx, vy, vz: optional velocity arrays
         Returns:
             np.ndarray dtype int64
         """
         ...
 
-    def save(self: BasePartitioner, path: str)->None:
+    def save(self, path: str) -> None:
         """Sauvegarde le partitionneur dans un dossier."""
-        os.makedirs(path, # The above code is not valid Python code. It appears to be a comment with
-        # the text "ex" followed by multiple pound symbols.
-        exist_ok=True)
+        os.makedirs(path, exist_ok=True)
         meta = {
             "type": type(self).__name__,
             "label": self.label,
@@ -128,15 +131,15 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
             json.dump(meta, f, indent=2)
         self._save_data(path)
 
-    def _save_data(self: BasePartitioner, path: str)->None:
+    def _save_data(self, path: str) -> None:
         pass
 
-    def load(self: BasePartitioner, path: str)->BasePartitioner:
+    def load(self, path: str) -> "BasePartitioner":
         """Charge le partitionneur depuis un dossier."""
         self._load_data(path)
         return self
 
-    def _load_data(self: BasePartitioner, path: str)->None:
+    def _load_data(self, path: str) -> None:
         pass
 
 
@@ -354,7 +357,6 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
                                        interval=1000/fps, blit=False)
         
         # Sauvegarder
-        os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
         print(f"   🔍 DEBUG visualize_3d_rotation: has_ffmpeg={has_ffmpeg}, fps={fps}, frames={n_frames}")
         
         # Utiliser le writer disponible
