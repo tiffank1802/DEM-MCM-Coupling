@@ -794,9 +794,15 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
         return vx, vy, vz
 
     # ── Construction des paires ─────────────────────────────────────
+    """
+    le but est non plus de partir lire dans un step de la dem pour calculer les états des particules pour la suite regrouper ces états pourr calculer la matrice de transition 
+    mais de calculer les états de toutes les particules en une fois et puis par la suite choisir celle des instants considérés pour calculer la matrice de transition.
+    
+    une fois les états 
+    """
     all_pairs = []
     for nlt_idx in range(config.nlt):
-        current_start_base = start_base + nlt_idx * (step+tau)
+        current_start_base = start_base + nlt_idx * (step+tau)# on évite de se répéter lors de l'apprentissage du modèle 
 
         if nlt_idx == config.nlt - 1:   # dernier bloc
             max_end_possible   = max(timestep_dict.keys())
@@ -850,15 +856,15 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
     else:
         states = partitioner.compute_states(*coords)
         # states_curr = partitioner.compute_states(*coords_curr)
-
+states=np.reshape(states,(6000,1030))
     for idx_prev, idx_curr in tqdm(all_pairs, desc="   Paires", leave=False):
-        states_prev = states[coef_idx*idx_prev]
-        states_curr = states[coef_idx*idx_curr]
+        states_prev = states[idx_prev]#coef_idx*idx_prev est l'indice de début de la sélection de 1030 particules 
+        states_curr = states[idx_curr]
         # Calcule des partitions
 
         if species_labels is not None:
-            states_prev = states_prev[species_labelscle]
-            states_curr = states_curr[species_labels]
+            states_prev = (states[idx_prev])[species_labels]
+            states_curr = (states[idx_curr])[species_labels]
 
         states_prev_acc = np.concatenate((states_prev_acc, np.asarray(states_prev)))
         states_curr_acc = np.concatenate((states_curr_acc, np.asarray(states_curr)))
