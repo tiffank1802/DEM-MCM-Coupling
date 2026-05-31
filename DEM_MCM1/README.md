@@ -506,10 +506,10 @@ from src.Markov._config import *  # All types here
 
 ## 📝 License
 
-Academic research. Contact: [your-email]
+Academic research. Contact: [tiffank1802@gmail.com]
 
 ---
 
-**Last Updated:** 2024
+**Last Updated:** 2026
 **Version:** 2.0 (Professional Refactor)
 **Status:** Production Ready ✅

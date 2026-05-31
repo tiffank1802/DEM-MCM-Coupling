@@ -36,11 +36,11 @@ def _get_bucket_prefix_from_particle_diameter(particle_diameter):
         str: Le prefix du bucket ("BIG", "SMALL", ou "Experiments")
     """
     if particle_diameter == 0.008:
-        return "BIG"
+        return "_Good/BIG"
     elif particle_diameter == 0.004:
-        return "SMALL"
+        return "_Good/SMALL"
     else:
-        return "Experiment"
+        return "_Good/Experiment"
 
 def _get_current_branch():
     """
