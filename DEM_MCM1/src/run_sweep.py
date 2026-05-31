@@ -847,7 +847,7 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
     # ── Traitement des paires ───────────────────────────────────────
     states_prev_acc = np.array([])
     states_curr_acc = np.array([])
-    coef_idx=1030
+
     coords=get_coords()
     velocities=get_velocities()
     if isinstance(partitioner, part.PhysicsAwarePartitioner):
@@ -901,17 +901,6 @@ states=np.reshape(states,(6000,1030))
         "last_pair":             list(all_pairs[-1]),
     }
     return P_np, stats
-
-def run_exp(config,partitioner,timestep_dict: dict[int,pd.DataFrame], device="cpu "):
-    df=pd.concat([timestep_dict[i] for i in timestep_dict.keys()],ignore_index=True) # Recupération de toutes les particules pour tous les pas de temps de la DEM
-    # datas=pd.DataFrame(timestep_dict)# Du fait que le timestep_dict est un dictionnaire, peut être convertissable en DataFrame facilement
-    coords=np.array(
-            df["coordinates:0"].to_numpy(),
-            df["coordinates:1"].to_numpy(),
-            df["coordinates:2"].to_numpy(),
-    )
-    
-    # states=partitioner.fit(datas.drop(columns=[]))
 
 # ════════════════════════════════════════════════════════════════════
 # run_markov_sweep
