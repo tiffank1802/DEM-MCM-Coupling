@@ -775,16 +775,18 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
         print(f"   ⚠️  Erreur espèces: {e}")
 
     # ── Accesseurs rapides ───────────────────────────────────────────
-    def get_coords(idx: int):
-        df = timestep_dict[idx]
+    def get_coords(*_):
+        # df = timestep_dict[idx]
+        df = pd.concat([timestep_dict[i] for i in timestep_dict.keys()],ignore_index=True) # Recupération de toutes les particules pour tous les pas de temps de la DEM
         return (
             df["coordinates:0"].to_numpy(),
             df["coordinates:1"].to_numpy(),
             df["coordinates:2"].to_numpy(),
         )
 
-    def get_velocities(idx: int):
-        df = timestep_dict[idx]
+    def get_velocities(*_):
+        # df = timestep_dict[idx]
+        df = pd.concat([timestep_dict[i] for i in timestep_dict.keys()],ignore_index=True) # Recupération de toutes les particules pour tous les pas de temps de la DEM
         vx = df["Velocity:0"].to_numpy()
         vy = df["Velocity:1"].to_numpy()
         vz = df["Velocity:2"].to_numpy()
@@ -839,25 +841,28 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
     # ── Traitement des paires ───────────────────────────────────────
     states_prev_acc = np.array([])
     states_curr_acc = np.array([])
+    coef_idx=1030
+    coords=get_coords()
+    velocities=get_velocities()
+    if isinstance(partitioner, part.PhysicsAwarePartitioner):
+        states= partitioner.compute_states(*coords, *velocities)
+        # states_curr = partitioner.compute_states(*coords_curr, *velocities(idx_curr))
+    else:
+        states = partitioner.compute_states(*coords)
+        # states_curr = partitioner.compute_states(*coords_curr)
 
     for idx_prev, idx_curr in tqdm(all_pairs, desc="   Paires", leave=False):
-        coords_prev = get_coords(idx_prev)
-        coords_curr = get_coords(idx_curr)
-
-        if isinstance(partitioner, part.PhysicsAwarePartitioner):
-            states_prev = partitioner.compute_states(*coords_prev, *get_velocities(idx_prev))
-            states_curr = partitioner.compute_states(*coords_curr, *get_velocities(idx_curr))
-        else:
-            states_prev = partitioner.compute_states(*coords_prev)
-            states_curr = partitioner.compute_states(*coords_curr)
+        states_prev = states[coef_idx*idx_prev]
+        states_curr = states[coef_idx*idx_curr]
+        # Calcule des partitions
 
         if species_labels is not None:
-            states_prev = states_prev[species_labels]
+            states_prev = states_prev[species_labelscle]
             states_curr = states_curr[species_labels]
 
         states_prev_acc = np.concatenate((states_prev_acc, np.asarray(states_prev)))
         states_curr_acc = np.concatenate((states_curr_acc, np.asarray(states_curr)))
-
+    # calcule de la matrice de transition
     P_np = compute_P_matrix_torch(
         states_prev_acc, states_curr_acc, n_states, device, species_labels=None
     ).cpu().numpy()
@@ -891,6 +896,16 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
     }
     return P_np, stats
 
+def run_exp(config,partitioner,timestep_dict: dict[int,pd.DataFrame], device="cpu "):
+    df=pd.concat([timestep_dict[i] for i in timestep_dict.keys()],ignore_index=True) # Recupération de toutes les particules pour tous les pas de temps de la DEM
+    # datas=pd.DataFrame(timestep_dict)# Du fait que le timestep_dict est un dictionnaire, peut être convertissable en DataFrame facilement
+    coords=np.array(
+            df["coordinates:0"].to_numpy(),
+            df["coordinates:1"].to_numpy(),
+            df["coordinates:2"].to_numpy(),
+    )
+    
+    # states=partitioner.fit(datas.drop(columns=[]))
 
 # ════════════════════════════════════════════════════════════════════
 # run_markov_sweep
