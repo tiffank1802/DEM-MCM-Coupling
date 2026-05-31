@@ -99,7 +99,7 @@ def get_api():
 # ÉCRITURE
 # =============================================================================
 def save_experiment_to_bucket(folder_name, matrix, stats, config,
-                              partitioner_data=None, image_data=None, particle_diameter=None):
+                              partitioner_data=None, image_data=None, particle_diameter=None,states=None):
     """
     Sauvegarde une expérience dans le bucket HuggingFace.
     
@@ -126,6 +126,10 @@ def save_experiment_to_bucket(folder_name, matrix, stats, config,
         matrix_path = local_folder / "transitionmatrix.npy"
         np.save(matrix_path, matrix)
         files_to_upload.append((str(matrix_path), f"{bucket_prefix}/{folder_name}/transitionmatrix.npy"))
+
+        states_path = local_folder / "states.npy"
+        np.save(states_path, states)
+        files_to_upload.append((str(states_path), f"{bucket_prefix}/{folder_name}/states.npy"))
 
         stats_path = local_folder / "stats.json"
         with open(stats_path, "w") as f:

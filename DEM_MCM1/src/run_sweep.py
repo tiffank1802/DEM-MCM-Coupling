@@ -628,7 +628,7 @@ def compute_P_matrix_torch(states_prev, states_curr, n_states, device="cpu", spe
 
 
 
-def save_results(config, partitioner, P, stats, image_data=None, folder_name=None):  # ← Changé image_paths en image_data
+def save_results(config, partitioner, P, stats, image_data=None, folder_name=None,states=None):  # ← Changé image_paths en image_data
     """Sauvegarde les résultats dans le bucket HuggingFace."""
     
     # ✅ folder_name est maintenant juste un nom, pas un chemin
@@ -674,6 +674,7 @@ def save_results(config, partitioner, P, stats, image_data=None, folder_name=Non
         config=asdict(config),
         partitioner_data=partitioner_data,
         image_data=image_data,
+        states=states,
         particle_diameter=config.particle_diameter  # ✅ PASS DIAMETER
     )
     
@@ -847,16 +848,18 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
     # ── Traitement des paires ───────────────────────────────────────
     states_prev_acc = np.array([])
     states_curr_acc = np.array([])
+    states=np.array([])
 
     coords=get_coords()
     velocities=get_velocities()
+    
     if isinstance(partitioner, part.PhysicsAwarePartitioner):
         states= partitioner.compute_states(*coords, *velocities)
         # states_curr = partitioner.compute_states(*coords_curr, *velocities(idx_curr))
     else:
         states = partitioner.compute_states(*coords)
         # states_curr = partitioner.compute_states(*coords_curr)
-states=np.reshape(states,(6000,1030))
+    states=np.reshape(states,(6000,1030))
     for idx_prev, idx_curr in tqdm(all_pairs, desc="   Paires", leave=False):
         states_prev = states[idx_prev]#coef_idx*idx_prev est l'indice de début de la sélection de 1030 particules 
         states_curr = states[idx_curr]
@@ -900,7 +903,7 @@ states=np.reshape(states,(6000,1030))
         "first_pair":            list(all_pairs[0]),
         "last_pair":             list(all_pairs[-1]),
     }
-    return P_np, stats
+    return P_np, stats,states
 
 # ════════════════════════════════════════════════════════════════════
 # run_markov_sweep
@@ -969,11 +972,11 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None,
             )
 
             # ── run_experiment reçoit le dict, plus fs ni parquet_path ──
-            P, stats = run_experiment(config, partitioner, timestep_dict, device)
+            P, stats,states = run_experiment(config, partitioner, timestep_dict, device)
 
             save_results(
                 config=config, partitioner=partitioner, P=P,
-                stats=stats, image_data=None, folder_name=folder_name
+                stats=stats, image_data=None, folder_name=folder_name, states=states
             )
 
             results.append({"config": asdict(config), "stats": stats, "success": True})
