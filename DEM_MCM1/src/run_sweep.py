@@ -725,16 +725,11 @@ def sample_coordinates(timestep_dict: dict[int, pd.DataFrame]):
 # run_experiment — utilise le dict déjà chargé
 # ════════════════════════════════════════════════════════════════════
 def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], device="cpu"):
-    """
-    Exécute une expérience complète avec raffinage temporel.
-    timestep_dict : {idx: DataFrame} issu de load_parquet_as_timestep_dict()
-    """
     n_states   = partitioner.n_cells
     tau        = config.tau
     step       = config.step
     dt         = config.dt
     start_base = config.start_index
-    n_timesteps = max(timestep_dict.keys()) + 1   # borne supérieure d'index
 
     print(f"   📐 Configuration: NLT={config.nlt}, step={step}, dt={dt}, tau={tau}")
     print(f"   📦 {len(timestep_dict)} timesteps disponibles "
@@ -745,12 +740,9 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
     try:
         df_init   = timestep_dict[start_base]
         diameters = df_init["Diameter"].to_numpy() if "Diameter" in df_init.columns else None
-
         if diameters is not None:
             unique_vals = np.unique(diameters)
-
             if config.particle_diameter is not None:
-                # ✅ Filtre explicite depuis la config
                 if config.particle_diameter not in unique_vals:
                     raise ValueError(
                         f"Diamètre {config.particle_diameter} absent des données "
@@ -759,53 +751,74 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
                 species_labels = (diameters == config.particle_diameter)
                 label_str = "SMALL" if config.particle_diameter == unique_vals[0] else "BIG"
                 print(f"   ✅ Filtre diamètre {config.particle_diameter} ({label_str}) : "
-                    f"{species_labels.sum()} particules retenues")
-
+                      f"{species_labels.sum()} particules retenues")
             elif len(unique_vals) == 2:
-                # Comportement legacy : toutes les espèces, pas de filtre
-                print(f"   ℹ️  2 diamètres détectés {unique_vals} — aucun filtre appliqué "
-                    f"(passez particle_diameter pour filtrer)")
+                print(f"   ℹ️  2 diamètres détectés {unique_vals} — aucun filtre appliqué")
             else:
                 print(f"   ⚠️  {len(unique_vals)} diamètres trouvés — masque non appliqué")
         else:
             print("   ⚠️  Colonne 'Diameter' non trouvée — masque non appliqué")
-
     except KeyError:
         print(f"   ⚠️  Timestep {start_base} absent du dict — masque non appliqué")
     except Exception as e:
         print(f"   ⚠️  Erreur espèces: {e}")
 
-    # ── Accesseurs rapides ───────────────────────────────────────────
-    def get_coords(*_):
-        # df = timestep_dict[idx]
-        df = pd.concat([timestep_dict[i] for i in timestep_dict.keys()],ignore_index=True) # Recupération de toutes les particules pour tous les pas de temps de la DEM
-        return (
-            df["coordinates:0"].to_numpy(),
-            df["coordinates:1"].to_numpy(),
-            df["coordinates:2"].to_numpy(),
+    # ── Calcul des états une seule fois sur tous les timesteps ───────
+    # On trie les indices pour avoir un ordre déterministe
+    sorted_indices = sorted(timestep_dict.keys())
+    n_timesteps    = len(sorted_indices)
+
+    # Mapping idx_dem → ligne dans le tableau states
+    idx_to_row = {idx: row for row, idx in enumerate(sorted_indices)}
+
+    # Inférer n_particles depuis le premier timestep
+    n_particles = len(timestep_dict[sorted_indices[0]])
+
+    print(f"   🔧 Calcul des états pour {n_timesteps} timesteps × {n_particles} particules...")
+
+    # Concaténer toutes les coordonnées en une seule fois
+    all_x, all_y, all_z = [], [], []
+    all_vx, all_vy, all_vz = [], [], []
+
+    for idx in sorted_indices:
+        df = timestep_dict[idx]
+        all_x.append(df["coordinates:0"].to_numpy())
+        all_y.append(df["coordinates:1"].to_numpy())
+        all_z.append(df["coordinates:2"].to_numpy())
+        if isinstance(partitioner, part.PhysicsAwarePartitioner):
+            all_vx.append(df["Velocity:0"].to_numpy())
+            all_vy.append(df["Velocity:1"].to_numpy())
+            all_vz.append(df["Velocity:2"].to_numpy())
+
+    coords_x = np.concatenate(all_x)  # (n_timesteps * n_particles,)
+    coords_y = np.concatenate(all_y)
+    coords_z = np.concatenate(all_z)
+
+    # Calcul vectorisé des états
+    if isinstance(partitioner, part.PhysicsAwarePartitioner):
+        partitioner.dem_velocities = np.column_stack([
+            np.concatenate(all_vx),
+            np.concatenate(all_vy),
+            np.concatenate(all_vz),
+        ])
+        states_flat = partitioner.compute_states(
+            coords_x, coords_y, coords_z,
+            np.concatenate(all_vx), np.concatenate(all_vy), np.concatenate(all_vz),
         )
+    else:
+        states_flat = partitioner.compute_states(coords_x, coords_y, coords_z)
 
-    def get_velocities(*_):
-        # df = timestep_dict[idx]
-        df = pd.concat([timestep_dict[i] for i in timestep_dict.keys()],ignore_index=True) # Recupération de toutes les particules pour tous les pas de temps de la DEM
-        vx = df["Velocity:0"].to_numpy()
-        vy = df["Velocity:1"].to_numpy()
-        vz = df["Velocity:2"].to_numpy()
-        partitioner.dem_velocities = np.column_stack([vx, vy, vz])
-        return vx, vy, vz
+    # Reshape en (n_timesteps, n_particles)
+    states_matrix = states_flat.reshape(n_timesteps, n_particles)
+    print(f"   ✅ states_matrix: {states_matrix.shape}")
 
-    # ── Construction des paires ─────────────────────────────────────
-    """
-    le but est non plus de partir lire dans un step de la dem pour calculer les états des particules pour la suite regrouper ces états pourr calculer la matrice de transition 
-    mais de calculer les états de toutes les particules en une fois et puis par la suite choisir celle des instants considérés pour calculer la matrice de transition.
-    
-    une fois les états 
-    """
+    # ── Construction des paires ──────────────────────────────────────
     all_pairs = []
     for nlt_idx in range(config.nlt):
-        current_start_base = start_base + nlt_idx * (step+tau)# on évite de se répéter lors de l'apprentissage du modèle 
+        # stride = step + tau pour éviter les chevauchements entre blocs NLT
+        current_start_base = start_base + nlt_idx * (step + tau)
 
-        if nlt_idx == config.nlt - 1:   # dernier bloc
+        if nlt_idx == config.nlt - 1:
             max_end_possible   = max(timestep_dict.keys())
             max_start_possible = max_end_possible - tau
 
@@ -815,19 +828,19 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
                 break
 
             remaining_range  = max_start_possible - current_start_base
-            n_apprentissages = min(step // dt, remaining_range // dt) + 1
+            n_apprentissages = min((step + tau) // dt, remaining_range // dt) + 1
         else:
-            n_apprentissages = step // dt
+            n_apprentissages = (step + tau) // dt
 
         for i in range(n_apprentissages):
             start_idx = current_start_base + i * dt
             end_idx   = start_idx + tau
 
-            if end_idx not in timestep_dict:
-                print(f"   ⚠️  Paire ({start_idx},{end_idx}) ignorée (absent du dict)")
+            if start_idx not in idx_to_row:
+                print(f"   ⚠️  Paire ({start_idx},{end_idx}) ignorée (start absent du dict)")
                 break
-            if start_idx not in timestep_dict:
-                print(f"   ⚠️  Paire ({start_idx},{end_idx}) ignorée (absent du dict)")
+            if end_idx not in idx_to_row:
+                print(f"   ⚠️  Paire ({start_idx},{end_idx}) ignorée (end absent du dict)")
                 break
 
             all_pairs.append((start_idx, end_idx))
@@ -839,39 +852,31 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
     print(f"      Premier: data_{all_pairs[0][0]} → data_{all_pairs[0][1]}")
     print(f"      Dernier: data_{all_pairs[-1][0]} → data_{all_pairs[-1][1]}")
 
-    n_paires_par_step    = step // dt
-    n_blocs_complets     = len(all_pairs) // n_paires_par_step
+    n_paires_par_step     = (step + tau) // dt
+    n_blocs_complets      = len(all_pairs) // n_paires_par_step
     n_paires_dernier_bloc = len(all_pairs) % n_paires_par_step
     print(f"      Structure: {n_blocs_complets} blocs complets de {n_paires_par_step} paires"
           + (f" + 1 bloc partiel de {n_paires_dernier_bloc}" if n_paires_dernier_bloc else ""))
 
-    # ── Traitement des paires ───────────────────────────────────────
-    states_prev_acc = np.array([])
-    states_curr_acc = np.array([])
-    states=np.array([])
+    # ── Accumulation des transitions ────────────────────────────────
+    states_prev_acc = np.empty(0, dtype=np.int64)
+    states_curr_acc = np.empty(0, dtype=np.int64)
 
-    coords=get_coords()
-    velocities=get_velocities()
-    
-    if isinstance(partitioner, part.PhysicsAwarePartitioner):
-        states= partitioner.compute_states(*coords, *velocities)
-        # states_curr = partitioner.compute_states(*coords_curr, *velocities(idx_curr))
-    else:
-        states = partitioner.compute_states(*coords)
-        # states_curr = partitioner.compute_states(*coords_curr)
-    states=np.reshape(states,(6000,1030))
     for idx_prev, idx_curr in tqdm(all_pairs, desc="   Paires", leave=False):
-        states_prev = states[idx_prev]#coef_idx*idx_prev est l'indice de début de la sélection de 1030 particules 
-        states_curr = states[idx_curr]
-        # Calcule des partitions
+        row_prev = idx_to_row[idx_prev]
+        row_curr = idx_to_row[idx_curr]
+
+        s_prev = states_matrix[row_prev]  # (n_particles,)
+        s_curr = states_matrix[row_curr]
 
         if species_labels is not None:
-            states_prev = (states[idx_prev])[species_labels]
-            states_curr = (states[idx_curr])[species_labels]
+            s_prev = s_prev[species_labels]
+            s_curr = s_curr[species_labels]
 
-        states_prev_acc = np.concatenate((states_prev_acc, np.asarray(states_prev)))
-        states_curr_acc = np.concatenate((states_curr_acc, np.asarray(states_curr)))
-    # calcule de la matrice de transition
+        states_prev_acc = np.concatenate((states_prev_acc, s_prev))
+        states_curr_acc = np.concatenate((states_curr_acc, s_curr))
+
+    # ── Calcul de la matrice de transition ──────────────────────────
     P_np = compute_P_matrix_torch(
         states_prev_acc, states_curr_acc, n_states, device, species_labels=None
     ).cpu().numpy()
@@ -879,7 +884,7 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
     # ── Statistiques ────────────────────────────────────────────────
     column_sums = P_np.sum(axis=0)
     visited     = column_sums > 0
-    diag        = np.diag(P_np)
+    diag_vals   = np.diag(P_np)
 
     stats = {
         "n_pairs_used":          len(all_pairs),
@@ -893,18 +898,18 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
         "column_sum_min":        float(column_sums[visited].min()) if visited.any() else 0,
         "column_sum_max":        float(column_sums[visited].max()) if visited.any() else 0,
         "column_sum_mean":       float(column_sums[visited].mean()) if visited.any() else 0,
-        "diagonal_mean":         float(diag.mean()),
-        "diagonal_std":          float(diag.std()),
+        "diagonal_mean":         float(diag_vals.mean()),
+        "diagonal_std":          float(diag_vals.std()),
         "method":                config.method,
         "tau": tau, "step": step, "dt": dt,
-        "raffinage_ratio":       step // dt,
+        "raffinage_ratio":       (step + tau) // dt,
         "plage_temporelle":      int(all_pairs[-1][1] - all_pairs[0][0]),
         "start_index":           config.start_index,
         "first_pair":            list(all_pairs[0]),
         "last_pair":             list(all_pairs[-1]),
+        "particle_diameter":     config.particle_diameter,
     }
-    return P_np, stats,states
-
+    return P_np, stats,states_matrix
 # ════════════════════════════════════════════════════════════════════
 # run_markov_sweep
 # ════════════════════════════════════════════════════════════════════

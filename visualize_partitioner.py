@@ -22,7 +22,7 @@ dossiers=fs.ls(f"hf://buckets/{BUCKET_ID}/_Good/Experiment")
 
 path=""
 for dossier in dossiers:
-    if all(j in dossier.get('name', '') for j in ["voronoi_30cells_NLT200_step50_dt2_tau100_start250"]):
+    if all(j in dossier.get('name', '') for j in ["voronoi_20cells_NLT30_step0_dt2_tau78_start250"]):
         path=dossier['name']
 P=np.array([])
 states=np.array([])
@@ -41,7 +41,7 @@ with fs.open(f'{path}/config.json','r') as f:
 
 start=config.get("start_index","")
 tau=config.get("tau","")
-tau_dem=50
+tau_dem=tau//2
 
 states_history=[] # vecteur de l'historique des états des particules
 S=np.bincount(states[start]) # comptage du nombre de particules par partitions
