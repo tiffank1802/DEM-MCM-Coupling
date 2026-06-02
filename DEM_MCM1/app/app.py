@@ -49,16 +49,16 @@ st.subheader("Visualisation du partitionnement")
 # ax.legend()
 # st.pyplot(fig)
 
-phy=MK("physics")
+phy=MK("spectral")
 phy.partitioner.use_velocity=True
 phy.config=phy.default_configs[6]
 phy.visualize()
-st.dataframe(phy.propagate())
-phy2=MK("physics")
-phy2.config=phy2.default_configs[4]
-phy2.partitioner.use_velocity=True
-phy2.visualize()
-st.dataframe(phy2.propagate())
-phy2.default_configs
-phy2.partitioner.dem_velocities
+# st.dataframe(phy.propagate())
+# phy2=MK("physics")
+# phy2.config=phy2.default_configs[4]
+# phy2.partitioner.use_velocity=True
+# phy2.visualize()
+# st.dataframe(phy2.propagate())
+# phy2.default_configs
+# phy2.partitioner.dem_velocities
 # st.dataframe(np.max([i['Diameter'].to_numpy() for i in phy2.datas.values()]))

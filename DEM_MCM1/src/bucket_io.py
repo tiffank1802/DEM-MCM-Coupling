@@ -98,63 +98,65 @@ def get_api():
 # =============================================================================
 # ÉCRITURE
 # =============================================================================
-def save_experiment_to_bucket(folder_name, matrix, stats, config,
-                              partitioner_data=None, image_data=None, particle_diameter=None,states=None):
-    """
-    Sauvegarde une expérience dans le bucket HuggingFace.
-    
-    Args:
-        folder_name: Nom du dossier de destination
-        matrix: Matrice de transition numpy (n_states × n_states)
-        stats: Dictionnaire des statistiques
-        config: Configuration de l'expérience
-        partitioner_data: Données du partitionneur (optionnel)
-        image_data: Images (optionnel)
-        particle_diameter: Diamètre filtré (optionnel) - détermine le bucket
-    """
-    # ✅ NEW: Déterminer le bucket selon particle_diameter
+def save_experiment_to_bucket(folder_name, stats, config,
+                               species_data=None,          # ← optionnel
+                               partitioner_data=None, 
+                               image_data=None, 
+                               particle_diameter=None):
+
     bucket_prefix = _get_bucket_prefix_from_particle_diameter(particle_diameter)
-    bucket_base = f"hf://buckets/{BUCKET_ID}/{bucket_prefix}"
-    
     api = get_api()
 
     with tempfile.TemporaryDirectory() as tmpdir:
         local_folder = Path(tmpdir)
         files_to_upload = []
 
-        # ✅ Utiliser bucket_prefix dynamique
-        matrix_path = local_folder / "transitionmatrix.npy"
-        np.save(matrix_path, matrix)
-        files_to_upload.append((str(matrix_path), f"{bucket_prefix}/{folder_name}/transitionmatrix.npy"))
+        # ── Arrays par espèce (optionnel) ────────────────────────────
+        if species_data:
+            for array_name, array in species_data.items():
+                p = local_folder / f"{array_name}.npy"
+                np.save(p, array)
+                files_to_upload.append(
+                    (str(p), f"{bucket_prefix}/{folder_name}/{array_name}.npy")
+                )
 
-        states_path = local_folder / "states.npy"
-        np.save(states_path, states)
-        files_to_upload.append((str(states_path), f"{bucket_prefix}/{folder_name}/states.npy"))
+        # reste inchangé...
 
+        # ── Stats et config ──────────────────────────────────────────
         stats_path = local_folder / "stats.json"
         with open(stats_path, "w") as f:
             json.dump(stats, f, indent=2)
-        files_to_upload.append((str(stats_path), f"{bucket_prefix}/{folder_name}/stats.json"))
+        files_to_upload.append(
+            (str(stats_path), f"{bucket_prefix}/{folder_name}/stats.json")
+        )
 
         config_path = local_folder / "config.json"
         with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
-        files_to_upload.append((str(config_path), f"{bucket_prefix}/{folder_name}/config.json"))
+        files_to_upload.append(
+            (str(config_path), f"{bucket_prefix}/{folder_name}/config.json")
+        )
 
-        # données partitionneur
+        # ── Données du partitionneur ─────────────────────────────────
         if partitioner_data:
+            part_dir = local_folder / "partitioner"
+            part_dir.mkdir()
             for key, value in partitioner_data.items():
                 if isinstance(value, np.ndarray):
-                    p = local_folder / f"{key}.npy"
+                    p = part_dir / f"{key}.npy"
                     np.save(p, value)
-                    files_to_upload.append((str(p), f"{bucket_prefix}/{folder_name}/{key}.npy"))
+                    files_to_upload.append(
+                        (str(p), f"{bucket_prefix}/{folder_name}/partitioner/{key}.npy")
+                    )
                 else:
-                    p = local_folder / f"{key}.json"
+                    p = part_dir / f"{key}.json"
                     with open(p, "w") as f:
                         json.dump(value, f, indent=2)
-                    files_to_upload.append((str(p), f"{bucket_prefix}/{folder_name}/{key}.json"))
+                    files_to_upload.append(
+                        (str(p), f"{bucket_prefix}/{folder_name}/partitioner/{key}.json")
+                    )
 
-        # ✅ Images en mémoire → fichiers temporaires → upload
+        # ── Images ───────────────────────────────────────────────────
         if image_data:
             for img_name, img_bytes in image_data.items():
                 img_path = local_folder / img_name
@@ -163,31 +165,71 @@ def save_experiment_to_bucket(folder_name, matrix, stats, config,
                 files_to_upload.append(
                     (str(img_path), f"{bucket_prefix}/{folder_name}/images/{img_name}")
                 )
-                
-        # Upload batch
+
+        # ── Upload batch ─────────────────────────────────────────────
         api.batch_bucket_files(
             bucket_id=BUCKET_ID,
-            add=[(local_path, path_in_bucket) for local_path, path_in_bucket in files_to_upload],
+            add=[(lp, bp) for lp, bp in files_to_upload],
         )
-        
-        # ✅ Afficher le bucket utilisé
-        bucket_info = f"{bucket_prefix}"
-        if particle_diameter is not None:
-            bucket_info += f" (diamètre={particle_diameter})"
-        print(f"   ✅ {len(files_to_upload)} fichiers uploadés vers {bucket_info}/{folder_name}/")
 
+        print(f"   ✅ {len(files_to_upload)} fichiers uploadés → "
+              f"{bucket_prefix}/{folder_name}/")
 # =============================================================================
 # LECTURE
 # =============================================================================
 
-def load_matrix_from_bucket(path, base_path=None):
-    fs = get_fs()
-    if base_path is None:
-        base_path = BUCKET_BASE
-    full_path = f"{base_path}/{path}"
-    with fs.open(full_path, "rb") as f:
-        buffer = io.BytesIO(fs.read())
-    return np.load(buffer)
+def load_experiment_from_bucket(folder_name, bucket_prefix=None):
+    """
+    Retourne :
+    {
+        "species": {
+            "small": {"P": ndarray, "S_matrix": ndarray, "times": ndarray},
+            "large": {"P": ndarray, "S_matrix": ndarray, "times": ndarray},
+        },
+        "stats":  dict,
+        "config": dict,
+    }
+    """
+    fs  = get_fs()
+
+    # Déterminer le bucket
+    if bucket_prefix is None:
+        if "_d0004" in folder_name:
+            bucket_prefix = "_Good/SMALL"
+        elif "_d0008" in folder_name:
+            bucket_prefix = "_Good/BIG"
+        else:
+            bucket_prefix = "_Good/Experiment"
+
+    bucket_base = f"hf://buckets/{BUCKET_ID}/{bucket_prefix}"
+    prefix      = f"{bucket_base}/{folder_name}"
+
+    def _load_npy(name):
+        with fs.open(f"{prefix}/{name}", "rb") as f:
+            return np.load(io.BytesIO(f.read()))
+
+    def _load_json(name):
+        with fs.open(f"{prefix}/{name}", "r") as f:
+            return json.load(f)
+
+    stats  = _load_json("stats.json")
+    config = _load_json("config.json")
+
+    # Reconstruire les données par espèce depuis species_list
+    species_list = stats.get("species_list", ["small", "large"])
+    species_out  = {}
+    for species in species_list:
+        species_out[species] = {
+            "P":        _load_npy(f"transitionmatrix_{species}.npy"),
+            "S_matrix": _load_npy(f"S_matrix_{species}.npy"),
+            "times":    _load_npy(f"times_{species}.npy"),
+        }
+
+    return {
+        "species": species_out,
+        "stats":   stats,
+        "config":  config,
+    }
 
 def load_json_from_bucket(path, base_path=None):
     fs = get_fs()
