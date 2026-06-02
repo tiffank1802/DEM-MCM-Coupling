@@ -70,8 +70,8 @@ class ExperimentConfig:
 
     method: str = "cartesian"
     method_kwargs: dict = field(default_factory=dict)
-    nlt: int = 10
-    tau: int = 50  # Écart entre start et end pour chaque paire
+    nlt: int = 30
+    tau: int = 157  # Écart entre start et end pour chaque paire
     step: int = 10  # Distance entre 2 starts principaux (quand NLT > 1)
     dt: int = None  #type: ignore # Raffinage temporel à l'intérieur de chaque step
     start_index: int = 250
@@ -146,7 +146,7 @@ def get_configs(method, particle_diameter=None):
                 ExperimentConfig(
                     method="cylindrical",
                     method_kwargs={
-                        "nr": nr, "ntheta": 1, "nz": 1,
+                        "nr": nr, "ntheta": 3, "nz": 3,
                         "radial_mode": "equal_area",
                     },
                     particle_diameter=particle_diameter,
@@ -191,7 +191,7 @@ def get_configs(method, particle_diameter=None):
 
     elif method == "voronoi":
         # for nc in [8, 10, 12, 14, 16, 18, 20, 24, 27, 30, 64, 100]:
-        for nc in [ 20,30]:
+        for nc in [ 10,15,20,25,30]:
             configs.append(
                 ExperimentConfig(
                     method="voronoi",
@@ -201,7 +201,7 @@ def get_configs(method, particle_diameter=None):
             )
 
     elif method == "quantile":
-        for n in [2, 3, 4, 5, 6, 7, 8, 9, 10]:
+        for n in [2, 3, 4, 5, 6,]:
             configs.append(
                 ExperimentConfig(
                     method="quantile",
@@ -212,7 +212,7 @@ def get_configs(method, particle_diameter=None):
 
     elif method == "octree":
         # max_particles variable
-        for mp in [20, 40, 80, 16, 32, 64, 28,50]:
+        for mp in [20, 40, 80, 16, 32, 64, 28,50,60,70,100]:
             configs.append(
                 ExperimentConfig(
                     method="octree",
@@ -222,7 +222,7 @@ def get_configs(method, particle_diameter=None):
             )
         # max_depth variable
         # for md in [3, 4, 5, 6, 7]:
-        for md in [3, 2,1]:
+        for md in [ 2,1]:
             configs.append(
                 ExperimentConfig(
                     method="octree",
@@ -233,7 +233,7 @@ def get_configs(method, particle_diameter=None):
 
     elif method == "physics":
         # Sweep n_cells avec velocity_weight par défaut
-        for nc in [20,30,40,50]:
+        for nc in [ 10,15,20,25,30]:
             configs.append(
                 ExperimentConfig(
                     method="physics",
@@ -250,7 +250,75 @@ def get_configs(method, particle_diameter=None):
                     particle_diameter=particle_diameter,
                 )
             )
+    elif method == "physics_full_vel":
+        # Sweep n_cells avec velocity_weight par défaut (vecteur vitesse complet)
+        for nc in [10, 15, 20, 25, 30]:
+            configs.append(
+                ExperimentConfig(
+                    method="physics_full_vel",
+                    method_kwargs={"n_cells": nc, "velocity_weight": 0.5},
+                    particle_diameter=particle_diameter,
+                )
+            )
+        # Sweep velocity_weight (importance du vecteur vitesse)
+        # On réduit un peu la plage car on a 3 features de vitesse au lieu d'1
+        for vw in [0.1, 0.2, 0.3, 0.5, 0.7, 1.0]:
+            configs.append(
+                ExperimentConfig(
+                    method="physics_full_vel",
+                    method_kwargs={"n_cells": 30, "velocity_weight": vw},
+                    particle_diameter=particle_diameter,
+                )
+            )
 
+    elif method == "spectral":
+        # Sweep n_cells (basé sur la topologie/connectivité)
+        for nc in [10, 15, 20, 25, 30]:
+            configs.append(
+                ExperimentConfig(
+                    method="spectral",
+                    method_kwargs={"n_cells": nc, "velocity_weight": 0.5, "n_neighbors": 15},
+                    particle_diameter=particle_diameter,
+                )
+            )
+        # Sweep velocity_weight 
+        for vw in [0.1, 0.3, 0.5, 0.7, 1.0]:
+            configs.append(
+                ExperimentConfig(
+                    method="spectral",
+                    method_kwargs={"n_cells": 20, "velocity_weight": vw, "n_neighbors": 15},
+                    particle_diameter=particle_diameter,
+                )
+            )
+        # Sweep n_neighbors (crucial pour la construction du graphe d'affinité)
+        for k in [5, 10, 15, 20, 30]:
+            configs.append(
+                ExperimentConfig(
+                    method="spectral",
+                    method_kwargs={"n_cells": 20, "velocity_weight": 0.5, "n_neighbors": k},
+                    particle_diameter=particle_diameter,
+                )
+            )
+
+    elif method == "gmm":
+        # Sweep n_cells (cellules ellipsoïdales anisotropes)
+        for nc in [10, 15, 20, 25, 30]:
+            configs.append(
+                ExperimentConfig(
+                    method="gmm",
+                    method_kwargs={"n_cells": nc, "velocity_weight": 0.5},
+                    particle_diameter=particle_diameter,
+                )
+            )
+        # Sweep velocity_weight
+        for vw in [0.1, 0.3, 0.5, 0.7, 1.0]:
+            configs.append(
+                ExperimentConfig(
+                    method="gmm",
+                    method_kwargs={"n_cells": 20, "velocity_weight": vw},
+                    particle_diameter=particle_diameter,
+                )
+            )
     elif method == "adaptive":
         # ── Sweep y_split (quantile) ─────────────────────────────────
         for y_q in [0.5, 0.6, 0.7, 0.8, 0.9]:
@@ -522,6 +590,10 @@ def _get_default_kwargs(method):
         "quantile": {"nx": 5, "ny": 5, "nz": 5},
         "octree": {"max_particles": 100, "max_depth": 1},
         "physics": {"n_cells": 30, "velocity_weight": 0.5},
+        "physics": {"n_cells": 30, "velocity_weight": 0.5},
+        "physics_full_vel": {"n_cells": 30, "velocity_weight": 0.5},
+        "spectral": {"n_cells": 20, "velocity_weight": 0.5, "n_neighbors": 15, "max_samples": 5000},
+        "gmm": {"n_cells": 20, "velocity_weight": 0.5},
         "adaptive": {
             "y_split": 0.90,
             "y_split_mode": "quantile",
@@ -628,14 +700,20 @@ def compute_P_matrix_torch(states_prev, states_curr, n_states, device="cpu", spe
 
 
 
-def save_results(config, partitioner, P, stats, image_data=None, folder_name=None,states=None):  # ← Changé image_paths en image_data
-    """Sauvegarde les résultats dans le bucket HuggingFace."""
+def save_results(config, partitioner, results: dict, stats: dict, 
+                 image_data=None, folder_name=None):
+    """
+    Sauvegarde les résultats par espèce dans le bucket HuggingFace.
     
-    # ✅ folder_name est maintenant juste un nom, pas un chemin
+    results : {
+        "small": {"P": ndarray, "S_matrix": ndarray, "times": ndarray},
+        "large": {"P": ndarray, "S_matrix": ndarray, "times": ndarray},
+    }
+    """
     if folder_name is None:
         folder_name = config.output_folder()
-    
-    # Préparer les données du partitionneur
+
+    # ── Données du partitionneur ─────────────────────────────────────
     partitioner_data = {}
     if hasattr(partitioner, 'centroids') and partitioner.centroids is not None:
         partitioner_data["centroids"] = partitioner.centroids
@@ -647,8 +725,6 @@ def save_results(config, partitioner, P, stats, image_data=None, folder_name=Non
         partitioner_data["x_edges"] = partitioner._x_edges
         partitioner_data["y_edges"] = partitioner._y_edges
         partitioner_data["z_edges"] = partitioner._z_edges
-    
-    # Données spécifiques au partitionneur physics-aware
     if isinstance(partitioner, part.PhysicsAwarePartitioner):
         if partitioner._mean is not None:
             partitioner_data["mean"] = partitioner._mean
@@ -658,31 +734,53 @@ def save_results(config, partitioner, P, stats, image_data=None, folder_name=Non
             "n_features": partitioner._n_features,
             "velocity_weight": partitioner.velocity_weight,
         }
-    
-    # Métadonnées du partitionneur
     partitioner_data["partitioner_meta"] = {
-        "type": type(partitioner).__name__,
-        "label": partitioner.label,
+        "type":    type(partitioner).__name__,
+        "label":   partitioner.label,
         "n_cells": partitioner.n_cells,
     }
-    
-    # ✅ Sauvegarder directement dans le bucket avec particle_diameter
+
+    # ── Construire species_data : un dict de arrays numpy par espèce ─
+    # Structure dans le bucket :
+    #   folder_name/
+    #     transitionmatrix_small.npy
+    #     S_matrix_small.npy
+    #     times_small.npy          ← même pour toutes les espèces mais sauvegardé une fois
+    #     transitionmatrix_large.npy
+    #     S_matrix_large.npy
+    #     species_list.json         ← ["small", "large"]
+    #     stats.json
+    #     config.json
+    #     partitioner/...
+    species_data = {}
+    for species, data in results.items():
+        species_data[f"transitionmatrix_{species}"] = data["P"]
+        species_data[f"S_matrix_{species}"]         = data["S_matrix"]
+        species_data[f"times_{species}"]            = data["times"]
+
+    # Ajouter la liste des espèces dans stats pour faciliter le rechargement
+    stats_with_species = {
+        **stats,
+        "species_list": list(results.keys()),
+    }
+
     save_experiment_to_bucket(
         folder_name=folder_name,
-        matrix=P,
-        stats=stats,
+        species_data=species_data,     # ← nommé
+        stats=stats_with_species,
         config=asdict(config),
         partitioner_data=partitioner_data,
         image_data=image_data,
-        states=states,
-        particle_diameter=config.particle_diameter  # ✅ PASS DIAMETER
+        particle_diameter=config.particle_diameter,
     )
-    
-    # Afficher le bucket utilisé (déterminé par particle_diameter)
-    bucket_name = "BIG" if config.particle_diameter == 0.008 else \
-                  "SMALL" if config.particle_diameter == 0.004 else \
-                  "Experiments"
-    print(f"   💾 Bucket: {bucket_name}/{folder_name}/")
+
+    bucket_name = (
+        "BIG"         if config.particle_diameter == 0.008 else
+        "SMALL"       if config.particle_diameter == 0.004 else
+        "Experiments"
+    )
+    print(f"   💾 Bucket: {bucket_name}/{folder_name}/ "
+          f"({list(results.keys())})")
 
 
 
@@ -724,109 +822,151 @@ def sample_coordinates(timestep_dict: dict[int, pd.DataFrame]):
 # ════════════════════════════════════════════════════════════════════
 # run_experiment — utilise le dict déjà chargé
 # ════════════════════════════════════════════════════════════════════
+def _detect_species(df: pd.DataFrame) -> dict[str, np.ndarray]:
+    """
+    Détecte automatiquement les espèces par diamètre et retourne un masque booléen par espèce.
+    Fonctionne pour N espèces différentes (pas seulement 2).
+    
+    Returns:
+        {"small": array([True, False, ...]), "large": array([False, True, ...])}
+        ou {"d0004": ..., "d0008": ...} si plus de 2 diamètres
+    """
+    diameters = df["Diameter"].to_numpy()
+    unique_diams = np.sort(np.unique(diameters))
+    
+    if len(unique_diams) == 1:
+        print(f"   ⚠️  Un seul diamètre trouvé ({unique_diams[0]}) — pas de séparation d'espèces")
+        return {"all": np.ones(len(diameters), dtype=bool)}
+    
+    if len(unique_diams) == 2:
+        labels = ["small", "large"]
+    else:
+        # Cas générique : nommer par diamètre
+        labels = [f"d{str(d).replace('.', '')}" for d in unique_diams]
+        print(f"   ℹ️  {len(unique_diams)} diamètres détectés : {unique_diams}")
+    
+    species_masks = {}
+    for label, diam in zip(labels, unique_diams):
+        mask = diameters == diam
+        species_masks[label] = mask
+        print(f"   ✅ Espèce '{label}' (d={diam:.4f}) : {mask.sum()} particules")
+    
+    return species_masks
+
+
 def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], device="cpu"):
-    n_states   = partitioner.n_cells
-    tau        = config.tau
-    step       = config.step
-    dt         = config.dt
-    start_base = config.start_index
+    """
+    Construit une matrice de transition P et des matrices d'états S par espèce.
+    Il est crutial de comprendre que les S_matrix_espece ici sont pour toute la DEM et qu'une seule partie sera utilisé (à l'instant initial de construction du modèle de Markov pour la prédictoin)
+
+    
+    Pour chaque espèce (small, large) :
+      - P_espece        : matrice de transition (n_states × n_states)
+      - S_matrix_espece : matrice d'états (n_timesteps × n_states)
+                          S[t, k] = nombre de particules de cette espèce dans la cellule k au temps t
+    
+    Returns:
+        results : dict {
+            "small": {
+                "P":        ndarray (n_states, n_states),
+                "S_matrix": ndarray (n_timesteps, n_states),  # tous les timesteps DEM
+                "times":    ndarray (n_timesteps,),           # indices DEM correspondants
+            },
+            "large": { ... },
+        }
+        stats : dict de métriques
+    """
+    n_states   = partitioner.n_cells    #nombre de cellules du mélangeur
+    tau        = config.tau             # pas de temps de markov
+    step       = config.step            # écart entre l'indice de fin d'un timestep et l'indice de début d'un autre
+    dt         = config.dt              # temps de raffinage temporel: pas de temps de décalage de l'indice de début sur les (step+tau) pour reapprendre sur ces intervalles
+    start_base = config.start_index     # indice de début
 
     print(f"   📐 Configuration: NLT={config.nlt}, step={step}, dt={dt}, tau={tau}")
     print(f"   📦 {len(timestep_dict)} timesteps disponibles "
           f"(index {min(timestep_dict)} → {max(timestep_dict)})")
 
-    # ── Species labels ───────────────────────────────────────────────
-    species_labels = None
+    # ── Détection des espèces ────────────────────────────────────────
     try:
-        df_init   = timestep_dict[start_base]
-        diameters = df_init["Diameter"].to_numpy() if "Diameter" in df_init.columns else None
-        if diameters is not None:
-            unique_vals = np.unique(diameters)
-            if config.particle_diameter is not None:
-                if config.particle_diameter not in unique_vals:
-                    raise ValueError(
-                        f"Diamètre {config.particle_diameter} absent des données "
-                        f"(valeurs trouvées : {unique_vals})"
-                    )
-                species_labels = (diameters == config.particle_diameter)
-                label_str = "SMALL" if config.particle_diameter == unique_vals[0] else "BIG"
-                print(f"   ✅ Filtre diamètre {config.particle_diameter} ({label_str}) : "
-                      f"{species_labels.sum()} particules retenues")
-            elif len(unique_vals) == 2:
-                print(f"   ℹ️  2 diamètres détectés {unique_vals} — aucun filtre appliqué")
-            else:
-                print(f"   ⚠️  {len(unique_vals)} diamètres trouvés — masque non appliqué")
-        else:
-            print("   ⚠️  Colonne 'Diameter' non trouvée — masque non appliqué")
+        df_init = timestep_dict[start_base] # données de simulation DEM de l'instant initial ()
     except KeyError:
-        print(f"   ⚠️  Timestep {start_base} absent du dict — masque non appliqué")
-    except Exception as e:
-        print(f"   ⚠️  Erreur espèces: {e}")
+        raise KeyError(f"Timestep start_base={start_base} absent du dict")
+    
+    species_masks = _detect_species(df_init)        # detection des tailles des particules. est dictionnaire contenant un vecteur de booléen de taille (1,1030) par espèce
 
-    # ── Calcul des états une seule fois sur tous les timesteps ───────
-    # On trie les indices pour avoir un ordre déterministe
+    # ── Calcul des états sur tous les timesteps (une seule fois) ─────
     sorted_indices = sorted(timestep_dict.keys())
     n_timesteps    = len(sorted_indices)
+    n_particles    = len(timestep_dict[sorted_indices[0]])
+    idx_to_row     = {idx: row for row, idx in enumerate(sorted_indices)}
 
-    # Mapping idx_dem → ligne dans le tableau states
-    idx_to_row = {idx: row for row, idx in enumerate(sorted_indices)}
+    print(f"   🔧 Calcul des états : {n_timesteps} timesteps × {n_particles} particules...")
 
-    # Inférer n_particles depuis le premier timestep
-    n_particles = len(timestep_dict[sorted_indices[0]])
-
-    print(f"   🔧 Calcul des états pour {n_timesteps} timesteps × {n_particles} particules...")
-
-    # Concaténer toutes les coordonnées en une seule fois
     all_x, all_y, all_z = [], [], []
     all_vx, all_vy, all_vz = [], [], []
+    is_physics = isinstance(partitioner, part.PhysicsAwarePartitioner)
 
     for idx in sorted_indices:
         df = timestep_dict[idx]
         all_x.append(df["coordinates:0"].to_numpy())
         all_y.append(df["coordinates:1"].to_numpy())
         all_z.append(df["coordinates:2"].to_numpy())
-        if isinstance(partitioner, part.PhysicsAwarePartitioner):
+        if is_physics:
             all_vx.append(df["Velocity:0"].to_numpy())
             all_vy.append(df["Velocity:1"].to_numpy())
             all_vz.append(df["Velocity:2"].to_numpy())
-
-    coords_x = np.concatenate(all_x)  # (n_timesteps * n_particles,)
+    # la fonction concatenate s'applique sur des listes pour les concatener en un seul np.array
+    coords_x = np.concatenate(all_x)
     coords_y = np.concatenate(all_y)
     coords_z = np.concatenate(all_z)
 
-    # Calcul vectorisé des états
-    if isinstance(partitioner, part.PhysicsAwarePartitioner):
-        partitioner.dem_velocities = np.column_stack([
-            np.concatenate(all_vx),
-            np.concatenate(all_vy),
-            np.concatenate(all_vz),
-        ])
+    if is_physics:
+        vx_all = np.concatenate(all_vx)
+        vy_all = np.concatenate(all_vy)
+        vz_all = np.concatenate(all_vz)
+        partitioner.dem_velocities = np.column_stack([vx_all, vy_all, vz_all])
         states_flat = partitioner.compute_states(
-            coords_x, coords_y, coords_z,
-            np.concatenate(all_vx), np.concatenate(all_vy), np.concatenate(all_vz),
+            coords_x, coords_y, coords_z, vx_all, vy_all, vz_all
         )
     else:
-        states_flat = partitioner.compute_states(coords_x, coords_y, coords_z)
+        states_flat = partitioner.compute_states(coords_x, coords_y, coords_z) # états des particules sur toute la simulation dem vecteur de taille (1,6000*1030)
 
-    # Reshape en (n_timesteps, n_particles)
-    states_matrix = states_flat.reshape(n_timesteps, n_particles)
-    print(f"   ✅ states_matrix: {states_matrix.shape}")
+    # (n_timesteps, n_particles) — ligne t = snapshot DEM à l'instant sorted_indices[t]
+    states_matrix = states_flat.reshape(n_timesteps, n_particles) # états des particules sur toute la simulation dem mais, matrice de taille (6000,1030)
+    print(f"   ✅ states_matrix brute: {states_matrix.shape}")
+
+    # ── S_matrix par espèce : (n_timesteps, n_states) ───────────────
+    # S_matrix[t, k] = nombre de particules de l'espèce dans la cellule k au temps t
+    S_matrices = {}
+    for species, mask in species_masks.items():
+        # states_matrix[:, mask] → (n_timesteps, n_particles_species)
+        # Autrement dit pour des particules bidisperses comme dans notre cas, les states_species sont de (6000,350) pour les petites particules et
+        # (6000,680) pour les grandes particules
+        states_species = states_matrix[:, mask]  # seulement les colonnes de cette espèce
+
+        # bincount vectorisé sur chaque ligne
+        S = np.zeros((n_timesteps, n_states), dtype=np.float64)
+        for t in range(n_timesteps):
+            S[t] = np.bincount(states_species[t], minlength=n_states) # compte le nombre de particules dans chacune des partitions au cours du temps pour chacune des espèces
+
+        S_matrices[species] = S # S_matrix est de taille (6000,n_states), dont chaque colonne contient le nombre de particules pour un instant pour une espèce
+        print(f"   ✅ S_matrix '{species}': {S.shape} | "
+              f"sum t=0: {S[0].sum():.0f} particules ({mask.sum()} attendues)")
 
     # ── Construction des paires ──────────────────────────────────────
-    all_pairs = []
+    all_pairs = [] # les pairs sont tout simplement les couples (idx_prev,idx_curr)
     for nlt_idx in range(config.nlt):
-        # stride = step + tau pour éviter les chevauchements entre blocs NLT
-        current_start_base = start_base + nlt_idx * (step + tau)
+        current_start_base = start_base + nlt_idx * (step + tau) # indices de départ pour faire l'apprentissage
+
+        max_end_possible   = max(timestep_dict.keys())
+        max_start_possible = max_end_possible - tau
+
+        if current_start_base > max_start_possible:
+            print(f"   ⚠️  Bloc {nlt_idx+1} ignoré "
+                  f"(start={current_start_base} > max={max_start_possible})")
+            break
 
         if nlt_idx == config.nlt - 1:
-            max_end_possible   = max(timestep_dict.keys())
-            max_start_possible = max_end_possible - tau
-
-            if current_start_base > max_start_possible:
-                print(f"   ⚠️  Bloc {nlt_idx+1} ignoré "
-                      f"(start={current_start_base} > max={max_start_possible})")
-                break
-
             remaining_range  = max_start_possible - current_start_base
             n_apprentissages = min((step + tau) // dt, remaining_range // dt) + 1
         else:
@@ -835,56 +975,76 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
         for i in range(n_apprentissages):
             start_idx = current_start_base + i * dt
             end_idx   = start_idx + tau
-
-            if start_idx not in idx_to_row:
-                print(f"   ⚠️  Paire ({start_idx},{end_idx}) ignorée (start absent du dict)")
+            if start_idx not in idx_to_row or end_idx not in idx_to_row:
                 break
-            if end_idx not in idx_to_row:
-                print(f"   ⚠️  Paire ({start_idx},{end_idx}) ignorée (end absent du dict)")
-                break
-
             all_pairs.append((start_idx, end_idx))
 
     if not all_pairs:
         raise ValueError("Aucune paire possible avec ces paramètres")
 
-    print(f"   📊 {len(all_pairs)} paires générées:")
-    print(f"      Premier: data_{all_pairs[0][0]} → data_{all_pairs[0][1]}")
-    print(f"      Dernier: data_{all_pairs[-1][0]} → data_{all_pairs[-1][1]}")
+    print(f"   📊 {len(all_pairs)} paires | "
+          f"data_{all_pairs[0][0]}→{all_pairs[0][1]} … "
+          f"data_{all_pairs[-1][0]}→{all_pairs[-1][1]}")
 
-    n_paires_par_step     = (step + tau) // dt
-    n_blocs_complets      = len(all_pairs) // n_paires_par_step
-    n_paires_dernier_bloc = len(all_pairs) % n_paires_par_step
-    print(f"      Structure: {n_blocs_complets} blocs complets de {n_paires_par_step} paires"
-          + (f" + 1 bloc partiel de {n_paires_dernier_bloc}" if n_paires_dernier_bloc else ""))
-
-    # ── Accumulation des transitions ────────────────────────────────
-    states_prev_acc = np.empty(0, dtype=np.int64)
-    states_curr_acc = np.empty(0, dtype=np.int64)
+    # ── Accumulation des transitions PAR ESPÈCE ─────────────────────
+    # Tout comme all_pairs contient les indices (idx_prev,idx_curr), accumulators contient les vecteurs d'états (prev, curr) par espèce
+    accumulators = {
+        species: {
+            "prev": np.empty(0, dtype=np.int64),
+            "curr": np.empty(0, dtype=np.int64),
+        }
+        for species in species_masks
+    }
 
     for idx_prev, idx_curr in tqdm(all_pairs, desc="   Paires", leave=False):
         row_prev = idx_to_row[idx_prev]
         row_curr = idx_to_row[idx_curr]
 
-        s_prev = states_matrix[row_prev]  # (n_particles,)
-        s_curr = states_matrix[row_curr]
+        for species, mask in species_masks.items():
+            accumulators[species]["prev"] = np.concatenate(( # je ne savais pas qu'on pouvait concatener un np.empty() avec un np.array() sans aucun problème
+                accumulators[species]["prev"],
+                states_matrix[row_prev][mask],
+            ))
+            accumulators[species]["curr"] = np.concatenate((
+                accumulators[species]["curr"],
+                states_matrix[row_curr][mask],
+            ))
 
-        if species_labels is not None:
-            s_prev = s_prev[species_labels]
-            s_curr = s_curr[species_labels]
+    # ── Calcul de P par espèce + assemblage final ────────────────────
+    results = {}
+    for species in species_masks:
+        print(f"\n   📐 Matrice P — espèce '{species}'...")
 
-        states_prev_acc = np.concatenate((states_prev_acc, s_prev))
-        states_curr_acc = np.concatenate((states_curr_acc, s_curr))
+        P = compute_P_matrix_torch(
+            accumulators[species]["prev"],
+            accumulators[species]["curr"],
+            n_states,
+            device,
+            species_labels=None,
+        ).cpu().numpy()
 
-    # ── Calcul de la matrice de transition ──────────────────────────
-    P_np = compute_P_matrix_torch(
-        states_prev_acc, states_curr_acc, n_states, device, species_labels=None
-    ).cpu().numpy()
+        n_visited = int((P.sum(axis=0) > 0).sum())
+        S_mat     = S_matrices[species] # je rappelle que S_matrices est un dictionnaire de l'évolution temporelle du nombre de particules au cours du temps pour une espèce donnée. Il est taille (6000,n_states) par espèce
+
+        print(f"      {n_states} états | {n_visited} visités | "
+              f"P(rester)={np.diag(P).mean():.4f} | "
+              f"S0 sum={S_mat[0].sum():.0f}")
+
+        results[species] = {
+            "P":        P,
+            "S_matrix": S_mat,                          # (n_timesteps, n_states)  ← DEM réel
+            "times":    np.array(sorted_indices),       # indices DEM (250, 260, ..., 5999)
+        }
 
     # ── Statistiques ────────────────────────────────────────────────
-    column_sums = P_np.sum(axis=0)
-    visited     = column_sums > 0
-    diag_vals   = np.diag(P_np)
+    n_paires_par_bloc     = (step + tau) // dt
+    n_blocs_complets      = len(all_pairs) // n_paires_par_bloc
+    n_paires_dernier_bloc = len(all_pairs) % n_paires_par_bloc
+
+    first_species = next(iter(results))
+    P_ref         = results[first_species]["P"]
+    col_sums      = P_ref.sum(axis=0)
+    visited       = col_sums > 0
 
     stats = {
         "n_pairs_used":          len(all_pairs),
@@ -895,21 +1055,21 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
         "n_states_visited":      int(visited.sum()),
         "n_states_empty":        int((~visited).sum()),
         "fraction_visited":      round(float(visited.sum()) / n_states, 4),
-        "column_sum_min":        float(column_sums[visited].min()) if visited.any() else 0,
-        "column_sum_max":        float(column_sums[visited].max()) if visited.any() else 0,
-        "column_sum_mean":       float(column_sums[visited].mean()) if visited.any() else 0,
-        "diagonal_mean":         float(diag_vals.mean()),
-        "diagonal_std":          float(diag_vals.std()),
+        "diagonal_mean":         float(np.diag(P_ref).mean()),
+        "diagonal_std":          float(np.diag(P_ref).std()),
         "method":                config.method,
+        "species":               list(species_masks.keys()),
+        "n_timesteps":           n_timesteps,
         "tau": tau, "step": step, "dt": dt,
-        "raffinage_ratio":       (step + tau) // dt,
+        "raffinage_ratio":       n_paires_par_bloc,
         "plage_temporelle":      int(all_pairs[-1][1] - all_pairs[0][0]),
         "start_index":           config.start_index,
         "first_pair":            list(all_pairs[0]),
         "last_pair":             list(all_pairs[-1]),
         "particle_diameter":     config.particle_diameter,
     }
-    return P_np, stats,states_matrix
+
+    return results, stats
 # ════════════════════════════════════════════════════════════════════
 # run_markov_sweep
 # ════════════════════════════════════════════════════════════════════
@@ -950,7 +1110,7 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None,
     print("-" * 70)
 
     # ── Boucle principale ────────────────────────────────────────────
-    results = []
+    results_summary = []
     for i, config in enumerate(all_configs):
         if config.method in ["adaptive", "multizone", "physics"]:
             folder_name = config.output_folder(base_dir=base_dir, sample_coords=sample_coords)
@@ -977,46 +1137,49 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None,
             )
 
             # ── run_experiment reçoit le dict, plus fs ni parquet_path ──
-            P, stats,states = run_experiment(config, partitioner, timestep_dict, device)
+            results, stats = run_experiment(config, partitioner, timestep_dict, device)
 
             save_results(
-                config=config, partitioner=partitioner, P=P,
-                stats=stats, image_data=None, folder_name=folder_name, states=states
+                config=config,
+                partitioner=partitioner,
+                results=results,        # dict par espèce
+                stats=stats,
+                image_data=None,
+                folder_name=folder_name,
             )
 
-            results.append({"config": asdict(config), "stats": stats, "success": True})
+            results_summary.append({"config": asdict(config), "stats": stats, "success": True})
             print(
                 f"   ✅ {stats['n_states_visited']}/{stats['n_states']} états | "
                 f"P(rester)={stats['diagonal_mean']:.4f} | "
-                f"pairs={stats['n_pairs_used']} | "
-                f"step={config.step} dt={config.dt}"
+                f"espèces={stats['species']} | "
+                f"pairs={stats['n_pairs_used']}"
             )
-
         except Exception as e:
             print(f"   ❌ Erreur: {e}")
-            results.append({"config": asdict(config), "stats": None,
+            results_summary.append({"config": asdict(config), "stats": None,
                             "success": False, "error": str(e)})
 
     # ── Résumé ───────────────────────────────────────────────────────
     print("\n" + "=" * 70)
     print("RÉSUMÉ")
     print("=" * 70)
-    ok = [r for r in results if r["success"]]
-    ko = [r for r in results if not r["success"]]
-    print(f"\n✅ Réussies: {len(ok)}/{len(results)}")
+    ok = [r for r in results_summary if r["success"]]
+    ko = [r for r in results_summary if not r["success"]]
+    print(f"\n✅ Réussies: {len(ok)}/{len(results_summary)}")
     if ko:
         print(f"❌ Échouées: {len(ko)}")
         for r in ko:
             print(f"   - {r['config']['method']}: {r.get('error', '?')}")
 
     summary_data = {
-        "method": method, "total": len(results),
-        "success": len(ok), "failed": len(ko), "results": results,
+        "method": method, "total": len(results_summary),
+        "success": len(ok), "failed": len(ko), "results": results_summary,
     }
     try:
         save_experiment_to_bucket(
             folder_name=f"_summary_{method}",
-            matrix=np.array([]),
+            species_data={},           # pas de matrices pour le résumé
             stats=summary_data,
             config={"type": "summary", "method": method},
         )
@@ -1025,7 +1188,7 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None,
         print(f"\n⚠️  Impossible de sauvegarder le résumé: {e}")
 
     print("✨ Terminé!")
-    return results
+    return results_summary
 # =============================================================================
 # FONCTION PRINCIPALE
 # =============================================================================

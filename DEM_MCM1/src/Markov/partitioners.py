@@ -47,13 +47,15 @@ __all__ = [
     "QuantileGridPartitioner",
     "OctreePartitioner",
     "PhysicsAwarePartitioner",
+    "FullVectorVelocityKMeansPartitioner",
+    "SpectralClusteringPartitioner",
+    "GaussianMixturePartitioner",
     "AdaptivePartitioner",
     "MultiZonePartitioner",
     "SingleCellPartitioner",
     "create_partitioner",
     "REGISTRY",
 ]
-
 
 # =============================================================================
 # CLASSE DE BASE
@@ -69,6 +71,7 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
         super().__init__()
         self.PARTICLE_NUMBER:int=1030
         self.particle_diameters:np.ndarray=None #type:ignore
+        self.states=np.array([])
         
     # analyzer=ar.MarkovAnalyzer()
 
@@ -140,487 +143,377 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
         pass
 
 
-    def visualize(self, x: np.ndarray, y: np.ndarray, z: np.ndarray, 
-                vx=None, vy=None, vz=None, plot_types: list=["3d", "2d_xy"], 
-                save_prefix: str="partition_visualization",
-                particle_diameters=None, use_diameter: bool=True, **kwargs: dict) -> dict:
+    def visualize_scientific(
+    self,
+    x: np.ndarray, y: np.ndarray, z: np.ndarray,
+    vx: np.ndarray = None, vy: np.ndarray = None, vz: np.ndarray = None,
+    particle_diameters: np.ndarray = None,
+    time_index: int = 0,
+    n_particles_per_step: int = 1030,
+    plot_types: list = None,
+    save_prefix: str = "partition_scientific",
+    slice_thickness: float = 0.02,
+    show_boundaries: bool = True,
+    show_diameter: bool = True,
+    dpi: int = 300,
+    figsize_2d=(10, 8),
+    figsize_3d=(12, 10),
+    cmap_states="tab20",
+    font_family="sans-serif",
+) -> dict:
         """
-        Génère des visualisations ultra-rapides des particules coloriées par état via PyVista,
-        avec taille proportionnelle au diamètre si disponible, adaptées pour un serveur headless.
+        Génère des figures scientifiques propres pour un instant donné.
+        
+        Args:
+            x, y, z           : coordonnées de TOUTES les particules sur TOUS les instants (shape: n_steps * n_particles)
+            vx, vy, vz        : vitesses de TOUTES les particules sur TOUS les instants (optionnelles)
+            particle_diameters: diamètres de TOUTES les particules (shape: n_steps * n_particles ou n_particles)
+            time_index        : index de l'instant à visualiser (défaut: 0)
+            n_particles_per_step: nombre de particules par instant (défaut: 1030)
+            plot_types        : liste parmi ["projection_xy","projection_yz","slice_xy","slice_yz","slice_xz","3d"]
+            save_prefix       : préfixe des fichiers sauvegardés
+            slice_thickness   : épaisseur de la coupe (m)
+            show_boundaries   : dessiner l'enveloppe convexe de chaque partition
+            show_diameter     : adapter la taille des markers au diamètre
+            dpi               : résolution de sortie
+            figsize_2d        : taille des figures 2D
+            figsize_3d        : taille des figures 3D
+            cmap_states       : colormap discrète pour les états
+            font_family       : famille de police
+        
+        Returns:
+            dict : { "projection_xy.png": bytes, "slice_xy.png": bytes, ... }
         """
-        # 1. On s'assure que l'écran virtuel tourne si on est sur un serveur sans GPU
-        # Si vous utilisez la version vtk-egl, vous pouvez commenter cette ligne.
-
-
-        self.fit(np.column_stack([x, y, z]))
-        if vx is not None and vy is not None and vz is not None:
-            states = self.compute_states(x[:1030], y[:1030], z[:1030], vx[:1030], vy[:1030], vz[:1030])
-        else:
-            states = self.compute_states(x[:1030], y[:1030], z[:1030])
-
-        # Récupération des diamètres
-        diameters = None
-        if use_diameter:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from matplotlib import cm
+        from matplotlib.patches import Polygon
+        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+        from scipy.spatial import ConvexHull
+        import io
+        
+        # Valeurs par défaut
+        if plot_types is None:
+            plot_types = ["projection_xy", "projection_yz", "3d"]
+        
+        # Configuration matplotlib
+        plt.rcParams.update({
+            "font.family": font_family,
+            "font.size": 10,
+            "axes.titlesize": 13,
+            "axes.labelsize": 11,
+            "xtick.labelsize": 9,
+            "ytick.labelsize": 9,
+            "legend.fontsize": 9,
+            "figure.dpi": dpi,
+            "savefig.dpi": dpi,
+            "savefig.bbox": "tight",
+        })
+        
+        # ============================================================
+        #  EXTRACTION DES DONNÉES POUR L'INSTANT SPÉCIFIÉ
+        # ============================================================
+        n_steps = len(x) // n_particles_per_step
+        
+        if time_index < 0 or time_index >= n_steps:
+            raise ValueError(f"time_index={time_index} hors limites [0, {n_steps-1}]")
+        
+        # Indices pour extraire les données de l'instant souhaité
+        start_idx = time_index * n_particles_per_step
+        end_idx = start_idx + n_particles_per_step
+        
+        # Extraction des coordonnées pour cet instant
+        x_instant = np.asarray(x[start_idx:end_idx])
+        y_instant = np.asarray(y[start_idx:end_idx])
+        z_instant = np.asarray(z[start_idx:end_idx])
+        
+        # Extraction des états pour cet instant (self.states contient déjà tous les états)
+        if not hasattr(self, 'states') or self.states is None:
+            raise AttributeError("self.states n'est pas défini. Appelez fit() ou compute_states() au préalable.")
+        
+        states_instant = self.states[start_idx:end_idx]
+        
+        # Extraction des vitesses si disponibles
+        vx_instant = vy_instant = vz_instant = None
+        if vx is not None and len(vx) > 0:
+            vx = np.asarray(vx)
+            vy = np.asarray(vy) if vy is not None else None
+            vz = np.asarray(vz) if vz is not None else None
+            if len(vx) == len(x):  # vx contient toutes les vitesses
+                vx_instant = vx[start_idx:end_idx]
+                vy_instant = vy[start_idx:end_idx] if vy is not None else None
+                vz_instant = vz[start_idx:end_idx] if vz is not None else None
+            else:  # vx contient déjà uniquement l'instant souhaité
+                vx_instant = vx
+                vy_instant = vy
+                vz_instant = vz
+        
+        # Extraction des diamètres si disponibles
+        diameters_instant = None
+        if show_diameter:
             if particle_diameters is not None:
-                diameters = np.asarray(particle_diameters)
-            elif hasattr(self, 'particle_diameters') and self.particle_diameters is not None:
-                diameters = np.asarray(self.particle_diameters)
+                particle_diameters = np.asarray(particle_diameters)
+                if len(particle_diameters) == len(x):  # Tous les diamètres
+                    diameters_instant = particle_diameters[start_idx:end_idx]
+                else:  # Déjà filtré pour l'instant
+                    diameters_instant = particle_diameters
             elif hasattr(self, 'dem_diameters') and self.dem_diameters is not None:
                 if len(self.dem_diameters) == len(x):
-                    diameters = np.asarray(self.dem_diameters)
-
-        image_data = {}
-        xmin, xmax = x.min(), x.max()
-        ymin, ymax = y.min(), y.max()
-        zmin, zmax = z.min(), z.max()
-        self._data_bounds = (xmin, xmax, ymin, ymax, zmin, zmax)
-
-        # ── Préparation du Nuage de Points PyVista ──────────────────────────
-        points = np.column_stack((x[:1030], y[:1030], z[:1030]))
-        point_cloud = pv.PolyData(points)
-        point_cloud['État'] = states  # On injecte les couleurs/états
-
-        # Gestion des diamètres pour la mise à l'échelle (Glyphs)
-        if diameters is not None and diameters.max() > 0:
-            # On stocke les diamètres dans l'objet pour que le glyphe sache comment calibrer la taille
-            point_cloud['Diamètre'] = diameters
-            geom_source = pv.Sphere(phi_resolution=8, theta_resolution=8) # Sphères légères pour la vitesse
-            # glyph génère le maillage global combiné de toutes les sphères d'un coup
-            particules_mesh = point_cloud.glyph(scale='Diamètre', geom=geom_source, orient=False)
-        else:
-            # Si pas de diamètres, on utilise de simples points 3D (Vertex), ultra léger
-            particules_mesh = point_cloud
-
-        # Paramètres de texte partagés (style légende)
-        info_text = f"Méthode : {self._splitting_method}"
-        if self._splitting_method == "adaptive" and hasattr(self, 'y_seuil') and self.y_seuil is not None:
-            info_text += f" | y_seuil = {self.y_seuil:.4f}"
-
-        # Configuration commune de la barre de couleur (Colorbar)
-        scalar_bar_args = {
-            'title': 'État',
-            'vertical': True,
-            'position_x': 0.85,
-            'position_y': 0.1,
-            'height': 0.8,
-            'width': 0.05,
-            'font_family': 'courier',
-            'title_font_size': 12,
-            'label_font_size': 10,
-            'fmt': '%.0f'
+                    diameters_instant = np.asarray(self.dem_diameters[start_idx:end_idx])
+        
+        # ============================================================
+        #  PRÉPARATION DES DONNÉES
+        # ============================================================
+        # Borne des axes
+        bounds = {
+            "x": (x_instant.min(), x_instant.max()),
+            "y": (y_instant.min(), y_instant.max()),
+            "z": (z_instant.min(), z_instant.max()),
         }
-
-        # ── VUE 2D (XY et YZ côte à côte) ──────────────────────────────────
-        if "2d_xy" in plot_types:
-            # On crée une fenêtre à 2 sous-vues (1 ligne, 2 colonnes)
-            plotter_2d = pv.Plotter(shape=(1, 2), window_size=[1600, 700], off_screen=True)
-            
-            # --- Sous-vue 1 : Vue XY ---
-            plotter_2d.subplot(0, 0)
-            plotter_2d.add_text(f'Vue XY - {self.label}', position='top_left', font_size=12)
-            plotter_2d.add_mesh(particules_mesh, cmap='tab20', scalars='État', scalar_bar_args=scalar_bar_args)
-            plotter_2d.view_xy()  # Caméra orientée face au plan XY
-            plotter_2d.show_grid(xtitle='X (m)', ytitle='Y (m)', ztitle='', show_zlabels=False)
-            plotter_2d.background_color = 'white'
-
-            # --- Sous-vue 2 : Vue YZ ---
-            plotter_2d.subplot(0, 1)
-            plotter_2d.add_text(f'Vue YZ - {self.label}', position='top_left', font_size=12)
-            # On désactive la colorbar sur la 2ème sous-vue pour ne pas surcharger
-            plotter_2d.add_mesh(particules_mesh, cmap='tab20', scalars='État', show_scalar_bar=False)
-            plotter_2d.view_yz()  # Caméra orientée face au plan YZ
-            plotter_2d.show_grid(xtitle='', ytitle='Y (m)', ztitle='Z (m)', show_xlabels=False)
-            plotter_2d.background_color = 'white'
-            
-            # Ajout du texte de métadonnées en bas
-            plotter_2d.add_text(info_text, position='bottom_left', font_size=8, color='gray')
-
-            # Capture de l'image en mémoire et conversion en bytes (format PNG)
-            img_bytes = plotter_2d.screenshot(None, return_bytes=True)
-            image_data[f"{save_prefix}_2d.png"] = img_bytes
-            plotter_2d.close()
-
-        # ── VUE 3D ────────────────────────────────────────────────────────
-        if "3d" in plot_types:
-            plotter_3d = pv.Plotter(window_size=[1400, 1000], off_screen=True)
-            plotter_3d.add_text(f'3D - {self.label}', position='top_left', font_size=14)
-            plotter_3d.add_text(info_text, position='bottom_left', font_size=8, color='gray')
-            
-            # Rendu des particules (si pas de diamètre, on augmente la taille des points via render_points_as_spheres)
-            if diameters is not None:
-                plotter_3d.add_mesh(particules_mesh, cmap='tab20', scalars='État', scalar_bar_args=scalar_bar_args)
-            else:
-                plotter_3d.add_mesh(particules_mesh, cmap='tab20', scalars='État', 
-                                    point_size=8.0, render_points_as_spheres=True, scalar_bar_args=scalar_bar_args)
-                
-            plotter_3d.view_isometric() # Caméra 3D standard
-            plotter_3d.show_grid(xtitle='X (m)', ytitle='Y (m)', ztitle='Z (m)')
-            plotter_3d.background_color = 'white'
-
-            # Capture et conversion en bytes
-            img_bytes = plotter_3d.screenshot(None, return_bytes=True)
-            image_data[f"{save_prefix}_3d.png"] = img_bytes
-            plotter_3d.close()
-
-        return image_data
-
-    def visualize_3d_rotation(self: BasePartitioner, x: np.ndarray, y: np.ndarray, z: np.ndarray, particle_diameters=None,
-                              output_path: str="rotation_video.mp4",
-                              duration: int=10, fps: int=60, use_diameter: bool=True):
-        """
-        Génère une vidéo 3D du mélangeur avec rotation lente.
+        margin_factor = 0.05
+        for k, (lo, hi) in bounds.items():
+            m = (hi - lo) * margin_factor
+            bounds[k] = (lo - m, hi + m)
         
-        Args:
-            x, y, z: coordonnées des particules
-            particle_diameters: array de diamètres (optionnel)
-            output_path: chemin de sortie pour la vidéo
-            duration: durée en secondes (défaut: 12s)
-            fps: images par seconde (défaut: 30)
-            use_diameter: si True, taille proportionnelle au diamètre
+        # Colormap discrète
+        cmap = cm.get_cmap(cmap_states)
+        unique_states = np.unique(states_instant)
+        n_states = len(unique_states)
         
-        Returns:
-            str: chemin vers la vidéo générée
-        """
-        # Convertir en arrays numpy
-        x = np.asarray(x)
-        y = np.asarray(y)
-        z = np.asarray(z)
+        def state_color(s):
+            if n_states <= 1:
+                return cmap(0.0)
+            return cmap(s / (n_states - 1))
         
-        # Calculer les états
-        self.fit(np.column_stack([x, y, z]))
-        states = self.compute_states(x, y, z)
-        
-        # Taille des particules
-        sizes = 30
-        if use_diameter and particle_diameters is not None:
-            diameters = np.asarray(particle_diameters)
-            if diameters.max() > 0:
-                norm_d = diameters / diameters.max()
-                sizes = (norm_d ** 2) * 60 + 10
-        
-        # Paramètres de la vidéo - limiter pour Pillow
-        try:
-            import matplotlib.pyplot as plt
-            plt.figure()
-            import matplotlib.animation as animation
-            animation.writers.list()
-            has_ffmpeg = 'ffmpeg' in animation.writers.list()
-            plt.close()
-        except:
-            has_ffmpeg = False
-        
-        if not has_ffmpeg:
-            fps = 15
-            duration = 6
-        
-        n_frames = duration * fps  # 90 frames pour Pillow, 600 pour ffmpeg
-        angles = np.linspace(0, 360, n_frames)
-        
-        # Créer la figure
-        fig = plt.figure(figsize=(12, 10)) # pyright: ignore[reportPossiblyUnboundVariable]
-        ax = fig.add_subplot(111, projection='3d')
-        
-        # Limites
-        xmin, xmax = x.min(), x.max()
-        ymin, ymax = y.min(), y.max()
-        zmin, zmax = z.min(), z.max()
-        
-        # Données fixes pour la performance
-        sc = ax.scatter(x, y, z, c=states, cmap='tab20', s=sizes, #type:ignore
-                        alpha=0.7, edgecolors='black', linewidth=0.3)
-        
-        ax.set_xlim(xmin, xmax)
-        ax.set_ylim(ymin, ymax)
-        ax.set_zlim(zmin, zmax)
-        ax.set_xlabel('X (m)', fontsize=12, fontweight='bold')
-        ax.set_ylabel('Y (m)', fontsize=12, fontweight='bold')
-        ax.set_zlabel('Z (m)', fontsize=12, fontweight='bold')
-        ax.set_title(f'3D Rotation - {self.label}', fontsize=14, fontweight='bold')
-        ax.xaxis.pane.fill=False # type: ignore
-        ax.xaxis.pane.fill=False # type: ignore
-        ax.xaxis.pane.fill=False # type: ignore
-        ax.grid(True, alpha=0.3)
-        plt.colorbar(sc, ax=ax, label='État', shrink=0.6) #type:ignore
-        
-        def animate(frame:int):
-            angle = angles[frame]
-            ax.view_init(elev=20, azim=angle)
-            ax.set_title(f'3D Rotation - {self.label} - {angle:.0f}°', 
-                        fontsize=14, fontweight='bold')
-            return sc,
-        
-        # Animation
-        ani = animation.FuncAnimation(fig, animate, frames=n_frames, #type:ignore
-                                       interval=1000/fps, blit=False)
-        
-        # Sauvegarder
-        os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
-        print(f"   🔍 DEBUG visualize_3d_rotation: has_ffmpeg={has_ffmpeg}, fps={fps}, frames={n_frames}")
-        
-        # Utiliser le writer disponible
-        if has_ffmpeg:
-            ani.save(output_path, writer='ffmpeg', fps=fps, dpi=100)
+        # Tailles de markers
+        if diameters_instant is not None and diameters_instant.max() > 0:
+            sizes = 10 + (diameters_instant / diameters_instant.max()) ** 2 * 110
         else:
-            ani.save(output_path, writer='pillow', fps=fps, dpi=80)
-        
-        plt.close() #type:ignore
-        
-        return output_path
-
-    def _visualize_cell_boundaries(self, x, y, z, states, plot_types, save_prefix):
-        return {}
-
-    def _get_cell_polygons_2d(self, view='xy'):
-        return []
-
-    def _get_cell_polyhedra_3d(self):
-        return []
-
-    def visualize_enhanced(self, x, y, z, plot_types=["3d", "2d_xy"], save_prefix="partition_visualization", 
-                          particle_diameters=None, show_filled_partitions=True):
-        """
-        ✅ **NOUVELLE MÉTHODE** - Génère 2 représentations (4 images total):
-        
-        Représentation 1: Particules avec diamètre (bidisperses)
-        Représentation 2: Partitions remplies (contours + remplissage)
-        
-        Args:
-            x, y, z: coordonnées des particules
-            plot_types: ["3d", "2d_xy"] ou sous-ensemble
-            particle_diameters: array de diamètres (None → pas de particules)
-            show_filled_partitions: True → afficher aussi les partitions remplies
-        
-        Returns:
-            dict: {
-                "particles_2d.png": bytes,
-                "particles_3d.png": bytes,
-                "partitions_2d.png": bytes,
-                "partitions_3d.png": bytes,
-            }
-        """
-        self.fit(np.column_stack([x, y, z]))
-        states = self.compute_states(x, y, z)
+            sizes = 18 * np.ones(len(x_instant))
         
         image_data = {}
         
-        # ========== REPRÉSENTATION 1: Particules avec diamètre ==========
-        if particle_diameters is not None:
-            img_parts = self._visualize_particles_with_diameter(
-                x, y, z, states, particle_diameters, plot_types, save_prefix
-            )
-            image_data.update(img_parts)
-        
-        # ========== REPRÉSENTATION 2: Partitions remplies ==========
-        if show_filled_partitions:
-            img_parts_filled = self._visualize_partitions_filled(
-                x, y, z, states, plot_types, save_prefix
-            )
-            image_data.update(img_parts_filled)
-        
-        return image_data
-    
-    def _visualize_particles_with_diameter(self, x, y, z, states, diameters, 
-                                          plot_types, save_prefix):
-        """
-        Visualise les particules bidisperses avec diamètre proportionnel.
-        Deux images: 2D (XY + YZ) et 3D
-        """
-        import matplotlib.cm as cm
-        
-        image_data = {}
-        cmap = cm.get_cmap('tab20')
-        
-        # Normaliser les diamètres pour la taille des points
-        diameters_norm = np.asarray(diameters)
-        size_scale = (diameters_norm / diameters_norm.max()) * 200  # [0, 200]
-        
-        # ════════════ 2D (XY + YZ) ════════════
-        if "2d_xy" in plot_types:
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
-            
-            # Vue XY
-            scatter1 = ax1.scatter(x, y, s=size_scale, c=states, cmap='tab20', 
-                                   alpha=0.6, edgecolors='black', linewidth=0.3)
-            ax1.set_xlabel('X (m)', fontsize=12, fontweight='bold')
-            ax1.set_ylabel('Y (m)', fontsize=12, fontweight='bold')
-            ax1.set_title('Vue XY - Particules avec diamètre', fontsize=14, fontweight='bold')
-            ax1.grid(True, alpha=0.3)
-            plt.colorbar(scatter1, ax=ax1, label='ID Partition')
-            
-            # Vue YZ
-            scatter2 = ax2.scatter(y, z, s=size_scale, c=states, cmap='tab20', 
-                                   alpha=0.6, edgecolors='black', linewidth=0.3)
-            ax2.set_xlabel('Y (m)', fontsize=12, fontweight='bold')
-            ax2.set_ylabel('Z (m)', fontsize=12, fontweight='bold')
-            ax2.set_title('Vue YZ - Particules avec diamètre', fontsize=14, fontweight='bold')
-            ax2.grid(True, alpha=0.3)
-            plt.colorbar(scatter2, ax=ax2, label='ID Partition')
-            
-            plt.tight_layout()
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_particles_2d.png"] = img_buffer.getvalue()
-            plt.close()
-        
-        # ════════════ 3D ════════════
-        if "3d" in plot_types:
-            fig = plt.figure(figsize=(14, 10))
-            ax = fig.add_subplot(111, projection='3d')
-            
-            scatter = ax.scatter(x, y, z, s=size_scale, c=states, cmap='tab20', 
-                                alpha=0.6, edgecolors='black', linewidth=0.3)
-            
-            ax.set_xlabel('X (m)', fontsize=12, fontweight='bold')
-            ax.set_ylabel('Y (m)', fontsize=12, fontweight='bold')
-            ax.set_zlabel('Z (m)', fontsize=12, fontweight='bold')
-            ax.set_title(f'Particules bidisperses 3D - {self.label}', 
-                        fontsize=14, fontweight='bold')
-            
-            plt.colorbar(scatter, ax=ax, label='ID Partition', shrink=0.6)
-            ax.xaxis.pane.fill = False #type:ignore
-            ax.yaxis.pane.fill = False #type:ignore
-            ax.zaxis.pane.fill = False #type:ignore
-            ax.grid(True, alpha=0.3)
-            
-            plt.tight_layout()
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_particles_3d.png"] = img_buffer.getvalue()
-            plt.close()
-        
-        return image_data
-    
-    def _visualize_partitions_filled(self, x, y, z, states, plot_types, save_prefix):
-        """
-        Visualise les partitions remplies avec contours nets.
-        """
-        from scipy.spatial import ConvexHull
-        import matplotlib.patches as patches
-        import matplotlib.cm as cm
-        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-        
-        image_data = {}
-        cmap = cm.get_cmap('tab20')
-        unique_states = np.unique(states)
-        
-        # ════════════ 2D (XY + YZ) ════════════
-        if "2d_xy" in plot_types:
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
-            
-            # ────── Vue XY ──────
-            coords_xy = np.column_stack([x, y])
-            for state_id in unique_states:
-                mask = states == state_id
-                points = coords_xy[mask]
-                
-                if len(points) < 3:
+        # ============================================================
+        #  UTILITAIRES INTERNES
+        # ============================================================
+        def _draw_boundaries_2d(ax, coords_2d, states, unique_states, color_func):
+            if not show_boundaries:
+                return
+            for s in unique_states:
+                mask = states == s
+                pts = coords_2d[mask]
+                if len(pts) < 3:
                     continue
-                
                 try:
-                    hull = ConvexHull(points)
-                    hull_points = points[hull.vertices]
-                    
-                    # Remplissage
-                    color = cmap(state_id / max(unique_states.max(), 1))
-                    polygon = patches.Polygon(hull_points, closed=True, 
-                                            facecolor=color, alpha=0.5, 
-                                            edgecolor='black', linewidth=2, zorder=1)
-                    ax1.add_patch(polygon)
-                except:
+                    hull = ConvexHull(pts)
+                    poly = Polygon(pts[hull.vertices], closed=True,
+                                facecolor=color_func(s), alpha=0.15,
+                                edgecolor=color_func(s), linewidth=1.2,
+                                linestyle="--")
+                    ax.add_patch(poly)
+                except Exception:
                     pass
-            
-            ax1.set_xlim(x.min(), x.max())
-            ax1.set_ylim(y.min(), y.max())
-            ax1.set_xlabel('X (m)', fontsize=12, fontweight='bold')
-            ax1.set_ylabel('Y (m)', fontsize=12, fontweight='bold')
-            ax1.set_title('Vue XY - Partitions remplies', fontsize=14, fontweight='bold')
-            ax1.grid(True, alpha=0.3, linestyle='--')
-            
-            # ────── Vue YZ ──────
-            coords_yz = np.column_stack([y, z])
-            for state_id in unique_states:
-                mask = states == state_id
-                points = coords_yz[mask]
-                
-                if len(points) < 3:
-                    continue
-                
-                try:
-                    hull = ConvexHull(points)
-                    hull_points = points[hull.vertices]
-                    
-                    # Remplissage
-                    color = cmap(state_id / max(unique_states.max(), 1))
-                    polygon = patches.Polygon(hull_points, closed=True, 
-                                            facecolor=color, alpha=0.5, 
-                                            edgecolor='black', linewidth=2, zorder=1)
-                    ax2.add_patch(polygon)
-                except:
-                    pass
-            
-            ax2.set_xlim(y.min(), y.max())
-            ax2.set_ylim(z.min(), z.max())
-            ax2.set_xlabel('Y (m)', fontsize=12, fontweight='bold')
-            ax2.set_ylabel('Z (m)', fontsize=12, fontweight='bold')
-            ax2.set_title('Vue YZ - Partitions remplies', fontsize=14, fontweight='bold')
-            ax2.grid(True, alpha=0.3, linestyle='--')
-            
-            plt.tight_layout()
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_partitions_2d.png"] = img_buffer.getvalue()
-            plt.close()
         
-        # ════════════ 3D ════════════
-        if "3d" in plot_types:
-            fig = plt.figure(figsize=(14, 10))
-            ax = fig.add_subplot(111, projection='3d')
-            
-            # Remplissage 3D (surfaces)
-            for state_id in unique_states:
-                mask = states == state_id
-                points_3d = np.column_stack([x[mask], y[mask], z[mask]])
-                
-                if len(points_3d) < 4:
+        def _draw_boundaries_3d(ax, coords_3d, states, unique_states, color_func):
+            if not show_boundaries:
+                return
+            for s in unique_states:
+                mask = states == s
+                pts = coords_3d[mask]
+                if len(pts) < 4:
                     continue
-                
                 try:
-                    hull = ConvexHull(points_3d)
-                    faces = []
-                    for simplex in hull.simplices:
-                        faces.append(points_3d[simplex])
-                    
-                    color = cmap(state_id / max(unique_states.max(), 1))
-                    collection = Poly3DCollection(faces, alpha=0.5, 
-                                                 facecolor=color, edgecolor='black',
-                                                 linewidth=1, zorder=1)
+                    hull = ConvexHull(pts)
+                    faces = [pts[simplex] for simplex in hull.simplices]
+                    collection = Poly3DCollection(
+                        faces, alpha=0.08,
+                        facecolor=color_func(s),
+                        edgecolor=color_func(s),
+                        linewidth=0.8, linestyle="--")
                     ax.add_collection3d(collection)
-                except:
+                except Exception:
                     pass
-            
-            ax.set_xlim(x.min(), x.max())
-            ax.set_ylim(y.min(), y.max())
-            ax.set_zlim(z.min(), z.max())
-            ax.set_xlabel('X (m)', fontsize=12, fontweight='bold')
-            ax.set_ylabel('Y (m)', fontsize=12, fontweight='bold')
-            ax.set_zlabel('Z (m)', fontsize=12, fontweight='bold')
-            ax.set_title(f'Partitions remplies 3D - {self.label}', 
-                        fontsize=14, fontweight='bold')
-            
-            ax.xaxis.pane.fill = False #type: ignore
-            ax.yaxis.pane.fill = False #type: ignore
-            ax.zaxis.pane.fill = False #type: ignore
-            ax.grid(True, alpha=0.3)
-            
+        
+        def _style_axis(ax, xlabel, ylabel, title, xlim=None, ylim=None):
+            ax.set_xlabel(xlabel, fontweight="bold")
+            ax.set_ylabel(ylabel, fontweight="bold")
+            ax.set_title(title, fontweight="bold", fontsize=13)
+            if xlim is not None:
+                ax.set_xlim(*xlim)
+            if ylim is not None:
+                ax.set_ylim(*ylim)
+            ax.grid(True, alpha=0.25, linestyle=":", linewidth=0.8)
+            ax.set_aspect("equal", adjustable="box")
+        
+        def _to_bytes(fig):
+            buf = io.BytesIO()
+            fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight",
+                        facecolor="white", edgecolor="none")
+            buf.seek(0)
+            return buf.getvalue()
+        
+        # ============================================================
+        #  1. PROJECTION 2D
+        # ============================================================
+        if "projection_xy" in plot_types:
+            fig, ax = plt.subplots(figsize=figsize_2d, facecolor="white")
+            sc = ax.scatter(x_instant, y_instant, s=sizes, c=states_instant, cmap=cmap,
+                            alpha=0.85, edgecolors="black", linewidth=0.3, zorder=3)
+            _draw_boundaries_2d(ax, np.column_stack([x_instant, y_instant]), 
+                                states_instant, unique_states, state_color)
+            _style_axis(ax, "X (m)", "Y (m)",
+                        f"Projection XY — t={time_index} — {self.label}")
+            cb = fig.colorbar(sc, ax=ax, shrink=0.8, aspect=20, pad=0.02)
+            cb.set_label("État (ID partition)", fontweight="bold")
             plt.tight_layout()
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-            img_buffer.seek(0)
-            image_data[f"{save_prefix}_partitions_3d.png"] = img_buffer.getvalue()
-            plt.close()
+            image_data[f"{save_prefix}_projection_xy_t{time_index}.png"] = _to_bytes(fig)
+            plt.close(fig)
+        
+        if "projection_yz" in plot_types:
+            fig, ax = plt.subplots(figsize=figsize_2d, facecolor="white")
+            sc = ax.scatter(y_instant, z_instant, s=sizes, c=states_instant, cmap=cmap,
+                            alpha=0.85, edgecolors="black", linewidth=0.3, zorder=3)
+            _draw_boundaries_2d(ax, np.column_stack([y_instant, z_instant]),
+                                states_instant, unique_states, state_color)
+            _style_axis(ax, "Y (m)", "Z (m)",
+                        f"Projection YZ — t={time_index} — {self.label}")
+            cb = fig.colorbar(sc, ax=ax, shrink=0.8, aspect=20, pad=0.02)
+            cb.set_label("État (ID partition)", fontweight="bold")
+            plt.tight_layout()
+            image_data[f"{save_prefix}_projection_yz_t{time_index}.png"] = _to_bytes(fig)
+            plt.close(fig)
+        
+        if "projection_xz" in plot_types:
+            fig, ax = plt.subplots(figsize=figsize_2d, facecolor="white")
+            sc = ax.scatter(x_instant, z_instant, s=sizes, c=states_instant, cmap=cmap,
+                            alpha=0.85, edgecolors="black", linewidth=0.3, zorder=3)
+            _draw_boundaries_2d(ax, np.column_stack([x_instant, z_instant]),
+                                states_instant, unique_states, state_color)
+            _style_axis(ax, "X (m)", "Z (m)",
+                        f"Projection XZ — t={time_index} — {self.label}")
+            cb = fig.colorbar(sc, ax=ax, shrink=0.8, aspect=20, pad=0.02)
+            cb.set_label("État (ID partition)", fontweight="bold")
+            plt.tight_layout()
+            image_data[f"{save_prefix}_projection_xz_t{time_index}.png"] = _to_bytes(fig)
+            plt.close(fig)
+        
+        # ============================================================
+        #  2. COUPES 2D
+        # ============================================================
+        if "slice_xy" in plot_types:
+            z_center = (bounds["z"][0] + bounds["z"][1]) / 2
+            mask = np.abs(z_instant - z_center) <= slice_thickness / 2
+            fig, ax = plt.subplots(figsize=figsize_2d, facecolor="white")
+            if mask.sum() > 0:
+                sc = ax.scatter(x_instant[mask], y_instant[mask], s=sizes[mask],
+                                c=states_instant[mask], cmap=cmap,
+                                alpha=0.9, edgecolors="black", linewidth=0.3, zorder=3)
+                _draw_boundaries_2d(ax, np.column_stack([x_instant[mask], y_instant[mask]]),
+                                    states_instant[mask], unique_states, state_color)
+            _style_axis(ax, "X (m)", "Y (m)",
+                        f"Coupe XY @ z={z_center:.3f} m — t={time_index} — {self.label}",
+                        xlim=bounds["x"], ylim=bounds["y"])
+            ax.text(0.02, 0.02,
+                    f"épaisseur = {slice_thickness*1000:.1f} mm\nn_particules = {mask.sum()}",
+                    transform=ax.transAxes, fontsize=8, verticalalignment="bottom",
+                    bbox=dict(boxstyle="round", facecolor="lightyellow", alpha=0.7))
+            if mask.sum() > 0:
+                cb = fig.colorbar(sc, ax=ax, shrink=0.8, aspect=20, pad=0.02)
+                cb.set_label("État (ID partition)", fontweight="bold")
+            plt.tight_layout()
+            image_data[f"{save_prefix}_slice_xy_t{time_index}.png"] = _to_bytes(fig)
+            plt.close(fig)
+        
+        if "slice_yz" in plot_types:
+            x_center = (bounds["x"][0] + bounds["x"][1]) / 2
+            mask = np.abs(x_instant - x_center) <= slice_thickness / 2
+            fig, ax = plt.subplots(figsize=figsize_2d, facecolor="white")
+            if mask.sum() > 0:
+                sc = ax.scatter(y_instant[mask], z_instant[mask], s=sizes[mask],
+                                c=states_instant[mask], cmap=cmap,
+                                alpha=0.9, edgecolors="black", linewidth=0.3, zorder=3)
+                _draw_boundaries_2d(ax, np.column_stack([y_instant[mask], z_instant[mask]]),
+                                    states_instant[mask], unique_states, state_color)
+            _style_axis(ax, "Y (m)", "Z (m)",
+                        f"Coupe YZ @ x={x_center:.3f} m — t={time_index} — {self.label}",
+                        xlim=bounds["y"], ylim=bounds["z"])
+            ax.text(0.02, 0.02,
+                    f"épaisseur = {slice_thickness*1000:.1f} mm\nn_particules = {mask.sum()}",
+                    transform=ax.transAxes, fontsize=8, verticalalignment="bottom",
+                    bbox=dict(boxstyle="round", facecolor="lightyellow", alpha=0.7))
+            if mask.sum() > 0:
+                cb = fig.colorbar(sc, ax=ax, shrink=0.8, aspect=20, pad=0.02)
+                cb.set_label("État (ID partition)", fontweight="bold")
+            plt.tight_layout()
+            image_data[f"{save_prefix}_slice_yz_t{time_index}.png"] = _to_bytes(fig)
+            plt.close(fig)
+        
+        if "slice_xz" in plot_types:
+            y_center = (bounds["y"][0] + bounds["y"][1]) / 2
+            mask = np.abs(y_instant - y_center) <= slice_thickness / 2
+            fig, ax = plt.subplots(figsize=figsize_2d, facecolor="white")
+            if mask.sum() > 0:
+                sc = ax.scatter(x_instant[mask], z_instant[mask], s=sizes[mask],
+                                c=states_instant[mask], cmap=cmap,
+                                alpha=0.9, edgecolors="black", linewidth=0.3, zorder=3)
+                _draw_boundaries_2d(ax, np.column_stack([x_instant[mask], z_instant[mask]]),
+                                    states_instant[mask], unique_states, state_color)
+            _style_axis(ax, "X (m)", "Z (m)",
+                        f"Coupe XZ @ y={y_center:.3f} m — t={time_index} — {self.label}",
+                        xlim=bounds["x"], ylim=bounds["z"])
+            ax.text(0.02, 0.02,
+                    f"épaisseur = {slice_thickness*1000:.1f} mm\nn_particules = {mask.sum()}",
+                    transform=ax.transAxes, fontsize=8, verticalalignment="bottom",
+                    bbox=dict(boxstyle="round", facecolor="lightyellow", alpha=0.7))
+            if mask.sum() > 0:
+                cb = fig.colorbar(sc, ax=ax, shrink=0.8, aspect=20, pad=0.02)
+                cb.set_label("État (ID partition)", fontweight="bold")
+            plt.tight_layout()
+            image_data[f"{save_prefix}_slice_xz_t{time_index}.png"] = _to_bytes(fig)
+            plt.close(fig)
+        
+        # ============================================================
+        #  3. VUE 3D
+        # ============================================================
+        if "3d" in plot_types:
+            fig = plt.figure(figsize=figsize_3d, facecolor="white")
+            ax = fig.add_subplot(111, projection="3d")
+            
+            sc = ax.scatter(x_instant, y_instant, z_instant, s=sizes, c=states_instant, cmap=cmap,
+                            alpha=0.85, edgecolors="black", linewidth=0.25, depthshade=True, zorder=3)
+            
+            _draw_boundaries_3d(ax, np.column_stack([x_instant, y_instant, z_instant]),
+                                states_instant, unique_states, state_color)
+            
+            ax.set_xlabel("X (m)", fontweight="bold")
+            ax.set_ylabel("Y (m)", fontweight="bold")
+            ax.set_zlabel("Z (m)", fontweight="bold")
+            ax.set_title(f"Vue 3D — t={time_index} — {self.label}", fontweight="bold", fontsize=13)
+            ax.set_xlim(*bounds["x"])
+            ax.set_ylim(*bounds["y"])
+            ax.set_zlim(*bounds["z"])
+            
+            ax.xaxis.pane.fill = False
+            ax.yaxis.pane.fill = False
+            ax.zaxis.pane.fill = False
+            ax.xaxis.pane.set_edgecolor("lightgray")
+            ax.yaxis.pane.set_edgecolor("lightgray")
+            ax.zaxis.pane.set_edgecolor("lightgray")
+            ax.grid(True, alpha=0.25, linestyle=":", linewidth=0.8)
+            ax.view_init(elev=22, azim=-60)
+            
+            cb = fig.colorbar(sc, ax=ax, shrink=0.6, aspect=15, pad=0.08)
+            cb.set_label("État (ID partition)", fontweight="bold")
+            
+            fig.text(0.5, 0.01,
+                    f"Méthode: {self._splitting_method} | N_cells: {self.n_cells} | "
+                    f"t={time_index} | N_particules: {len(x_instant)}",
+                    ha="center", fontsize=8, color="dimgray", style="italic")
+            
+            plt.tight_layout(rect=[0, 0.04, 1, 1])
+            image_data[f"{save_prefix}_3d_t{time_index}.png"] = _to_bytes(fig)
+            plt.close(fig)
         
         return image_data
 
@@ -1012,9 +905,9 @@ class VoronoiPartitioner(BasePartitioner):
             fit_data = coordinates
         kmeans = MiniBatchKMeans(
             n_clusters=self._n_cells,
-            random_state=self.random_state,
+            random_state=self.random_state, # me rassure que je commence avec les points au initiaux identiques
             batch_size=min(10_000, len(fit_data)),
-            n_init=10,
+            n_init=10, # j'initialise 10 fois pour être sur que les centres tombent bien au même endroit après l'exécution de l'algorithme ou du moins de façon proche
         )
         kmeans.fit(fit_data)
         self.centroids = kmeans.cluster_centers_
@@ -2221,9 +2114,14 @@ class PhysicsAwarePartitioner(BasePartitioner):
 
         X = (features - self._mean) / self._std
 
-        # ✅ Appliquer le weight ICI, après normalisation
+        # ✅ Créer un vecteur de poids explicite
         if X.shape[1] > n_pos:
-            X[:, n_pos:] *= self.velocity_weight
+            # Poids = [1, 1, 1, velocity_weight] pour (x, y, z, speed)
+            weights = np.ones(X.shape[1])
+            weights[n_pos:] = self.velocity_weight
+            
+            # Appliquer les poids element-wise
+            X = X * weights[np.newaxis, :]  # Broadcasting sur toutes les samples
 
         # Sous-échantillonner
         rng = np.random.RandomState(self.random_state)
@@ -2258,7 +2156,13 @@ class PhysicsAwarePartitioner(BasePartitioner):
             features = pos
 
         X = (features - self._mean) / self._std
-        X[:, 3:] *= self.velocity_weight  # si 4 features
+        
+        # ✅ Appliquer les mêmes poids qu'au fit
+        if X.shape[1] > 3:
+            weights = np.ones(X.shape[1])
+            weights[3:] = self.velocity_weight
+            X = X * weights[np.newaxis, :]
+        
         _, indices = self._tree.query(X)
 
         self.states = indices.astype(np.int64)
@@ -2416,7 +2320,369 @@ class PhysicsAwarePartitioner(BasePartitioner):
             results.append((state_id, vertices, faces))
         return results
 
+import os
+import json
+import pickle
+import numpy as np
+from scipy.spatial import cKDTree
+from sklearn.cluster import MiniBatchKMeans
 
+class FullVectorVelocityKMeansPartitioner(BasePartitioner):
+    """
+    K-Means utilisant le vecteur vitesse complet (vx, vy, vz) au lieu de la norme.
+    Capture la directionnalité de l'écoulement (lié aux streamlines de Doucet 2008).
+    """
+    def __init__(self, n_cells=125, velocity_weight=0.5, random_state=42):
+        super().__init__()
+        self._n_cells: int = n_cells
+        self.velocity_weight: float = velocity_weight
+        self.random_state: int = random_state
+        
+        self._centroids: np.ndarray = None
+        self._tree = None
+        self._mean: np.ndarray = None
+        self._std: np.ndarray = None
+        self._n_features: int = 6  # x, y, z, vx, vy, vz
+        self._splitting_method: str = "fullvel_kmeans"
+        self.use_velocity: bool = True
+        self.features: np.ndarray = None
+
+    @property
+    def n_cells(self) -> int:
+        return self._n_cells
+
+    @property
+    def label(self) -> str:
+        return f"fullvel_kmeans_{self._n_cells}cells_vw{self.velocity_weight}"
+
+    def fit(self, coordinates: np.ndarray, use_velocities: bool = None) -> 'FullVectorVelocityKMeansPartitioner':
+        use_velocities = self.use_velocity if use_velocities is None else use_velocities
+        coordinates = np.asarray(coordinates)
+
+        if use_velocities and self.dem_velocities is not None:
+            vel = np.asarray(self.dem_velocities)
+            if len(vel) == len(coordinates):
+                # ✅ Vecteur vitesse complet : (N,3)
+                self.features = np.hstack([coordinates, vel])  # (N, 6)
+                self._n_features = 6
+                return self._fit_internal(self.features, n_pos=3)
+            else:
+                print(f"⚠️ Mismatch velocities ({len(vel)}) vs coordinates ({len(coordinates)}), fallback positions only")
+
+        self.features = coordinates
+        self._n_features = 3
+        return self._fit_internal(coordinates, n_pos=3)
+
+    def _fit_internal(self, features: np.ndarray, n_pos: int = 3) -> 'FullVectorVelocityKMeansPartitioner':
+        self._n_features = features.shape[1]
+
+        # Normalisation
+        self._mean = features.mean(axis=0)
+        self._std = features.std(axis=0)
+        self._std[self._std == 0] = 1.0
+        X = (features - self._mean) / self._std
+
+        # ✅ Création et application du vecteur de poids explicite
+        if X.shape[1] > n_pos:
+            weights = np.ones(X.shape[1])
+            weights[n_pos:] = self.velocity_weight  # Poids sur vx, vy, vz
+            X = X * weights[np.newaxis, :]
+
+        # Sous-échantillonner
+        rng = np.random.RandomState(self.random_state)
+        X_fit = X[rng.choice(len(X), 500_000, replace=False)] if len(X) > 500_000 else X
+
+        kmeans = MiniBatchKMeans(
+            n_clusters=self._n_cells, random_state=self.random_state, 
+            batch_size=min(10_000, len(X_fit)), n_init=10
+        )
+        kmeans.fit(X_fit)
+        self._centroids = kmeans.cluster_centers_
+        self._tree = cKDTree(self._centroids)
+        return self
+
+    def compute_states(self, x, y, z, vx=None, vy=None, vz=None) -> np.ndarray:
+        pos = np.column_stack([np.asarray(x), np.asarray(y), np.asarray(z)])
+
+        if self._n_features == 6 and vx is not None and vy is not None and vz is not None:
+            vel = np.column_stack([np.asarray(vx), np.asarray(vy), np.asarray(vz)])
+            features = np.hstack([pos, vel])
+        elif self._n_features == 6:
+            # Modèle entraîné avec vélocité mais pas fournie → padding zéro
+            features = np.hstack([pos, np.zeros((len(pos), 3))])
+        else:
+            features = pos
+
+        X = (features - self._mean) / self._std
+        
+        if X.shape[1] > 3:
+            weights = np.ones(X.shape[1])
+            weights[3:] = self.velocity_weight
+            X = X * weights[np.newaxis, :]
+        
+        _, indices = self._tree.query(X)
+        self.states = indices.astype(np.int64)
+        return self.states
+
+    def _save_data(self, path: str) -> None:
+        os.makedirs(path, exist_ok=True)
+        np.save(os.path.join(path, "centroids.npy"), self._centroids)
+        np.save(os.path.join(path, "mean.npy"), self._mean)
+        np.save(os.path.join(path, "std.npy"), self._std)
+        with open(os.path.join(path, "params.json"), "w") as f:
+            json.dump({"n_features": self._n_features, "n_cells": self._n_cells, "vw": self.velocity_weight}, f)
+
+    def _load_data(self, path: str) -> None:
+        self._centroids = np.load(os.path.join(path, "centroids.npy"))
+        self._mean = np.load(os.path.join(path, "mean.npy"))
+        self._std = np.load(os.path.join(path, "std.npy"))
+        self._tree = cKDTree(self._centroids)
+        with open(os.path.join(path, "params.json")) as f:
+            params = json.load(f)
+            self._n_features = params["n_features"]
+
+
+from sklearn.cluster import SpectralClustering
+
+class SpectralClusteringPartitioner(BasePartitioner):
+    """
+    Spectral Clustering pour capturer les structures topologiques / connectivité de l'écoulement.
+    Lié à l'analyse des modes collectifs et SVD de Tjakra 2013.
+    """
+    def __init__(self, n_cells=125, velocity_weight=0.5, n_neighbors=15, max_samples=5000, random_state=42):
+        super().__init__()
+        self._n_cells: int = n_cells
+        self.velocity_weight: float = velocity_weight
+        self.n_neighbors: int = n_neighbors
+        self.max_samples: int = max_samples
+        self.random_state: int = random_state
+        
+        self._support_data: np.ndarray = None
+        self._support_labels: np.ndarray = None
+        self._tree = None  # Sera un KDTree sur les points de support
+        self._mean: np.ndarray = None
+        self._std: np.ndarray = None
+        self._n_features: int = 6
+        self._splitting_method: str = "spectral"
+        self.use_velocity: bool = True
+        self.features: np.ndarray = None
+
+    @property
+    def n_cells(self) -> int:
+        return self._n_cells
+
+    @property
+    def label(self) -> str:
+        return f"spectral_{self._n_cells}cells_vw{self.velocity_weight}_k{self.n_neighbors}"
+
+    def fit(self, coordinates: np.ndarray, use_velocities: bool = None) -> 'SpectralClusteringPartitioner':
+        use_velocities = self.use_velocity if use_velocities is None else use_velocities
+        coordinates = np.asarray(coordinates)
+
+        if use_velocities and self.dem_velocities is not None:
+            vel = np.asarray(self.dem_velocities)
+            if len(vel) == len(coordinates):
+                self.features = np.hstack([coordinates, vel])
+                self._n_features = 6
+                return self._fit_internal(self.features, n_pos=3)
+        
+        self.features = coordinates
+        self._n_features = 3
+        return self._fit_internal(coordinates, n_pos=3)
+
+    def _fit_internal(self, features: np.ndarray, n_pos: int = 3) -> 'SpectralClusteringPartitioner':
+        self._n_features = features.shape[1]
+
+        self._mean = features.mean(axis=0)
+        self._std = features.std(axis=0)
+        self._std[self._std == 0] = 1.0
+        X = (features - self._mean) / self._std
+
+        if X.shape[1] > n_pos:
+            weights = np.ones(X.shape[1])
+            weights[n_pos:] = self.velocity_weight
+            X = X * weights[np.newaxis, :]
+
+        # Sous-échantillonnage pour le fit (Spectral est O(N^2) ou O(N^3))
+        rng = np.random.RandomState(self.random_state)
+        n_samples = min(self.max_samples, len(X))
+        idx = rng.choice(len(X), n_samples, replace=False)
+        X_sub = X[idx]
+
+        spectral = SpectralClustering(
+            n_clusters=self._n_cells, affinity='nearest_neighbors', 
+            n_neighbors=self.n_neighbors, random_state=self.random_state, assign_labels='kmeans'
+        )
+        labels_sub = spectral.fit_predict(X_sub)
+
+        # Sauvegarde des points de support pour l'inférence 1-NN
+        self._support_data = X_sub
+        self._support_labels = labels_sub
+        self._tree = cKDTree(self._support_data)
+        return self
+
+    def compute_states(self, x, y, z, vx=None, vy=None, vz=None) -> np.ndarray:
+        pos = np.column_stack([np.asarray(x), np.asarray(y), np.asarray(z)])
+
+        if self._n_features == 6 and vx is not None and vy is not None and vz is not None:
+            vel = np.column_stack([np.asarray(vx), np.asarray(vy), np.asarray(vz)])
+            features = np.hstack([pos, vel])
+        elif self._n_features == 6:
+            features = np.hstack([pos, np.zeros((len(pos), 3))])
+        else:
+            features = pos
+
+        X = (features - self._mean) / self._std
+        if X.shape[1] > 3:
+            weights = np.ones(X.shape[1])
+            weights[3:] = self.velocity_weight
+            X = X * weights[np.newaxis, :]
+        
+        # Inférence par proximité aux points du graphe spectral
+        _, indices = self._tree.query(X)
+        self.states = self._support_labels[indices].astype(np.int64)
+        return self.states
+
+    def _save_data(self, path: str) -> None:
+        os.makedirs(path, exist_ok=True)
+        np.save(os.path.join(path, "support_data.npy"), self._support_data)
+        np.save(os.path.join(path, "support_labels.npy"), self._support_labels)
+        np.save(os.path.join(path, "mean.npy"), self._mean)
+        np.save(os.path.join(path, "std.npy"), self._std)
+        with open(os.path.join(path, "params.json"), "w") as f:
+            json.dump({"n_features": self._n_features, "n_cells": self._n_cells, "vw": self.velocity_weight, "k": self.n_neighbors}, f)
+
+    def _load_data(self, path: str) -> None:
+        self._support_data = np.load(os.path.join(path, "support_data.npy"))
+        self._support_labels = np.load(os.path.join(path, "support_labels.npy"))
+        self._mean = np.load(os.path.join(path, "mean.npy"))
+        self._std = np.load(os.path.join(path, "std.npy"))
+        self._tree = cKDTree(self._support_data)
+        with open(os.path.join(path, "params.json")) as f:
+            params = json.load(f)
+            self._n_features = params["n_features"]
+
+
+from sklearn.mixture import GaussianMixture
+import numpy as np
+import pickle
+import os
+
+class GaussianMixturePartitioner(BasePartitioner):
+    """
+    Gaussian Mixture Model (covariance_type='full').
+    Optimisé avec sous-échantillonnage pour la vitesse.
+    """
+    def __init__(self, n_cells=125, velocity_weight=0.5, random_state=42, max_fit_samples=500_000):
+        super().__init__()
+        self._n_cells: int = n_cells
+        self.velocity_weight: float = velocity_weight
+        self.random_state: int = random_state
+        self.max_fit_samples: int = max_fit_samples #  NOUVEAU : Limite les points pour le fit
+        
+        self._gmm = None
+        self._mean: np.ndarray = None
+        self._std: np.ndarray = None
+        self._n_features: int = 6
+        self._splitting_method: str = "gmm_full"
+        self.use_velocity: bool = True
+        self.features: np.ndarray = None
+
+    @property
+    def n_cells(self) -> int: return self._n_cells
+
+    @property
+    def label(self) -> str:
+        return f"gmm_full_{self._n_cells}cells_vw{self.velocity_weight}"
+
+    def fit(self, coordinates: np.ndarray, use_velocities: bool = None) -> 'GaussianMixturePartitioner':
+        use_velocities = self.use_velocity if use_velocities is None else use_velocities
+        coordinates = np.asarray(coordinates)
+
+        if use_velocities and self.dem_velocities is not None:
+            vel = np.asarray(self.dem_velocities)
+            if len(vel) == len(coordinates):
+                self.features = np.hstack([coordinates, vel])
+                self._n_features = 6
+                return self._fit_internal(self.features, n_pos=3)
+        
+        self.features = coordinates
+        self._n_features = 3
+        return self._fit_internal(coordinates, n_pos=3)
+
+    def _fit_internal(self, features: np.ndarray, n_pos: int = 3) -> 'GaussianMixturePartitioner':
+        self._n_features = features.shape[1]
+
+        # Normalisation
+        self._mean = features.mean(axis=0)
+        self._std = features.std(axis=0)
+        self._std[self._std == 0] = 1.0
+        X = (features - self._mean) / self._std
+
+        # Application des poids
+        if X.shape[1] > n_pos:
+            weights = np.ones(X.shape[1])
+            weights[n_pos:] = self.velocity_weight
+            X = X * weights[np.newaxis, :]
+
+        # 🚀 SOUS-ÉCHANTILLONNAGE CRUCIAL POUR GMM
+        rng = np.random.RandomState(self.random_state)
+        if len(X) > self.max_fit_samples:
+            print(f"   ⚡ Sous-échantillonnage GMM : {len(X)} -> {self.max_fit_samples} points")
+            idx = rng.choice(len(X), self.max_fit_samples, replace=False)
+            X = X[idx]
+
+        # Paramètres optimisés pour la vitesse sans trop perdre en précision
+        self._gmm = GaussianMixture(
+            n_components=self._n_cells, 
+            covariance_type='full', 
+            random_state=self.random_state, 
+            n_init=1,          # Réduit de 5 à 1 (suffisant pour un sweep)
+            max_iter=100,      # Réduit de 200 à 100
+            tol=1e-3,          # Tolérance légèrement assouplie
+            init_params='kmeans' # Initialisation par KMeans (beaucoup plus rapide que random)
+        )
+        
+        print(f"    Fit GMM en cours sur {X.shape[0]} points...")
+        self._gmm.fit(X)
+        
+        self._centroids = self._gmm.means_ 
+        print(f"   ✅ Fit GMM terminé.")
+        return self
+
+    def compute_states(self, x, y, z, vx=None, vy=None, vz=None) -> np.ndarray:
+        pos = np.column_stack([np.asarray(x), np.asarray(y), np.asarray(z)])
+
+        if self._n_features == 6 and vx is not None and vy is not None and vz is not None:
+            vel = np.column_stack([np.asarray(vx), np.asarray(vy), np.asarray(vz)])
+            features = np.hstack([pos, vel])
+        elif self._n_features == 6:
+            features = np.hstack([pos, np.zeros((len(pos), 3))])
+        else:
+            features = pos
+
+        X = (features - self._mean) / self._std
+        if X.shape[1] > 3:
+            weights = np.ones(X.shape[1])
+            weights[3:] = self.velocity_weight
+            X = X * weights[np.newaxis, :]
+        
+        self.states = self._gmm.predict(X).astype(np.int64)
+        return self.states
+
+    def _save_data(self, path: str) -> None:
+        os.makedirs(path, exist_ok=True)
+        with open(os.path.join(path, "gmm_model.pkl"), "wb") as f:
+            pickle.dump(self._gmm, f)
+        np.save(os.path.join(path, "mean.npy"), self._mean)
+        np.save(os.path.join(path, "std.npy"), self._std)
+
+    def _load_data(self, path: str) -> None:
+        with open(os.path.join(path, "gmm_model.pkl"), "rb") as f:
+            self._gmm = pickle.load(f)
+        self._mean = np.load(os.path.join(path, "mean.npy"))
+        self._std = np.load(os.path.join(path, "std.npy"))
+        self._centroids = self._gmm.means_
 # =============================================================================
 # 7. PARTITIONNEMENT ADAPTATIF HAUT/BAS
 # =============================================================================
@@ -2820,17 +3086,24 @@ class SingleCellPartitioner(BasePartitioner):
 # =============================================================================
 
 REGISTRY = {
+    # Méthodes géométriques de base
     "cartesian": CartesianPartitioner,
     "cylindrical": CylindricalPartitioner,
     "voronoi": VoronoiPartitioner,
     "quantile": QuantileGridPartitioner,
     "octree": OctreePartitioner,
-    "physics": PhysicsAwarePartitioner,
-    "adaptive": AdaptivePartitioner,      # ← nouveau
-    "multizone": MultiZonePartitioner,     # ← nouveau
-    "single": SingleCellPartitioner,       # ← nouveau
+    
+    # Méthodes basées sur la physique (Doucet, Tjakra, Zhou)
+    "physics": PhysicsAwarePartitioner,               # K-Means avec la norme de la vitesse (|v|)
+    "physics_full_vel": FullVectorVelocityKMeansPartitioner, # K-Means avec le vecteur vitesse complet (vx, vy, vz)
+    "spectral": SpectralClusteringPartitioner,        # Spectral Clustering (topologie/connexion du graphe)
+    "gmm": GaussianMixturePartitioner,                # Gaussian Mixture Model (cellules ellipsoïdales)
+    
+    # Autres méthodes avancées
+    "adaptive": AdaptivePartitioner,      
+    "multizone": MultiZonePartitioner,     
+    "single": SingleCellPartitioner,       
 }
-
 
 # =============================================================================
 # FACTORY
