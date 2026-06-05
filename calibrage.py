@@ -21,7 +21,7 @@ for dossier in dossiers:
     if all(j in dossier.get('name', '') for j in
            [
             #    "gmm_full_10cells_vw0.5_NLT30_step10_dt2_tau157_start250",
-               "adaptive_y_spectral_top1_bot150_splitNone_modequantile_NLT30_step10_dt2_tau157_start250",
+               "spectral_100cells_vw0.5_k15_NLT30_step10_dt2_tau157_start250",
                ]):
         path = dossier['name']
 
@@ -35,8 +35,6 @@ def load_npy(fs, path, filename):
 def load_json(fs, path, filename):
     with fs.open(f"{path}/{filename}", "r") as f:
         return json.load(f)
-
-
 
 config  = load_json(fs, path, "stats.json")   # stats contient species_list
 species_list = config.get("species_list", ["small", "large"]) # tailles des particules(par défaut deux tailles)
@@ -295,7 +293,7 @@ axes[2].set_ylabel("État i (ligne)")
 
 plt.tight_layout()
 plt.savefig(f"{LOCAL_OUTPUT}/images/diagnostic_P.png", dpi=150, bbox_inches="tight")
-# plt.show()
+# #plt.show()
 
 # ── Simulation de convergence ────────────────────────────────────────────────
 fig, ax = plt.subplots(figsize=(8, 4))
@@ -318,7 +316,7 @@ ax.set_title("Convergence RSD Markov (log)")
 ax.legend()
 ax.grid(True, alpha=0.3)
 plt.savefig(f"{LOCAL_OUTPUT}/images/convergence_rsd.png", dpi=150, bbox_inches="tight")
-# plt.show()
+# #plt.show()
 
 
 # ── MAUVAIS (actuel) ────────────────────────────────────────────────────────
@@ -381,4 +379,126 @@ ax.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.savefig(f"{LOCAL_OUTPUT}/images/rsd/rsd_concentration_{short_path}.png",
             dpi=150, bbox_inches="tight")
-# plt.show()
+# #plt.show()
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
+
+# ── 1. Préparation des données DEM et Markov sur toute la durée ─────────────
+row_start = np.searchsorted(species_data["small"]["times"], start)
+S_small_dem = species_data["small"]["S_matrix"][row_start:]
+S_large_dem = species_data["large"]["S_matrix"][row_start:]
+times_dem   = species_data["small"]["times"][row_start:]
+
+# RSD DEM (sur toute la durée disponible)
+rsd_dem_full = compute_rsd_concentration(S_small_dem, S_large_dem)
+
+# ── 2. Propagation Markov sur la même durée physique ────────────────────────
+# Nombre de pas Markov pour couvrir la durée DEM
+n_steps = len(times_dem) // tau 
+
+S_s = species_data["small"]["S_matrix"][row_start].astype(float)
+S_l = species_data["large"]["S_matrix"][row_start].astype(float)
+P_small = species_data["small"]["P"]
+P_large = species_data["large"]["P"]
+n_states = S_s.shape[0]
+
+# On stocke les trajectoires pour le calcul vectorisé du RSD
+S_s_traj = np.zeros((n_steps, n_states))
+S_l_traj = np.zeros((n_steps, n_states))
+S_s_traj[0] = S_s
+S_l_traj[0] = S_l
+
+for k in range(1, n_steps):
+    S_s_traj[k] = P_small.T @ S_s_traj[k-1]
+    S_l_traj[k] = P_large.T @ S_l_traj[k-1]
+
+rsd_markov_full = compute_rsd_concentration(S_s_traj, S_l_traj)
+
+# ⚠️ IMPORTANT : L'équation de Zhou suppose que t=0 est le début du mélange.
+# On doit donc soustraire 'start' pour avoir le temps écoulé.
+t_dem_fit = times_dem - start
+t_markov_fit = np.arange(n_steps) * tau
+
+# ── 3. Modèle de régression de Zhou (Second-order regression) ───────────────
+def rsd_model(t, RSD_inf, RSD_0, tau_c):
+    # t est le temps écoulé depuis le début de l'observation
+    t_tau = t / tau_c
+    t_tau = np.clip(t_tau, -500, 500) # Éviter overflow dans l'exponentielle
+    return RSD_inf + (RSD_0 - RSD_inf) * (1 + t_tau) * np.exp(-t_tau)
+
+# Estimation initiale des paramètres (p0) pour aider l'optimiseur
+p0_dem = [rsd_dem_full[-1], rsd_dem_full[0], len(t_dem_fit)*0.1]
+p0_mc  = [rsd_markov_full[-1], rsd_markov_full[0], len(t_markov_fit)*0.1]
+
+# Ajustement pour la DEM
+try:
+    popt_dem, _ = curve_fit(rsd_model, t_dem_fit, rsd_dem_full, p0=p0_dem, maxfev=10000)
+    RSD_inf_dem, RSD_0_dem, tau_DEM = popt_dem
+    print(f"✅ Ajustement DEM réussi : τ_DEM = {tau_DEM:.2f} pas DEM")
+except Exception as e:
+    print("⚠️ Ajustement DEM échoué, utilisation des valeurs par défaut.")
+    tau_DEM = p0_dem[2]
+
+# Ajustement pour le modèle Markov (non calibré, avec t_m = t_l)
+try:
+    popt_mc, _ = curve_fit(rsd_model, t_markov_fit, rsd_markov_full, p0=p0_mc, maxfev=10000)
+    RSD_inf_mc, RSD_0_mc, tau_MC = popt_mc
+    print(f"✅ Ajustement Markov (brut) réussi : τ_MC = {tau_MC:.2f} pas DEM")
+except Exception as e:
+    print("⚠️ Ajustement Markov échoué, utilisation des valeurs par défaut.")
+    tau_MC = p0_mc[2]
+
+# ── 4. Recalibrage du pas de temps de Markov (Formule de Zhou) ──────────────
+# Formule : t_m = t_l * (tau_DEM / tau_MC)
+# Ici t_l est votre 'tau' actuel
+tau_calibrated = tau * (tau_DEM / tau_MC)
+print(f"🔄 Recalibrage : tau original (t_l) = {tau}, tau calibré (t_m) = {tau_calibrated:.2f}")
+
+# Le nouvel axe temporel écoulé pour Markov (on ne refait pas tourner la chaîne, 
+# on change juste l'échelle de temps physique associée à chaque pas)
+t_markov_calibrated_fit = np.arange(n_steps) * tau_calibrated
+
+# ── 5. Visualisation des courbes et des ajustements ─────────────────────────
+fig, ax = plt.subplots(figsize=(12, 6))
+
+# Pour le tracé, on remet le temps absolu (start + t) pour cohérence avec vos autres graphiques
+times_markov_calibrated_plot = start + t_markov_calibrated_fit
+times_markov_raw_plot = start + t_markov_fit
+
+# 1. Courbe DEM et son ajustement
+ax.plot(times_dem, rsd_dem_full, "k-", lw=2, label="DEM (Référence)")
+t_fit_dem_plot = np.linspace(t_dem_fit[0], t_dem_fit[-1], 200) + start
+ax.plot(t_fit_dem_plot, rsd_model(t_fit_dem_plot - start, *popt_dem), "k--", lw=1.5, 
+        label=f"Ajustement DEM ($\\tau_{{DEM}}$={tau_DEM:.1f})")
+
+# 2. Courbe Markov NON CALIBRÉE (t_m = t_l)
+ax.plot(times_markov_raw_plot, rsd_markov_full, "b-", lw=1.5, alpha=0.6, 
+        label=f"Markov non calibré ($t_m=t_l$={tau})")
+
+# 3. Courbe Markov CALIBRÉE (t_m recalibré)
+ax.plot(times_markov_calibrated_plot, rsd_markov_full, "r-", lw=2, 
+        label=f"Markov recalibré ($t_m$={tau_calibrated:.1f})")
+
+# 4. Ajustement sur le Markov recalibré (pour prouver que les tau correspondent)
+try:
+    popt_mc_cal, _ = curve_fit(rsd_model, t_markov_calibrated_fit, rsd_markov_full, p0=p0_mc, maxfev=10000)
+    t_fit_mc_plot = np.linspace(t_markov_calibrated_fit[0], t_markov_calibrated_fit[-1], 200) + start
+    ax.plot(t_fit_mc_plot, rsd_model(t_fit_mc_plot - start, *popt_mc_cal), "r--", lw=1.5,
+            label=f"Ajustement Markov recalibré ($\\tau_{{MC'}}$={popt_mc_cal[2]:.1f})")
+except:
+    pass
+
+ax.set_xlabel("Temps (indices DEM)", fontsize=12)
+ax.set_ylabel("RSD de concentration", fontsize=12)
+ax.set_title(f"Recalibrage du pas de temps Markov (Méthode de Zhou)\n{short_path}", fontsize=14)
+ax.legend(fontsize=10)
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+
+save_path = f"{LOCAL_OUTPUT}/images/rsd/recalibration_zhou_{short_path}.png"
+plt.savefig(save_path, dpi=150, bbox_inches="tight")
+#plt.show()
+print(f"💾 Figure de recalibrage sauvegardée dans {save_path}")
