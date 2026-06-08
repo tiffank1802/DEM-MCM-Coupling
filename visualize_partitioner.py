@@ -33,7 +33,7 @@ def load_json(fs, path, filename):
         return json.load(f)
 
 config  = load_json(fs, path, "stats.json")   
-species_list = config.get("species_list", ["small", "large"]) 
+species_list = config.get("species_list", ["small", "large"]) # Liste des tailles de particules
 exp_config   = load_json(fs, path, "config.json") 
 start    = exp_config.get("start_index", 250) 
 tau      = exp_config.get("tau", 50) 
@@ -72,7 +72,7 @@ for species in species_list:
     
     species_data[species] = {
         "P": P_clean, 
-        "S_matrix": S_matrix, 
+        "S_matrix": S_matrix, # le vecteur d'état n'est pas nettoyé à cette étape 
         "times": times,
         "activated": activated_cells 
     }
@@ -80,12 +80,13 @@ for species in species_list:
 
 # ── 3. Propagation Markov (Correction : S_new = P @ S) ───────────────────────
 def propagate_markov(S0, P, times, start_idx, activated):
-    row_start  = np.searchsorted(times, start_idx) 
-    times_full = times[row_start:]                        
-    markov_indices = np.arange(0, len(times_full), tau)  
-    times_markov   = times_full[markov_indices] 
+    row_start  = np.searchsorted(times, start_idx) # Retourne l'indice de start_idx dans le vecteur times
+    times_full = times[row_start:]   # Récupère tous les intants à compter de l'instant initial.                     
+    markov_indices = np.arange(0, len(times_full), tau)  # Récupère tous les indices par pas de temps de markov tau
+    times_markov   = times_full[markov_indices]   # Récupère tous les instants pour les indices de markov correspondants
 
     S = S0.copy().astype(float)
+    # le nettoyage permet de supprimer dans le vecteur d'état toutes cellules qui contiendraient moins d'une particule
     S[~activated] = 0.0 # Nettoyage de l'état initial
     
     trajectory = [S.copy()] 
