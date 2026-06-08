@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import pyvista as pv
 import json
 import pandas as pd
-pv.start_xvfb()
+# pv.start_xvfb()
 pv.OFF_SCREEN = True
 LOCAL_OUTPUT="/teamspace/studios/this_studio/MyStudio/outputs"
 timestep_dict=load_parquet_as_timestep_dict(f'hf://buckets/{BUCKET_ID}/simulation_complete.parquet',fs)
@@ -96,7 +96,7 @@ states_history=[]
 states_dem_history=[]
 for i in range(start,6000,tau):
     states_history.append(S)
-    S=S@P
+    S=P@S
 for i in range(start,6000,tau_dem):
     coords=datas[i][['coordinates:0','coordinates:1','coordinates:2']].to_numpy()
     partitioner.fit(coords)
