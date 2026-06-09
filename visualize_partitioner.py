@@ -1,17 +1,30 @@
+import os
 import asyncio
 asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
+
 from directory import (BUCKET_BASE, BUCKET_ID, BUCKET_PREFIX)
 from huggingface_hub import HfFileSystem
 fs = HfFileSystem()
+
 import numpy as np
 import matplotlib.pyplot as plt
 import io
 import json
 import pyvista as pv
 
+# Imports pour le maillage et le partitionnement
+from DEM_MCM1.src.partitioners import create_partitioner
+from DEM_MCM1.src.utils import load_parquet_as_timestep_dict
+
 # pv.start_xvfb()
 pv.OFF_SCREEN = True
 LOCAL_OUTPUT = "/teamspace/studios/this_studio/MyStudio/outputs"
+
+# Création des dossiers de sortie s'ils n'existent pas pour éviter les FileNotFoundError
+os.makedirs(f"{LOCAL_OUTPUT}/fichiers", exist_ok=True)
+os.makedirs(f"{LOCAL_OUTPUT}/images/transitions", exist_ok=True)
+os.makedirs(f"{LOCAL_OUTPUT}/images/etats", exist_ok=True)
+os.makedirs(f"{LOCAL_OUTPUT}/images/rsd", exist_ok=True)
 
 # ─ 1. Trouver le dossier et charger les configurations ──────────────────────
 dossiers = fs.ls(f"hf://buckets/{BUCKET_ID}/_Good/Experiment")
@@ -19,10 +32,17 @@ path = ""
 for dossier in dossiers:
     if all(j in dossier.get('name', '') for j in [
         #    "adaptive_y_spectral_top1_bot150_splitNone_modequantile_NLT30_step10_dt2_tau157_start250",
-           "gmm_full_20cells_vw0.5_NLT30_step10_dt2_tau50_start250",
+        #    "gmm_full_20cells_vw0.5_NLT30_step10_dt2_tau50_start250",
+           "cartesian_nx4_ny4_nz4_NLT30_step10_dt2_tau157_start250",
+        #    "cartesian_nx5_ny5_nz5_NLT30_step20_dt4_tau157_start250",
+        #    "cylindrical_nr3_nth3_nz3_equal_area_NLT30_step10_dt2_tau157_start250",
+        #    "voronoi_20cells_NLT30_step10_dt2_tau157_start250",
            ]):
         path = dossier['name']
 print(f"📂 Dossier trouvé : {path}")
+
+# Définition du chemin court pour les sauvegardes
+short_path = path.replace(f"buckets/{BUCKET_ID}/_Good/Experiment/", "")
 
 def load_npy(fs, path, filename):
     with fs.open(f"{path}/{filename}", "rb") as f:
@@ -38,6 +58,33 @@ exp_config   = load_json(fs, path, "config.json")
 start    = exp_config.get("start_index", 250) 
 tau      = exp_config.get("tau", 50) 
 print(f"   start={start}, tau={tau}, espèces={species_list}")
+
+# ── 1.5 Calcul du maillage et enregistrement (PyVista) ──────────────────────
+try:
+    print("⏳ Chargement des données de simulation pour le maillage...")
+    timestep_dict = load_parquet_as_timestep_dict(f'hf://buckets/{BUCKET_ID}/simulation_complete.parquet', fs)
+    partitioner = create_partitioner(exp_config.get("method", ''), **exp_config.get("method_kwargs", {}))
+    
+    coords = timestep_dict[start][['coordinates:0', 'coordinates:1', 'coordinates:2']].to_numpy()
+    partitioner.fit(coords)
+    states = partitioner.compute_states(coords[:,0], coords[:,1], coords[:,2])
+    
+    mesh = pv.PolyData(coords)
+    mesh.point_data['partitions'] = states
+    
+    if 'Diameter' in timestep_dict[start].columns:
+        mesh.point_data.set_array(data=timestep_dict[start]['Diameter'].to_numpy().flatten(), name='Diameter')
+        sphere = pv.Sphere(theta_resolution=8, phi_resolution=8)
+        glyph = mesh.glyph(geom=sphere, orient=False, factor=1.0, scale="Diameter")
+        mesh_to_save = glyph
+    else:
+        mesh_to_save = mesh
+        
+    mesh_path = f'{LOCAL_OUTPUT}/fichiers/meshs/mesh_{short_path}.vtp'
+    mesh_to_save.save(mesh_path)
+    print(f"✅ Maillage 3D enregistré : {mesh_path}")
+except Exception as e:
+    print(f"⚠️ Impossible de générer le maillage : {e}")
 
 # ── 2. Post-traitement de la matrice P (Zhou et al., 2021) ───────────────────
 def clean_transition_matrix(P, threshold=0.5):
@@ -156,8 +203,6 @@ def compute_entropy_concentration(S_small, S_large, act_s, act_l):
             entropy[t] = -np.sum(C_valid * np.log(C_valid) + (1 - C_valid) * np.log(1 - C_valid))
     return entropy
 
-short_path = path.replace(f"buckets/{BUCKET_ID}/_Good/Experiment/", "")
-
 # ── 6. Figure 1 : États par partition ────────────────────────────────────────
 for species in species_list:
     traj_markov   = markov_results[species]["trajectory"]    
@@ -168,12 +213,12 @@ for species in species_list:
 
     fig, ax = plt.subplots(figsize=(12, 5))
     for k in range(min(3, n_states)):
-        ax.plot(times_markov, traj_markov[:, k], "o-", markersize=3, linewidth=1, label=f"État {k} Markov")
         ax.plot(times_dem, S_dem[:, k], "--", linewidth=1, label=f"État {k} DEM")
+        ax.plot(times_markov, traj_markov[:, k], "o-", markersize=3, linewidth=1, label=f"État {k} Markov")
     ax.set_ylabel("Nombre de particules")
     ax.set_xlabel("Temps (centièmes de secondes)")
     fig.suptitle(f"Comparaison Markov vs DEM — espèce '{species}'", fontsize=9)
-    if n_states <= 10: ax.legend(fontsize=6, ncol=2)
+    ax.legend(fontsize=6, ncol=2)
     fig.tight_layout()
     plt.savefig(f"{LOCAL_OUTPUT}/images/etats/etats_{species}_{short_path}.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -189,8 +234,8 @@ for ax, species in zip(axes[:len(species_list)], species_list):
     times_dem    = dem_results[species]["times"]
     activated    = species_data[species]["activated"]
 
-    ax.plot(times_markov, compute_rsd_from_S(traj_markov, activated), "o-", markersize=3, label="Markov")
     ax.plot(times_dem, compute_rsd_from_S(S_dem, activated), "--", label="DEM")
+    ax.plot(times_markov, compute_rsd_from_S(traj_markov, activated), "o-", markersize=3, label="Markov")
     ax.set_title(f"RSD — espèce '{species}'", fontsize=9)
     ax.set_xlabel("Temps"); ax.set_ylabel("RSD"); ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
 
@@ -204,8 +249,8 @@ ent_m = compute_entropy(markov_results[sp_a]["trajectory"][:n_min], species_data
 ent_d = compute_entropy(dem_results[sp_a]["S_matrix"][:n_dem_min], species_data[sp_a]["activated"]) + \
         compute_entropy(dem_results[sp_b]["S_matrix"][:n_dem_min], species_data[sp_b]["activated"])
 
-axes[len(species_list)].plot(markov_results[sp_a]["times_markov"][:n_min], ent_m, "o-", markersize=3, label="Markov")
 axes[len(species_list)].plot(dem_results[sp_a]["times"][:n_dem_min], ent_d, "--", label="DEM")
+axes[len(species_list)].plot(markov_results[sp_a]["times_markov"][:n_min], ent_m, "o-", markersize=3, label="Markov")
 axes[len(species_list)].set_title("Entropie de Shannon (Totale)", fontsize=9)
 axes[len(species_list)].set_xlabel("Temps"); axes[len(species_list)].set_ylabel("Entropie"); axes[len(species_list)].legend(fontsize=8); axes[len(species_list)].grid(True, alpha=0.3)
 
@@ -213,8 +258,8 @@ axes[len(species_list)].set_xlabel("Temps"); axes[len(species_list)].set_ylabel(
 rsd_conc_m = compute_rsd_concentration(markov_results[sp_a]["trajectory"][:n_min], markov_results[sp_b]["trajectory"][:n_min], species_data[sp_a]["activated"], species_data[sp_b]["activated"])
 rsd_conc_d = compute_rsd_concentration(dem_results[sp_a]["S_matrix"][:n_dem_min], dem_results[sp_b]["S_matrix"][:n_dem_min], species_data[sp_a]["activated"], species_data[sp_b]["activated"])
 
-axes[-1].plot(markov_results[sp_a]["times_markov"][:n_min], rsd_conc_m, "o-", markersize=3, label="Markov")
 axes[-1].plot(dem_results[sp_a]["times"][:n_dem_min], rsd_conc_d, "--", label="DEM")
+axes[-1].plot(markov_results[sp_a]["times_markov"][:n_min], rsd_conc_m, "o-", markersize=3, label="Markov")
 axes[-1].set_title(f"RSD C({sp_a}) — bidisperse", fontsize=9)
 axes[-1].set_xlabel("Temps"); axes[-1].set_ylabel("RSD Conc."); axes[-1].legend(fontsize=8); axes[-1].grid(True, alpha=0.3)
 
@@ -228,8 +273,8 @@ fig, ax = plt.subplots(figsize=(10, 5))
 ent_conc_m = compute_entropy_concentration(markov_results[sp_a]["trajectory"][:n_min], markov_results[sp_b]["trajectory"][:n_min], species_data[sp_a]["activated"], species_data[sp_b]["activated"])
 ent_conc_d = compute_entropy_concentration(dem_results[sp_a]["S_matrix"][:n_dem_min], dem_results[sp_b]["S_matrix"][:n_dem_min], species_data[sp_a]["activated"], species_data[sp_b]["activated"])
 
-ax.plot(markov_results[sp_a]["times_markov"][:n_min], ent_conc_m, "o-", markersize=3, lw=2, label="Markov")
 ax.plot(dem_results[sp_a]["times"][:n_dem_min], ent_conc_d, "--", lw=2, label="DEM", alpha=0.7)
+ax.plot(markov_results[sp_a]["times_markov"][:n_min], ent_conc_m, "o-", markersize=3, lw=2, label="Markov")
 ax.set_title(f"Entropie de Concentration C({sp_a})\n{short_path}"); ax.legend(); ax.grid(True, alpha=0.3)
 ax.set_xlabel("Temps"); ax.set_ylabel("Entropie de Concentration")
 plt.tight_layout()
@@ -264,5 +309,37 @@ im = axes[2].imshow(P_analysis, aspect='auto', cmap='viridis', vmin=0, vmax=P_an
 plt.colorbar(im, ax=axes[2]); axes[2].set_title("Matrice P (nettoyée)")
 plt.tight_layout()
 plt.savefig(f"{LOCAL_OUTPUT}/images/diagnostic_P.png", dpi=150, bbox_inches="tight")
+plt.close(fig)
 
-print("✅ Analyse complète terminée avec post-traitement et calcul d'entropie !")
+# ── 10. Sauvegarde et visualisation des matrices de transition ───────────────
+print("\n💾 Sauvegarde des matrices de transition...")
+for species in species_list:
+    P_clean = species_data[species]["P"]
+    
+    # Sauvegarde du fichier .npy local
+    npy_path = f"{LOCAL_OUTPUT}/fichiers/transitionmatrix_{species}_{short_path}.npy"
+    np.save(npy_path, P_clean)
+    
+    # Visualisation et sauvegarde en image
+    fig, ax = plt.subplots(figsize=(10, 10))
+    max_val = np.max(P_clean[P_clean > 0]) if np.any(P_clean > 0) else 1.0
+    im = ax.imshow(P_clean, cmap='viridis', vmin=0, vmax=max_val)
+    
+    n_cells = P_clean.shape[0]
+    if n_cells <= 40:  # Ajouter le texte seulement si la matrice n'est pas trop grande
+        for i in range(n_cells):
+            for j in range(n_cells):
+                val = P_clean[i, j]
+                color = 'white' if val > (max_val / 2) else 'black'
+                ax.text(j, i, f"{val:.2f}", ha='center', va='center', fontsize=6, color=color)
+                
+    ax.set_title(f'Matrice de transition P nettoyée — {species}\n{short_path}')
+    plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    plt.tight_layout()
+    
+    img_path = f"{LOCAL_OUTPUT}/images/transitions/transition_{species}_{short_path}.png"
+    plt.savefig(img_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"✅ Matrice de transition '{species}' enregistrée (Numpy et PNG).")
+
+print("\n🎉 Analyse complète terminée avec post-traitement, calcul d'entropie, maillage et matrices P !")
