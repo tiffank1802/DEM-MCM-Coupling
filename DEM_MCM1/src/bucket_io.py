@@ -272,6 +272,7 @@ def upload_postprocessing_to_bucket(
     """
     bucket_prefix = _get_bucket_prefix_from_particle_diameter(particle_diameter)
     api = get_api()
+    fs=get_fs()
 
     local_path = Path(local_dir).resolve()
     if not local_path.exists():
@@ -283,7 +284,11 @@ def upload_postprocessing_to_bucket(
         if file_path.is_file():
             rel_path    = file_path.relative_to(local_path)
             bucket_path = f"{bucket_prefix}/{bucket_subfolder}/{rel_path.as_posix()}"
-            files_to_upload.append((str(file_path), bucket_path))
+            if file_path.suffix in (".vtp", ".vtu", ".vtk"):
+                fs.put(str(file_path), f"hf://buckets/{BUCKET_ID}/{bucket_path}")
+                print(f"   📤 {rel_path}")
+            else:
+                files_to_upload.append((str(file_path), bucket_path))
 
     if not files_to_upload:
         print(f"⚠️  Aucun fichier trouvé dans {local_path}")
