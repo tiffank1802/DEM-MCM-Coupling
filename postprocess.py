@@ -40,6 +40,7 @@ from DEM_MCM1.src.utils import load_parquet_as_timestep_dict
 from DEM_MCM1.src.bucket_io import (
     BUCKET_ID,
     ALL_CATEGORIES,
+    CATEGORY_MAP,
     get_simulation_category,
     PostprocessingBucketUploader,
     _get_bucket_prefix_from_particle_diameter,
@@ -233,6 +234,61 @@ def prepare_species(exp: dict) -> dict:
         }
     return out
 
+
+def _short_label(name: str, all_names: list[str]) -> str:
+    """
+    Extrait uniquement les parties du nom qui varient entre les expériences.
+    Fallback : extrait les paramètres clés connus (tau, start, step, dt, NLT).
+    """
+    # Découper chaque nom en tokens (séparateur "_")
+    parts_list = [n.split("_") for n in all_names]
+    
+    # Trouver les positions qui varient
+    min_len = min(len(p) for p in parts_list)
+    varying = []
+    for i in range(min_len):
+        values = {p[i] for p in parts_list}
+        if len(values) > 1:
+            varying.append(i)
+    
+    parts = name.split("_")
+    
+    if varying:
+        # Garder uniquement les tokens qui varient
+        return "_".join(parts[i] for i in varying if i < len(parts))
+    
+    # Fallback : extraire les paramètres clés avec regex
+    import re
+    tokens = []
+    for key in ["tau", "start", "step", "dt", "NLT"]:
+        m = re.search(rf"{key}(\d+)", name)
+        if m:
+            tokens.append(f"{key}{m.group(1)}")
+    return "_".join(tokens) if tokens else name[:20]
+
+def _common_prefix(all_names: list[str]) -> str:
+    """Retourne la partie du nom identique entre toutes les expériences."""
+    parts_list = [n.split("_") for n in all_names]
+    min_len = min(len(p) for p in parts_list)
+    common = []
+    for i in range(min_len):
+        values = {p[i] for p in parts_list}
+        if len(values) == 1:
+            common.append(parts_list[0][i])
+        else:
+            break  # dès qu'un token varie, on s'arrête
+    return "_".join(common)
+
+def _extract_model_type(names: list[str]) -> str:
+    """Extrait le type de modèle (voronoi, cartesian, gmm, ...) depuis les noms."""
+    # known = ["voronoi", "cartesian", "gmm", "cylindrical", "physics"]
+    known = list(CATEGORY_MAP.keys())
+    for name in names:
+        for model in known:
+            if model in name.lower():
+                return model.replace("_"," ").capitalize()
+    return "unknown"
+
 def find_all_experiments_by_keywords(
     bucket_base_hf: str,
     keywords: list[str],
@@ -267,17 +323,77 @@ def find_all_experiments_by_keywords(
 # FIGURES DE COMPARAISON
 # ═════════════════════════════════════════════════════════════════════════════
 
-def fig_compare_rsd(all_species_data: dict[str, dict], out_dir: Path):
+# ═════════════════════════════════════════════════════════════════════════════
+# RÉFÉRENCE DEM POUR LA COMPARAISON
+# ═════════════════════════════════════════════════════════════════════════════
+
+def get_dem_reference(
+    all_species_data: dict[str, dict],
+    dem_ref: str,
+) -> tuple[str, dict]:
+    names = list(all_species_data.keys())
+
+    # ── Nom exact ────────────────────────────────────────────────────────────
+    if dem_ref in all_species_data:
+        short_part = _short_label(dem_ref, names)
+        common     = _common_prefix(names)
+        label      = f"{common}_{short_part}"
+        print(f"   📌 DEM référence : {label}")
+        return label, all_species_data[dem_ref]
+
+    # ── Moyenne ──────────────────────────────────────────────────────────────
+    if dem_ref == "mean":
+        all_species = sorted({sp for sd in all_species_data.values() for sp in sd})
+        mean_data: dict[str, dict] = {}
+        for sp in all_species:
+            sds    = [sd[sp] for sd in all_species_data.values() if sp in sd]
+            n      = min(len(d["S_dem"]) for d in sds)
+            S_mean = np.mean([d["S_dem"][:n] for d in sds], axis=0)
+            mean_data[sp] = {
+                **sds[0],
+                "S_dem":     S_mean,
+                "times_dem": sds[0]["times_dem"][:n],
+            }
+        label = f"{_common_prefix(names)}_mean"
+        print(f"   📌 DEM référence : {label}")
+        return label, mean_data
+
+    # ── Fallback : première expérience ───────────────────────────────────────
+    if dem_ref != "first":
+        print(f"   ⚠️  dem-ref '{dem_ref}' introuvable → fallback sur 'first'")
+    name       = names[0]
+    short_part = _short_label(name, names)
+    common     = _common_prefix(names)
+    label      = f"{common}_{short_part}"
+    print(f"   📌 DEM référence : {label}")
+    names = list(all_species_data.keys())
+    return label, all_species_data[name]
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# FIGURES DE COMPARAISON
+# ═════════════════════════════════════════════════════════════════════════════
+
+def fig_compare_rsd(
+    all_species_data: dict[str, dict],
+    out_dir: Path,
+    dem_ref_label: str = "",
+    dem_ref_data: dict | None = None,
+    model_type: str = "",
+):
     """
-    RSD par espèce — toutes les expériences superposées.
-    all_species_data : { short_name: { sp: sp_data } }
+    RSD par espèce.
+    - Une courbe DEM de référence (marron, légère).
+    - Une courbe Markov par expérience (couleurs tab10).
     """
-    # Collecter toutes les espèces présentes
     all_species = sorted({sp for sd in all_species_data.values() for sp in sd})
 
-    fig, axes = plt.subplots(1, len(all_species),
-                             figsize=(8 * len(all_species), 5), squeeze=False)
-    fig.suptitle("Comparaison RSD par espèce", fontweight="bold")
+    fig, axes = plt.subplots(
+        1, len(all_species),
+        figsize=(8.5 * len(all_species), 5) ,
+        squeeze=False,
+    )
+    fig.suptitle(f"Comparaison RSD — {model_type}", fontweight="bold")
 
     cmap   = plt.cm.tab10
     names  = list(all_species_data.keys())
@@ -285,22 +401,37 @@ def fig_compare_rsd(all_species_data: dict[str, dict], out_dir: Path):
 
     for col, sp in enumerate(all_species):
         ax = axes[0][col]
+
+        # ── DEM référence ────────────────────────────────────────────────
+        if dem_ref_data and sp in dem_ref_data:
+            d_ref  = dem_ref_data[sp]
+            rsd_ref = rsd_from_S(d_ref["S_dem"], d_ref["activated"])
+            ax.plot(
+                d_ref["times_dem"], rsd_ref,
+                "-", color="#AAAAAA", lw=1.5, alpha=0.4,
+                label=f"DEM — {dem_ref_label}",
+                zorder=5,
+            )
+
+        # ── Markov : une courbe par expérience ───────────────────────────
         for name, species_data in all_species_data.items():
             if sp not in species_data:
                 continue
             d     = species_data[sp]
-            color = colors[name]
-            rsd_d = rsd_from_S(d["S_dem"],       d["activated"])
             rsd_m = rsd_from_S(d["traj_markov"], d["activated"])
-            label = name[:40]  # tronquer pour la lisibilité
-            ax.plot(d["times_dem"],    rsd_d, "-",   color=color, lw=1.8,
-                    alpha=0.85, label=f"DEM — {label}", zorder=3)
-            ax.plot(d["times_markov"], rsd_m, "o--", color=color, markersize=3,
-                    lw=1.2, alpha=0.7, label=f"Markov — {label}", zorder=2)
+            ax.plot(
+                d["times_markov"], rsd_m,
+                "-", color=colors[name], lw=1.6, alpha=0.8,
+                label = _short_label(name, names),
+                zorder=3,
+            )
 
         ax.set_title(f"RSD — espèce '{sp}'")
-        ax.set_xlabel("Temps (pas)"); ax.set_ylabel("RSD")
-        ax.legend(fontsize=7, ncol=2); ax.set_ylim(bottom=0)
+        ax.set_xlabel("Temps (pas)")
+        ax.set_ylabel("RSD")
+        ax.legend(fontsize=6, ncol=1, borderpad=0.4, labelspacing=0.3,
+          handlelength=1.5, handletextpad=0.4)
+        ax.set_ylim(bottom=0)
 
     fig.tight_layout()
     fig.savefig(out_dir / "compare_rsd.png", bbox_inches="tight")
@@ -308,10 +439,18 @@ def fig_compare_rsd(all_species_data: dict[str, dict], out_dir: Path):
     print("   💾 compare_rsd.png")
 
 
-def fig_compare_states(all_species_data: dict[str, dict], out_dir: Path, k: int = 3):
+def fig_compare_states(
+    all_species_data: dict[str, dict],
+    out_dir: Path,
+    k: int = 3,
+    dem_ref_label: str = "",
+    dem_ref_data: dict | None = None,
+    model_type: str = "",
+):
     """
-    États des k cellules les plus peuplées (union des top-k de chaque exp)
-    — toutes les expériences superposées, une sous-figure par (espèce, cellule).
+    États des k cellules les plus peuplées.
+    - Une courbe DEM de référence (noire, épaisse).
+    - Une courbe Markov par expérience (couleurs tab10).
     """
     all_species = sorted({sp for sd in all_species_data.values() for sp in sd})
     names       = list(all_species_data.keys())
@@ -320,7 +459,7 @@ def fig_compare_states(all_species_data: dict[str, dict], out_dir: Path, k: int 
 
     for sp in all_species:
         # Union des top-k cellules de toutes les expériences
-        top_cells_set = set()
+        top_cells_set: set[int] = set()
         for sd in all_species_data.values():
             if sp not in sd:
                 continue
@@ -331,30 +470,49 @@ def fig_compare_states(all_species_data: dict[str, dict], out_dir: Path, k: int 
         n     = len(cells)
         ncols = min(3, n)
         nrows = (n + ncols - 1) // ncols
-        fig, axes = plt.subplots(nrows, ncols,
-                                 figsize=(5.5 * ncols, 4 * nrows), squeeze=False)
-        fig.suptitle(f"Comparaison états — espèce '{sp}'",
-                     fontsize=13, fontweight="bold", y=1.01)
+
+        fig, axes = plt.subplots(
+            nrows, ncols,
+            figsize=(4.5 * ncols, 4 * nrows),
+            squeeze=False,
+        )
+        fig.suptitle(
+            f"Comparaison états — {model_type} — espèce '{sp}'",
+            fontsize=13, fontweight="bold", y=1.01,
+        )
 
         for idx, cell in enumerate(cells):
             ax = axes[idx // ncols][idx % ncols]
+
+            # ── DEM référence ────────────────────────────────────────────
+            if dem_ref_data and sp in dem_ref_data:
+                d_ref = dem_ref_data[sp]
+                if cell < d_ref["S_dem"].shape[1]:
+                    ax.plot(
+                        d_ref["times_dem"], d_ref["S_dem"][:, cell],
+                        "-", color="#AAAAAA", lw=1.5, alpha=0.4,
+                        label=f"DEM — {dem_ref_label}",
+                        zorder=5,
+                    )
+
+            # ── Markov : une courbe par expérience ───────────────────────
             for name, sd in all_species_data.items():
                 if sp not in sd:
                     continue
-                d     = sd[sp]
-                color = colors[name]
-                label = name[:35]
-                if cell < d["S_dem"].shape[1]:
-                    ax.plot(d["times_dem"], d["S_dem"][:, cell],
-                            "-", color=color, lw=1.8, alpha=0.85,
-                            label=f"DEM — {label}", zorder=3)
-                    ax.plot(d["times_markov"], d["traj_markov"][:, cell],
-                            "o--", color=color, markersize=3, lw=1.2, alpha=0.7,
-                            label=f"Markov — {label}", zorder=2)
+                d = sd[sp]
+                if cell < d["traj_markov"].shape[1]:
+                    ax.plot(
+                        d["times_markov"], d["traj_markov"][:, cell],
+                        "-", color=colors[name], lw=1.6, alpha=0.8,
+                        label = _short_label(name, names),
+                        zorder=3,
+                    )
 
             ax.set_title(f"Cellule {cell}")
-            ax.set_xlabel("Temps (pas)"); ax.set_ylabel("Nb particules")
-            ax.legend(fontsize=6, ncol=2)
+            ax.set_xlabel("Temps (pas)")
+            ax.set_ylabel("Nb particules")
+            ax.legend(fontsize=6, ncol=1, borderpad=0.4, labelspacing=0.3,
+          handlelength=1.5, handletextpad=0.4)
             ax.xaxis.set_major_formatter(
                 ticker.FuncFormatter(lambda x, _: f"{int(x)}")
             )
@@ -369,38 +527,63 @@ def fig_compare_states(all_species_data: dict[str, dict], out_dir: Path, k: int 
         print(f"   💾 {fname}")
 
 
-def fig_compare_n_particles(all_species_data: dict[str, dict], out_dir: Path):
+def fig_compare_n_particles(
+    all_species_data: dict[str, dict],
+    out_dir: Path,
+    dem_ref_label: str = "",
+    dem_ref_data: dict | None = None,
+    model_type: str = "",
+):
     """
-    Nombre total de particules par espèce au cours du temps
-    (somme sur toutes les cellules actives) — DEM vs Markov.
+    Nombre total de particules par espèce.
+    - Une courbe DEM de référence (noire, épaisse).
+    - Une courbe Markov par expérience (couleurs tab10).
     """
     all_species = sorted({sp for sd in all_species_data.values() for sp in sd})
     names       = list(all_species_data.keys())
     cmap        = plt.cm.tab10
     colors      = {n: cmap(i / max(len(names) - 1, 1)) for i, n in enumerate(names)}
 
-    fig, axes = plt.subplots(1, len(all_species),
-                             figsize=(8 * len(all_species), 5), squeeze=False)
-    fig.suptitle("Nombre total de particules par espèce", fontweight="bold")
+    fig, axes = plt.subplots(
+        1, len(all_species),
+        figsize=(8.5 * len(all_species), 5) ,
+        squeeze=False,
+    )
+    fig.suptitle(f"Nombre total de particules — {model_type}", fontweight="bold")
 
     for col, sp in enumerate(all_species):
         ax = axes[0][col]
+
+        # ── DEM référence ────────────────────────────────────────────────
+        if dem_ref_data and sp in dem_ref_data:
+            d_ref  = dem_ref_data[sp]
+            n_ref  = d_ref["S_dem"][:, d_ref["activated"]].sum(axis=1)
+            ax.plot(
+                d_ref["times_dem"], n_ref,
+                "-", color="#AAAAAA", lw=1.5, alpha=0.4,
+                label=f"DEM — {dem_ref_label}",
+                zorder=5,
+            )
+
+        # ── Markov : une courbe par expérience ───────────────────────────
         for name, sd in all_species_data.items():
             if sp not in sd:
                 continue
-            d     = sd[sp]
-            color = colors[name]
-            label = name[:40]
-            n_dem    = d["S_dem"][:, d["activated"]].sum(axis=1)
+            d        = sd[sp]
             n_markov = d["traj_markov"][:, d["activated"]].sum(axis=1)
-            ax.plot(d["times_dem"],    n_dem,    "-",   color=color, lw=1.8,
-                    alpha=0.85, label=f"DEM — {label}", zorder=3)
-            ax.plot(d["times_markov"], n_markov, "o--", color=color, markersize=3,
-                    lw=1.2, alpha=0.7, label=f"Markov — {label}", zorder=2)
+            ax.plot(
+                d["times_markov"], n_markov,
+                "-", color=colors[name], lw=1.6, alpha=0.8,
+                label = _short_label(name, names),
+                zorder=3,
+            )
 
         ax.set_title(f"N particules — espèce '{sp}'")
-        ax.set_xlabel("Temps (pas)"); ax.set_ylabel("N particules")
-        ax.legend(fontsize=7, ncol=2); ax.set_ylim(bottom=0)
+        ax.set_xlabel("Temps (pas)")
+        ax.set_ylabel("N particules")
+        ax.legend(fontsize=6, ncol=1, borderpad=0.4, labelspacing=0.3,
+          handlelength=1.5, handletextpad=0.4)
+        ax.set_ylim(bottom=0)
 
     fig.tight_layout()
     fig.savefig(out_dir / "compare_n_particules.png", bbox_inches="tight")
@@ -409,7 +592,7 @@ def fig_compare_n_particles(all_species_data: dict[str, dict], out_dir: Path):
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# PIPELINE COMPARAISON
+# PIPELINE COMPARAISON  (remplace l'ancienne run_comparison)
 # ═════════════════════════════════════════════════════════════════════════════
 
 def run_comparison(
@@ -417,14 +600,15 @@ def run_comparison(
     keywords: list[str],
     bucket_prefix: str = "_Good/Experiment",
     top_states: int = 3,
+    dem_ref: str = "first",
 ):
     keyword_slug = "_".join(keywords)
     print(f"\n{'═'*60}")
     print(f"🔀 Comparaison : {keyword_slug}")
-    print(f"   {len(experiments)} expériences")
+    print(f"   {len(experiments)} expériences  |  dem-ref = '{dem_ref}'")
     print(f"{'═'*60}")
 
-    # Chargement de toutes les expériences
+    # ── Chargement ───────────────────────────────────────────────────────────
     all_species_data: dict[str, dict] = {}
     for path_hf, short in experiments:
         print(f"\n   📥 Chargement : {short}")
@@ -434,9 +618,14 @@ def run_comparison(
             all_species_data[short] = species_data
         except Exception as e:
             print(f"   ⚠️  {short} ignoré : {e}")
+    model_type = _extract_model_type(list(all_species_data.keys()))
 
     if not all_species_data:
-        print("❌ Aucune expérience chargée."); return
+        print("❌ Aucune expérience chargée.")
+        return
+
+    # ── Référence DEM ─────────────────────────────────────────────────────────
+    dem_ref_label, dem_ref_data = get_dem_reference(all_species_data, dem_ref)
 
     bucket_subfolder = f"comparaisons/{keyword_slug}"
 
@@ -444,20 +633,32 @@ def run_comparison(
         out_dir = tmp / "images"
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        # ── États par espèce pour chaque expérience ──────────────────────
+        # ── États individuels par expérience ──────────────────────────────
         print("\n📈 États par espèce (individuels)...")
         for short, species_data in all_species_data.items():
             for sp, sd in species_data.items():
                 try:
                     fig_states_by_species(sp, sd, short, out_dir)
                 except Exception as e:
-                    print(f"   ⚠️  {short} / {sp} ignoré : {e}")
+                    print(f"   ⚠️  {short}/{sp} ignoré : {e}")
 
         # ── Figures de comparaison ────────────────────────────────────────
         print("\n📊 Figures de comparaison...")
-        fig_compare_rsd(all_species_data, out_dir)
-        fig_compare_states(all_species_data, out_dir, k=top_states)
-        fig_compare_n_particles(all_species_data, out_dir)
+        fig_compare_rsd(
+            all_species_data, out_dir,
+            dem_ref_label=dem_ref_label, dem_ref_data=dem_ref_data,
+            model_type=model_type,
+        )
+        fig_compare_states(
+            all_species_data, out_dir, k=top_states,
+            dem_ref_label=dem_ref_label, dem_ref_data=dem_ref_data,
+            model_type=model_type,
+        )
+        fig_compare_n_particles(
+            all_species_data, out_dir,
+            dem_ref_label=dem_ref_label, dem_ref_data=dem_ref_data,
+            model_type=model_type,
+        )
 
     print(f"\n✅ Comparaison '{keyword_slug}' — terminée.\n")
 # ═════════════════════════════════════════════════════════════════════════════
@@ -798,15 +999,11 @@ def fig_states_by_species(
     t_m       = np.asarray(sp_data["times_markov"])
     activated = sp_data["activated"]
 
-    # Correction de shape : (T, 1, N) ou (1, T, N) → (T, N)
-    if S_d.ndim == 3:
-        S_d = S_d.reshape(-1, S_d.shape[-1])
-    if S_m.ndim == 3:
-        S_m = S_m.reshape(-1, S_m.shape[-1])
-    if t_d.ndim > 1:
-        t_d = t_d.ravel()
-    if t_m.ndim > 1:
-        t_m = t_m.ravel()
+    # Remplacer les 4 lignes de correction par :
+    S_d = np.asarray(sp_data["S_dem"]).squeeze()
+    S_m = np.asarray(sp_data["traj_markov"]).squeeze()
+    t_d = np.asarray(sp_data["times_dem"]).ravel()
+    t_m = np.asarray(sp_data["times_markov"]).ravel()
 
     # Debug temporaire — à supprimer une fois confirmé
     print(f"      S_d={S_d.shape}  S_m={S_m.shape}  t_d={t_d.shape}  t_m={t_m.shape}")
@@ -817,7 +1014,9 @@ def fig_states_by_species(
 
     fig, ax = plt.subplots(figsize=(12, 5))
 
-    for idx, cell in enumerate(activated):
+    # Par (utiliser les indices entiers, pas le booléen) :
+    active_indices = np.where(activated)[0]
+    for idx, cell in enumerate(active_indices):
         color = colors[idx]
         ax.plot(t_d, S_d[:, cell], "-",
                 color=color, linewidth=1.8, alpha=0.85,
@@ -871,33 +1070,67 @@ def fig_entropy_total(species_data: dict, short_name: str, out_dir: Path):
 
 
 # ── Maillage 3D ───────────────────────────────────────────────────────────────
-
-def fig_mesh(
-    exp: dict,
-    df_start,           # ← pd.DataFrame déjà chargé, plus de path_hf
-    short_name: str,
-    out_dir_img: Path,
-    out_dir_files: Path,
-):
-    config  = exp["config"]
-    start   = config.get("start_index", 250)
-    method  = config.get("method", "voronoi")
-    kwargs  = config.get("method_kwargs", {})
+def fig_mesh(exp, df_start, short_name, out_dir_img, out_dir_files):
+    config    = exp["config"]
+    start     = config.get("start_index", 250)
 
     coords = df_start[["coordinates:0", "coordinates:1", "coordinates:2"]].to_numpy()
 
-    first_sp  = next(iter(exp["species"]))
-    times     = exp["species"][first_sp]["times"]
-    S_mat     = exp["species"][first_sp]["S_matrix"]
-    row_start = np.searchsorted(times, start)
-    S_start   = S_mat[row_start]
+    # Construire cell_ids pour TOUTES les espèces combinées
+    # On utilise la première espèce disponible pour assigner les cellules
+    # via le partitionneur, ou on somme toutes les S_start
+    all_species = list(exp["species"].keys())
+    
+    # Récupérer S_start pour chaque espèce et construire un cell_ids global
+    # en supposant que les particules sont ordonnées par espèce dans le parquet
+    phase_map = {}  # phase_id -> species_name
+    if "Particle_Phase_ID" in df_start.columns:
+        phases = sorted(df_start["Particle_Phase_ID"].unique())
+        print(f"      Particle_Phase_ID values: {phases}")
+        for i, sp in enumerate(all_species):
+            if i < len(phases):
+                phase_map[phases[i]] = sp
 
-    cell_ids = np.repeat(np.arange(len(S_start)), S_start.astype(int))
+    all_cell_ids = np.full(len(df_start), -1, dtype=int)
 
-    assert len(cell_ids) == len(coords), (
-        f"Désaccord cell_ids ({len(cell_ids)}) vs coords ({len(coords)})"
-    )
+    for sp in all_species:
+        times     = exp["species"][sp]["times"]
+        S_mat     = exp["species"][sp]["S_matrix"]
+        row_start = np.searchsorted(times, start)
+        S_start   = S_mat[row_start].astype(int)
 
+        if "Particle_Phase_ID" in df_start.columns:
+            # Trouver la phase correspondant à cette espèce
+            phase_id = next((k for k, v in phase_map.items() if v == sp), None)
+            if phase_id is not None:
+                mask    = df_start["Particle_Phase_ID"] == phase_id
+                df_sp   = df_start[mask]
+                ids_sp  = np.repeat(np.arange(len(S_start)), S_start)
+                if len(ids_sp) == len(df_sp):
+                    all_cell_ids[mask] = ids_sp
+                else:
+                    print(f"      ⚠️  {sp}: cell_ids={len(ids_sp)} vs df_sp={len(df_sp)}")
+        else:
+            # Fallback : filtrer par Diameter
+            median_d = df_start["Diameter"].median()
+            mask = (df_start["Diameter"] <= median_d) if sp == "small" \
+                   else (df_start["Diameter"] > median_d)
+            df_sp  = df_start[mask]
+            ids_sp = np.repeat(np.arange(len(S_start)), S_start)
+            if len(ids_sp) == len(df_sp):
+                all_cell_ids[mask.values] = ids_sp
+            else:
+                print(f"      ⚠️  {sp}: cell_ids={len(ids_sp)} vs df_sp={len(df_sp)}")
+
+    unassigned = (all_cell_ids == -1).sum()
+    if unassigned > 0:
+        print(f"      ⚠️  {unassigned} particules non assignées → cellule 0")
+        all_cell_ids[all_cell_ids == -1] = 0
+
+    cell_ids = all_cell_ids
+    print(f"      cell_ids={len(cell_ids)}  coords={len(coords)}  ✅")
+
+    # --- reste inchangé à partir d'ici ---
     mesh = pv.PolyData(coords)
     mesh.point_data["cell_id"] = cell_ids
 
@@ -936,7 +1169,6 @@ def fig_mesh(
     fig.savefig(out_dir_img / fname_2d, bbox_inches="tight")
     plt.close(fig)
     print(f"   💾 {fname_2d}")
-
 
 # ── Export matrices de transition ─────────────────────────────────────────────
 
@@ -1004,7 +1236,7 @@ def run_postprocess(
         print("\n📈 États par espèce...")
         for sp, sd in species_data.items():
             try:
-                fig_states_by_species(sp, sd, short_name, img_states)
+                fig_states_by_species(sp, sd, short_name, img_etats)
             except Exception as e:
                 print(f"   ⚠️  {sp} ignoré : {e}")
         # ── 3. RSD ───────────────────────────────────────────────────────
@@ -1064,7 +1296,11 @@ Exemples :
         "--dry-run", action="store_true",
         help="Liste les expériences sans les post-traiter",
     )
-
+    common.add_argument(
+        "--dem-ref", default="first",
+        help="Référence DEM : 'first' (défaut), 'mean', ou nom exact d'une expérience",
+                        )
+    p.add_argument("--dem-ref", default="first", dest="dem_ref")
     # --- Style classique (pas de sous-commande) ---
     p.add_argument("--folder",   help="Nom exact du dossier d'expérience")
     p.add_argument("--keywords", nargs="+", help="Mots-clés pour trouver le dossier")
@@ -1104,6 +1340,7 @@ def main():
     bucket_prefix = getattr(args, "bucket_prefix", "_Good/Experiment")
     top_states    = getattr(args, "top_states", 6)
     dry_run       = getattr(args, "dry_run", False)
+    dem_ref       = getattr(args, "dem_ref", "first")
     bucket_hf     = f"hf://buckets/{BUCKET_ID}/{bucket_prefix}"
 
     # ── Résolution du mode et de la liste d'expériences ─────────────────────
@@ -1129,8 +1366,8 @@ def main():
             sys.exit(1)
 
     elif args.subcommand == "compare":
-        mode        = "compare"
-        keywords    = args.keywords
+        mode     = "compare"
+        keywords = args.keywords
         experiments = find_all_experiments_by_keywords(bucket_hf, keywords)
         if not experiments:
             print(f"❌ Aucune expérience trouvée pour {keywords}")
@@ -1184,7 +1421,8 @@ def main():
 
     # ── Exécution ────────────────────────────────────────────────────────────
     if mode == "compare":
-        run_comparison(experiments, keywords, bucket_prefix, top_states)
+        run_comparison(experiments, keywords, bucket_prefix, top_states, dem_ref=dem_ref)
+        
     else:
         for path_hf, short in experiments:
             try:
