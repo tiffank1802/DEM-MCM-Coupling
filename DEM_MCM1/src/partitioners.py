@@ -2050,61 +2050,99 @@ class PhysicsAwarePartitioner(BasePartitioner):
     K-means sur des features physiques (position + vitesse optionnelle).
 
     Par défaut, fonctionne sur les positions normalisées (équivalent Voronoï).
-    Si use_velocities=True, le clustering utilise aussi les composantes vx, vy, vz.
+    Si use_velocities=True, le clustering utilise aussi la vitesse, selon velocity_mode.
+
+    velocity_mode = "norm"       → 4D : (x, y, z, ‖v‖)
+    velocity_mode = "components" → 6D : (x, y, z, vx, vy, vz)
 
     Usage:
-        part = PhysicsAwarePartitioner(n_cells=125, velocity_weight=0.5)
+        part = PhysicsAwarePartitioner(n_cells=125, velocity_weight=0.5, velocity_mode="norm")
         part.fit(positions)                    # positions seules
         part.fit_with_physics(positions, velocities)  # positions + vitesses
     """
 
-    def __init__(self, n_cells=125, velocity_weight=0.5, random_state=42):
+    def __init__(self, n_cells=125, velocity_weight=0.5, random_state=42, velocity_mode="norm"):
         super().__init__()
-        self._n_cells:int = n_cells
-        self.velocity_weight:float = velocity_weight
-        self.random_state:int  = random_state
-        self._centroids:np.ndarray = None #type:ignore
+        self._n_cells: int = n_cells
+        self.velocity_weight: float = velocity_weight
+        self.random_state: int = random_state
+        self._centroids: np.ndarray = None
         self._tree = None
-        self._mean:np.ndarray = None #type: ignore
-        self._std:np.ndarray = None #type: ignore
-        self._n_features:int = 3
+        self._mean: np.ndarray = None
+        self._std: np.ndarray = None
+        self._n_features: int = 3
         self._splitting_method: str = "physics"
-        self.use_velocity=False
-        self.features: np.ndarray = None 
+        self.use_velocity = False
+        self.velocity_mode: str = velocity_mode  # "norm" ou "components"
+        self.features: np.ndarray = None
+
+        # Attributs de données DEM – remplis par l'extérieur ou par fit_with_physics
+        self.dem_velocities = None
+        self.dem_diameters = None
+        self.particle_diameters = None
 
     @property
-    def n_cells(self:PhysicsAwarePartitioner)-> int:
+    def n_cells(self) -> int:
         return self._n_cells
 
     @property
-    def label(self:PhysicsAwarePartitioner)-> str:
-        suffix = "pos" if self.velocity_weight == 0 else "withvel"
+    def label(self) -> str:
+        if not self.use_velocity or self._n_features == 3:
+            suffix = "pos"
+        elif self.velocity_mode == "norm":
+            suffix = "normvel"
+        else:
+            suffix = "compvel"
         return f"physics_{self._n_cells}cells_{suffix}_vw{self.velocity_weight}"
 
-    def fit(self, coordinates: np.ndarray, use_velocities: bool = None) -> PhysicsAwarePartitioner:
-        use_velocities = self.use_velocity
+    # ------------------------------------------------------------------
+    def fit(self, coordinates: np.ndarray, use_velocities: bool = None) -> "PhysicsAwarePartitioner":
+        """
+        Fit le partitionneur. Si use_velocities est True et self.dem_velocities
+        est disponible, construit les features selon velocity_mode.
+        Sinon, fit sur les positions seules.
+        """
         coordinates = np.asarray(coordinates)
+        use_velocities = self.use_velocity if use_velocities is None else use_velocities
 
         if use_velocities and self.dem_velocities is not None:
             vel = np.asarray(self.dem_velocities)
-            if len(vel) == len(coordinates):
-                # ✅ Module du vecteur vitesse : (N,3) → (N,1)
-                speed = np.linalg.norm(vel, axis=1, keepdims=True)  # ‖v‖ = sqrt(vx²+vy²+vz²)
-                self.features = np.hstack([coordinates, speed])  # (N, 4)
-                self._n_features = 4
-                return self._fit_internal(self.features, n_pos=3)
+            if len(vel) != len(coordinates):
+                print(
+                    f"⚠️ Mismatch velocities ({len(vel)}) vs coordinates "
+                    f"({len(coordinates)}), fallback positions only"
+                )
             else:
-                print(f"⚠️ Mismatch velocities ({len(vel)}) vs coordinates ({len(coordinates)}), fallback positions only")
+                if self.velocity_mode == "norm":
+                    # 4D : (x, y, z, ‖v‖)
+                    speed = np.linalg.norm(vel, axis=1, keepdims=True)
+                    self.features = np.hstack([coordinates, speed])
+                    self._n_features = 4
+                    return self._fit_internal(self.features, n_pos=3)
 
+                elif self.velocity_mode == "components":
+                    # 6D : (x, y, z, vx, vy, vz)
+                    self.features = np.hstack([coordinates, vel])
+                    self._n_features = 6
+                    return self._fit_internal(self.features, n_pos=3)
+
+                else:
+                    raise ValueError(
+                        f"velocity_mode inconnu : '{self.velocity_mode}'. "
+                        "Choisir 'norm' ou 'components'."
+                    )
+
+        # Fallback : positions seules (3D)
         self.features = coordinates
+        self._n_features = 3
         return self._fit_internal(coordinates, n_pos=3)
 
-    
-
-    def _fit_internal(self: PhysicsAwarePartitioner, features: np.ndarray, n_pos: int = 3) -> PhysicsAwarePartitioner:
-        from sklearn.cluster import MiniBatchKMeans
-        from scipy.spatial import cKDTree
-
+    def _fit_internal(self, features: np.ndarray, n_pos: int = 3) -> "PhysicsAwarePartitioner":
+        """
+        Normalise, applique les poids, puis lance un MiniBatchKMeans.
+        n_pos : nombre de colonnes de position (3) ; les colonnes suivantes
+                reçoivent le poids velocity_weight.
+        """
         self._n_features = features.shape[1]
 
         # Normalisation
@@ -2114,16 +2152,13 @@ class PhysicsAwarePartitioner(BasePartitioner):
 
         X = (features - self._mean) / self._std
 
-        # ✅ Créer un vecteur de poids explicite
+        # Poids explicites pour les dimensions de vitesse
         if X.shape[1] > n_pos:
-            # Poids = [1, 1, 1, velocity_weight] pour (x, y, z, speed)
             weights = np.ones(X.shape[1])
             weights[n_pos:] = self.velocity_weight
-            
-            # Appliquer les poids element-wise
-            X = X * weights[np.newaxis, :]  # Broadcasting sur toutes les samples
+            X = X * weights[np.newaxis, :]
 
-        # Sous-échantillonner
+        # Sous-échantillonnage si nécessaire
         rng = np.random.RandomState(self.random_state)
         if len(X) > 500_000:
             idx = rng.choice(len(X), 500_000, replace=False)
@@ -2142,62 +2177,98 @@ class PhysicsAwarePartitioner(BasePartitioner):
         self._tree = cKDTree(self._centroids)
         return self
 
+    # ------------------------------------------------------------------
     def compute_states(self, x, y, z, vx=None, vy=None, vz=None) -> np.ndarray:
+        """
+        Calcule l'état (indice de cellule) pour des points donnés.
+        Si le modèle a été entraîné avec de la vitesse, il faut fournir
+        vx, vy, vz (sinon padding à zéro).
+        """
         pos = np.column_stack([np.asarray(x), np.asarray(y), np.asarray(z)])
 
-        if self._n_features == 4 and vx is not None and vy is not None and vz is not None:
-            vel = np.column_stack([np.asarray(vx), np.asarray(vy), np.asarray(vz)])
-            speed = np.linalg.norm(vel, axis=1, keepdims=True)  # (N,1)
+        if self._n_features == 4:
+            # Mode norm : besoin de ‖v‖
+            if vx is not None and vy is not None and vz is not None:
+                vel = np.column_stack([np.asarray(vx), np.asarray(vy), np.asarray(vz)])
+                speed = np.linalg.norm(vel, axis=1, keepdims=True)
+            else:
+                speed = np.zeros((len(pos), 1))
             features = np.hstack([pos, speed])
-        elif self._n_features == 4:
-            # Modèle entraîné avec ‖v‖ mais pas fourni → padding zéro
-            features = np.hstack([pos, np.zeros((len(pos), 1))])
+
+        elif self._n_features == 6:
+            # Mode components : besoin de (vx, vy, vz)
+            if vx is not None and vy is not None and vz is not None:
+                vel = np.column_stack([np.asarray(vx), np.asarray(vy), np.asarray(vz)])
+                features = np.hstack([pos, vel])
+            else:
+                features = np.hstack([pos, np.zeros((len(pos), 3))])
+                print("⚠️ velocity_mode='components' mais vitesses absentes → padding zéro")
+
         else:
+            # Mode positions seules (3D)
             features = pos
 
         X = (features - self._mean) / self._std
-        
-        # ✅ Appliquer les mêmes poids qu'au fit
+
         if X.shape[1] > 3:
             weights = np.ones(X.shape[1])
             weights[3:] = self.velocity_weight
             X = X * weights[np.newaxis, :]
-        
-        _, indices = self._tree.query(X)
 
+        _, indices = self._tree.query(X)
         self.states = indices.astype(np.int64)
         return self.states
 
-    def _save_data(self:PhysicsAwarePartitioner, path:str)->None:
+    # ------------------------------------------------------------------
+    def _save_data(self, path: str) -> None:
         np.save(os.path.join(path, "centroids.npy"), self._centroids)
         np.save(os.path.join(path, "mean.npy"), self._mean)
         np.save(os.path.join(path, "std.npy"), self._std)
         with open(os.path.join(path, "physics_params.json"), "w") as f:
-            json.dump({"n_features": self._n_features}, f)
+            json.dump(
+                {
+                    "n_features": self._n_features,
+                    "velocity_mode": self.velocity_mode,
+                },
+                f,
+            )
 
-    def _load_data(self:PhysicsAwarePartitioner, path: str)->None:
-        from scipy.spatial import cKDTree # type: ignore # type:ignore
-
+    def _load_data(self, path: str) -> None:
         self._centroids = np.load(os.path.join(path, "centroids.npy"))
         self._mean = np.load(os.path.join(path, "mean.npy"))
         self._std = np.load(os.path.join(path, "std.npy"))
         self._tree = cKDTree(self._centroids)
         self._n_cells = len(self._centroids)
         with open(os.path.join(path, "physics_params.json")) as f:
-            self._n_features = json.load(f)["n_features"]
+            data = json.load(f)
+            self._n_features = data["n_features"]
+            self.velocity_mode = data.get("velocity_mode", "norm")  # rétrocompatibilité
 
-    def visualize(self:PhysicsAwarePartitioner, x: np.ndarray, y: np.ndarray, z: np.ndarray,vx: np.ndarray=None,vy: np.ndarray=None,vz: np.ndarray=None, plot_types: list=["3d", "2d_xy"], save_prefix: str="partition_visualization", # type: ignore
-                  particle_diameters=None, use_diameter: bool=True, **kwargs: dict)-> dict:
+    # ------------------------------------------------------------------
+    # Méthodes de visualisation et utilitaires (inchangées dans leur logique)
+    # ------------------------------------------------------------------
+    def visualize(
+        self,
+        x: np.ndarray,
+        y: np.ndarray,
+        z: np.ndarray,
+        vx: np.ndarray = None,
+        vy: np.ndarray = None,
+        vz: np.ndarray = None,
+        plot_types: list = ["3d", "2d_xy"],
+        save_prefix: str = "partition_visualization",
+        particle_diameters=None,
+        use_diameter: bool = True,
+        **kwargs,
+    ) -> dict:
         """
         Génère des visualisations - NE refitte PAS si déjà fitté.
         """
-        
-        
         if self._centroids is None:
             raise ValueError("Partitioner not fitted! Call fit_with_physics() first.")
-        
-        if np.array([vx,vy,vz]).all() is not None:
-            states=self.compute_states(x,y,z,vx,vy,vz)
+
+        if all(v is not None for v in [vx, vy, vz]):
+            states = self.compute_states(x, y, z, vx, vy, vz)
         else:
             states = self.compute_states(x, y, z)
 
@@ -2205,9 +2276,9 @@ class PhysicsAwarePartitioner(BasePartitioner):
         if use_diameter:
             if particle_diameters is not None:
                 diameters = np.asarray(particle_diameters)
-            elif hasattr(self, 'particle_diameters') and self.particle_diameters is not None:
+            elif hasattr(self, "particle_diameters") and self.particle_diameters is not None:
                 diameters = np.asarray(self.particle_diameters)
-            elif hasattr(self, 'dem_diameters') and self.dem_diameters is not None:
+            elif hasattr(self, "dem_diameters") and self.dem_diameters is not None:
                 if len(self.dem_diameters) == len(x):
                     diameters = np.asarray(self.dem_diameters)
 
@@ -2224,75 +2295,77 @@ class PhysicsAwarePartitioner(BasePartitioner):
 
         if "2d_xy" in plot_types:
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
-
             info = f"Méthode de découpage : {self._splitting_method}"
-            fig.text(0.02, 0.01, info, fontsize=9, style='italic', alpha=0.7,
-                     transform=fig.transFigure)
+            fig.text(0.02, 0.01, info, fontsize=9, style="italic", alpha=0.7, transform=fig.transFigure)
 
-            sc1 = ax1.scatter(x, y, c=states, cmap='tab20', s=sizes, alpha=0.7,
-                              edgecolors='black', linewidth=0.3)
+            sc1 = ax1.scatter(
+                x, y, c=states, cmap="tab20", s=sizes, alpha=0.7,
+                edgecolors="black", linewidth=0.3,
+            )
             ax1.set_xlim(xmin, xmax)
             ax1.set_ylim(ymin, ymax)
-            ax1.set_xlabel('X (m)', fontsize=12, fontweight='bold')
-            ax1.set_ylabel('Y (m)', fontsize=12, fontweight='bold')
-            ax1.set_title(f'Vue XY - {self.label}', fontsize=14, fontweight='bold')
-            ax1.grid(True, alpha=0.3, linestyle='--')
-            ax1.set_aspect('equal', adjustable='box')
-            plt.colorbar(sc1, ax=ax1, label='État', shrink=0.8)
+            ax1.set_xlabel("X (m)", fontsize=12, fontweight="bold")
+            ax1.set_ylabel("Y (m)", fontsize=12, fontweight="bold")
+            ax1.set_title(f"Vue XY - {self.label}", fontsize=14, fontweight="bold")
+            ax1.grid(True, alpha=0.3, linestyle="--")
+            ax1.set_aspect("equal", adjustable="box")
+            plt.colorbar(sc1, ax=ax1, label="État", shrink=0.8)
 
-            sc2 = ax2.scatter(y, z, c=states, cmap='tab20', s=sizes, alpha=0.7,
-                              edgecolors='black', linewidth=0.3)
+            sc2 = ax2.scatter(
+                y, z, c=states, cmap="tab20", s=sizes, alpha=0.7,
+                edgecolors="black", linewidth=0.3,
+            )
             ax2.set_xlim(ymin, ymax)
             ax2.set_ylim(zmin, zmax)
-            ax2.set_xlabel('Y (m)', fontsize=12, fontweight='bold')
-            ax2.set_ylabel('Z (m)', fontsize=12, fontweight='bold')
-            ax2.set_title(f'Vue YZ - {self.label}', fontsize=14, fontweight='bold')
-            ax2.grid(True, alpha=0.3, linestyle='--')
-            ax2.set_aspect('equal', adjustable='box')
-            plt.colorbar(sc2, ax=ax2, label='État', shrink=0.8)
+            ax2.set_xlabel("Y (m)", fontsize=12, fontweight="bold")
+            ax2.set_ylabel("Z (m)", fontsize=12, fontweight="bold")
+            ax2.set_title(f"Vue YZ - {self.label}", fontsize=14, fontweight="bold")
+            ax2.grid(True, alpha=0.3, linestyle="--")
+            ax2.set_aspect("equal", adjustable="box")
+            plt.colorbar(sc2, ax=ax2, label="État", shrink=0.8)
 
             plt.tight_layout(rect=(0, 0.03, 1, 1))
             buf = io.BytesIO()
-            plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+            plt.savefig(buf, format="png", dpi=150, bbox_inches="tight")
             buf.seek(0)
             image_data[f"{save_prefix}_2d.png"] = buf.getvalue()
             plt.close()
 
         if "3d" in plot_types:
             fig = plt.figure(figsize=(12, 10))
-
             info = f"Méthode de découpage : {self._splitting_method}"
-            fig.text(0.02, 0.01, info, fontsize=9, style='italic', alpha=0.7,
-                     transform=fig.transFigure)
+            fig.text(0.02, 0.01, info, fontsize=9, style="italic", alpha=0.7, transform=fig.transFigure)
 
-            ax = fig.add_subplot(111, projection='3d')
-            sc = ax.scatter(x, y, z, c=states, cmap='tab20', s=sizes, alpha=0.7, # type: ignore
-                           edgecolors='black', linewidth=0.3)
+            ax = fig.add_subplot(111, projection="3d")
+            sc = ax.scatter(
+                x, y, z, c=states, cmap="tab20", s=sizes, alpha=0.7,
+                edgecolors="black", linewidth=0.3,
+            )
             ax.set_xlim(xmin, xmax)
             ax.set_ylim(ymin, ymax)
             ax.set_zlim(zmin, zmax)
-            ax.set_xlabel('X (m)', fontsize=10)
-            ax.set_ylabel('Y (m)', fontsize=10)
-            ax.set_zlabel('Z (m)', fontsize=10)
-            ax.set_title(f'Vue 3D - {self.label}', fontsize=14, fontweight='bold')
-            plt.colorbar(sc, ax=ax, label='État', shrink=0.6)
+            ax.set_xlabel("X (m)", fontsize=10)
+            ax.set_ylabel("Y (m)", fontsize=10)
+            ax.set_zlabel("Z (m)", fontsize=10)
+            ax.set_title(f"Vue 3D - {self.label}", fontsize=14, fontweight="bold")
+            plt.colorbar(sc, ax=ax, label="État", shrink=0.6)
             buf = io.BytesIO()
-            plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+            plt.savefig(buf, format="png", dpi=150, bbox_inches="tight")
             buf.seek(0)
             image_data[f"{save_prefix}_3d.png"] = buf.getvalue()
             plt.close()
 
         return image_data
 
-    def _get_cell_polygons_2d(self:PhysicsAwarePartitioner, view: str='xy')-> list:
+    def _get_cell_polygons_2d(self, view: str = "xy") -> list:
         pos_centroids = self._centroids[:, :3]
-        if view == 'xy':
+        if view == "xy":
             pts_2d = pos_centroids[:, :2]
-        elif view == 'yz':
+        elif view == "yz":
             pts_2d = pos_centroids[:, 1:]
         else:
             return []
-        vor = Voronoi(pts_2d)# Voronoi de scipy.spatial
+        vor = Voronoi(pts_2d)
         results = []
         for state_id in range(self._n_cells):
             region_idx = vor.point_region[state_id]
@@ -2303,7 +2376,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
             results.append((state_id, polygon_pts))
         return results
 
-    def _get_cell_polyhedra_3d(self:PhysicsAwarePartitioner)-> list:
+    def _get_cell_polyhedra_3d(self) -> list:
         pos_centroids = self._centroids[:, :3]
         vor = Voronoi(pos_centroids)
         results = []
@@ -2319,7 +2392,6 @@ class PhysicsAwarePartitioner(BasePartitioner):
             faces = hull.simplices.tolist()
             results.append((state_id, vertices, faces))
         return results
-
 import os
 import json
 import pickle
