@@ -22,12 +22,16 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from scipy.spatial import ConvexHull
 
 import matplotlib
 matplotlib.use("Agg")
+from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
+import seaborn as sns
+import pandas as pd
 import pyvista as pv
 
 asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
@@ -36,6 +40,8 @@ pv.OFF_SCREEN = True
 # ── Imports projet ────────────────────────────────────────────────────────────
 from huggingface_hub import HfFileSystem
 from DEM_MCM1.src.partitioners import create_partitioner
+from DEM_MCM1.src.run_sweep import _detect_species  # même fonction que dans run_experiment — ne pas dupliquer
+
 from DEM_MCM1.src.utils import load_parquet_as_timestep_dict
 from DEM_MCM1.src.bucket_io import (
     BUCKET_ID,
@@ -83,49 +89,66 @@ DEFAULT_COLOR = {"dem": "#607D8B", "markov": "#9C27B0"}
 # RECHERCHE DE DOSSIER DANS LE BUCKET
 # ═════════════════════════════════════════════════════════════════════════════
 
-def find_experiment_path(
+def find_experiment_paths(
     bucket_base_hf: str,
     folder_name: str = None,
     keywords: list[str] = None,
-) -> tuple[str, str]:
+) -> list[tuple[str, str]]:
     """
-    Retourne (hf_path, short_name) du dossier d'expérience.
+    Retourne une liste de (hf_path, short_name) pour TOUS les dossiers d'expérience trouvés.
     Cherche dans tous les sous-dossiers de catégorie, puis à la racine (fallback).
 
     Priority : folder_name exact > keywords
     """
-    def _search_in(base: str) -> str | None:
+    def _search_in(base: str) -> list[str]:
+        """Retourne TOUS les chemins correspondants dans base"""
+        results = []
         try:
             items = fs.ls(base)
         except FileNotFoundError:
-            return None
+            return results
+        
         for item in items:
             if item["type"] != "directory":
                 continue
             name = item["name"].split("/")[-1]
+            
+            # Vérifier si ça correspond aux critères
+            matches = False
             if folder_name and name == folder_name:
-                return item["name"]
-            if keywords and all(k in name for k in keywords):
-                return item["name"]
-        return None
+                matches = True
+            elif keywords and all(k in name for k in keywords):
+                matches = True
+            
+            if matches:
+                results.append(item["name"])
+        
+        return results
 
+    all_found = []
+    
     # 1. Chercher dans chaque sous-dossier de catégorie
     for cat in ALL_CATEGORIES:
         found = _search_in(f"{bucket_base_hf}/{cat}")
-        if found:
-            short = found.split("/")[-1]
-            return f"hf://{found}", short
+        for path in found:
+            short = path.split("/")[-1]
+            all_found.append((f"hf://{path}", short))
+    
+    # 2. Fallback racine (avant migration) - seulement si rien trouvé dans les catégories
+    if not all_found:
+        found = _search_in(bucket_base_hf.replace("hf://", ""))
+        for path in found:
+            short = path.split("/")[-1]
+            all_found.append((f"hf://{path}", short))
+    
+    if not all_found:
+        raise FileNotFoundError(
+            f"Aucun dossier trouvé pour "
+            f"{'folder=' + folder_name if folder_name else 'keywords=' + str(keywords)}"
+        )
+    
+    return all_found
 
-    # 2. Fallback racine (avant migration)
-    found = _search_in(bucket_base_hf.replace("hf://", ""))
-    if found:
-        short = found.split("/")[-1]
-        return f"hf://{found}", short
-
-    raise FileNotFoundError(
-        f"Aucun dossier trouvé pour "
-        f"{'folder=' + folder_name if folder_name else 'keywords=' + str(keywords)}"
-    )
 
 
 def list_category_paths(bucket_base_hf: str, category: str) -> list[tuple[str, str]]:
@@ -157,7 +180,6 @@ def _load_json(path_hf: str, filename: str) -> dict:
     with fs.open(f"{path_hf}/{filename}", "r") as f:
         return json.load(f)
 
-
 def load_experiment(path_hf: str) -> dict:
     """
     Charge config, stats et données par espèce depuis le bucket.
@@ -174,7 +196,15 @@ def load_experiment(path_hf: str) -> dict:
         times    = _load_npy(path_hf, f"times_{sp}.npy")
         species_data[sp] = {"P_raw": P, "S_matrix": S_matrix, "times": times}
 
-    return {"config": config, "stats": stats, "species": species_data}
+    # Charger la matrice des états par particule (pour fig_mesh)
+    matrix = None
+    try:
+        matrix = _load_npy(path_hf, "states_matrix.npy")
+    except FileNotFoundError:
+        print(f"   ⚠️  states_matrix.npy introuvable dans {path_hf}")
+
+    return {"config": config, "stats": stats, "species": species_data, "matrix": matrix}
+
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -210,7 +240,8 @@ def prepare_species(exp: dict) -> dict:
     Retourne un dict enrichi par espèce.
     """
     config = exp["config"]
-    start  = config.get("start_index", 250)
+    # start  = config.get("start_index", 250)
+    start  =0
     tau    = config.get("tau", 50)
     out    = {}
 
@@ -1068,91 +1099,505 @@ def fig_entropy_total(species_data: dict, short_name: str, out_dir: Path):
     plt.close(fig)
     print("   💾 entropie_totale.png")
 
+def fig_teneur(
+    species_data: dict,
+    short_name: str,
+    out_dir: Path,
+):
+    sps = list(species_data.keys())
+    if len(sps) < 2:
+        print("   ⚠️ fig_teneur annulée : Moins de 2 espèces trouvées.")
+        return
 
-# ── Maillage 3D ───────────────────────────────────────────────────────────────
-def fig_mesh(exp, df_start, short_name, out_dir_img, out_dir_files):
-    config    = exp["config"]
-    start     = config.get("start_index", 250)
+    sp_a, sp_b = sps[0], sps[1]
+    da, db = species_data[sp_a], species_data[sp_b]
 
-    coords = df_start[["coordinates:0", "coordinates:1", "coordinates:2"]].to_numpy()
+    # squeeze() comme dans fig_states_by_species pour éviter les dims fantômes
+    S_d_a = np.asarray(da["S_dem"]).squeeze()
+    S_d_b = np.asarray(db["S_dem"]).squeeze()
+    S_m_a = np.asarray(da["traj_markov"]).squeeze()
+    S_m_b = np.asarray(db["traj_markov"]).squeeze()
 
-    # Construire cell_ids pour TOUTES les espèces combinées
-    # On utilise la première espèce disponible pour assigner les cellules
-    # via le partitionneur, ou on somme toutes les S_start
-    all_species = list(exp["species"].keys())
+    t_d_a = np.asarray(da["times_dem"]).ravel()
+    t_d_b = np.asarray(db["times_dem"]).ravel()
+    t_m_a = np.asarray(da["times_markov"]).ravel()
+    t_m_b = np.asarray(db["times_markov"]).ravel()
+
+    n_d = min(len(t_d_a), len(t_d_b))
+    n_m = min(len(t_m_a), len(t_m_b))
+    t_d, t_m = t_d_a[:n_d], t_m_a[:n_m]
+
+    # activated est un masque booléen -> on récupère les vrais indices de cellules
+    active_indices = np.where(da["activated"])[0]
+    n_cells = len(active_indices)
+
+    tot_dem = S_d_a[:n_d] + S_d_b[:n_d]
+    teneur_dem = np.zeros(tot_dem.shape, dtype=float)
+    np.divide(S_d_a[:n_d], tot_dem, out=teneur_dem, where=tot_dem != 0)
+
+    tot_m = S_m_a[:n_m] + S_m_b[:n_m]
+    teneur_markov = np.zeros(tot_m.shape, dtype=float)
+    np.divide(S_m_a[:n_m], tot_m, out=teneur_markov, where=tot_m != 0)
+
+    # ── Construction d'un DataFrame long-format pour Seaborn ──────────────
+    rows = []
+    for cell in active_indices:
+        for t, val in zip(t_d, teneur_dem[:, cell].squeeze()):
+            rows.append({"Temps": t, "Teneur": val,
+                         "Cellule": f"Cellule {cell}", "Source": "DEM"})
+        for t, val in zip(t_m, teneur_markov[:, cell].squeeze()):
+            rows.append({"Temps": t, "Teneur": val,
+                         "Cellule": f"Cellule {cell}", "Source": "Markov"})
+    df = pd.DataFrame(rows)
+
+    # ── Style Seaborn ───────────────────────────────────────────────────
+    sns.set_theme(style="whitegrid", context="talk")
+    palette = sns.color_palette("viridis", n_colors=n_cells)
+
+    fig, ax = plt.subplots(figsize=(16, 8))
+
+    # DEM : traits pleins épais
+    sns.lineplot(
+        data=df[df["Source"] == "DEM"], x="Temps", y="Teneur",
+        hue="Cellule", palette=palette, linewidth=2.5, alpha=0.5,
+        ax=ax, legend=True, zorder=3,
+    )
+    # Markov : pointillés avec marqueurs, même palette, légende désactivée
+    # pour ne pas dupliquer les entrées
+    sns.lineplot(
+        data=df[df["Source"] == "Markov"], x="Temps", y="Teneur",
+        hue="Cellule", palette=palette, linewidth=1.6, alpha=0.9,
+        style="Source", markers=["o"], dashes=[(2, 2)], markersize=6,
+        ax=ax, legend=False, zorder=2,
+    )
+
+    ax.set_title(f"Teneur en {sp_a} par cellule ({sp_a} + {sp_b})\n{short_name}",
+                 fontsize=18, fontweight="bold", pad=20)
+    ax.set_xlabel("Temps (pas)", fontsize=14)
+    ax.set_ylabel(f"Teneur en {sp_a} (fraction)", fontsize=14)
+    ax.set_ylim(0, 1)
+    ax.tick_params(labelsize=12)
+
+    # Légende : cellules (couleur) + rappel du style de trait DEM/Markov
+    handles, labels = ax.get_legend_handles_labels()
+    style_handles = [
+        Line2D([0], [0], color="black", lw=2.5, linestyle="-", label="DEM"),
+        Line2D([0], [0], color="black", lw=1.6, linestyle="--", marker="o",
+               markersize=6, label="Markov"),
+    ]
+    ax.legend(
+        handles=handles + style_handles,
+        labels=labels + ["DEM", "Markov"],
+        title="Cellule / Source",
+        fontsize=11, title_fontsize=12,
+        loc="center left", bbox_to_anchor=(1.02, 0.5),
+        borderaxespad=0,
+    )
+
+    sns.despine(fig)
+    fig.tight_layout()
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_dir / "teneur.png", bbox_inches="tight", dpi=150)
+    plt.close(fig)
+    print("   💾 teneur.png")
+
+def fig_compaction_population(volumes_dict: dict, short_name: str, out_dir: Path):
+    """
+    Génère des graphiques explicites séparés pour comparer le volume des partitions,
+    le volume des particules et la compacité résultante.
+    """
+    valid_clusters = {int(k): v for k, v in volumes_dict.items() if "error" not in v and v.get("volume_enveloppe", 0) > 0}
     
-    # Récupérer S_start pour chaque espèce et construire un cell_ids global
-    # en supposant que les particules sont ordonnées par espèce dans le parquet
-    phase_map = {}  # phase_id -> species_name
-    if "Particle_Phase_ID" in df_start.columns:
-        phases = sorted(df_start["Particle_Phase_ID"].unique())
-        print(f"      Particle_Phase_ID values: {phases}")
-        for i, sp in enumerate(all_species):
-            if i < len(phases):
-                phase_map[phases[i]] = sp
+    if not valid_clusters:
+        print("      ⚠️ Aucun cluster valide pour générer les graphiques de volumes.")
+        return
+        
+    cluster_ids = sorted(valid_clusters.keys())
+    v_enveloppe = [valid_clusters[cid]["volume_enveloppe"] for cid in cluster_ids]
+    v_particules = [valid_clusters[cid]["volume_particules_total"] for cid in cluster_ids]
+    compacite = [valid_clusters[cid]["compaction_locale"] for cid in cluster_ids]
+    
+    x = np.arange(len(cluster_ids))
+    width = 0.35
+    
+    # ══════════════════════════════════════════════════════════════════════
+    # IMAGE 1 : COMPARAISON DES VOLUMES (Partition vs Matière)
+    # ══════════════════════════════════════════════════════════════════════
+    fig1, ax_vol = plt.subplots(figsize=(11, 5))
+    
+    # Échelle logarithmique recommandée car le volume enveloppe est souvent beaucoup
+    # plus grand que le volume net des particules isolées
+    ax_vol.bar(x - width/2, v_enveloppe, width, label='Volume de la Partition ($V_{enveloppe}$)', color='#78909c')
+    ax_vol.bar(x + width/2, v_particules, width, label='Volume Réel des Particules ($V_{particules}$)', color='#1e88e5')
+    
+    ax_vol.set_yscale('log')
+    ax_vol.set_ylabel('Volume ($m^3$) - Échelle Log', fontweight='bold')
+    ax_vol.set_xlabel('Identifiant du Cluster (Cell ID)', fontweight='bold')
+    ax_vol.set_title(f'Comparaison des Volumes : Domaines vs Particules\n{short_name}', fontweight='bold')
+    ax_vol.set_xticks(x)
+    ax_vol.set_xticklabels([str(cid) for cid in cluster_ids])
+    ax_vol.legend(loc='upper right')
+    ax_vol.grid(True, which="both", linestyle='--', alpha=0.5)
+    
+    # Ajout du texte de la formule sur l'image
+    formule_vol = r"$V_{particules} = N_{0.008} \cdot V_{sph}(8mm) + N_{0.004} \cdot V_{sph}(4mm)$"
+    ax_vol.text(0.02, 0.05, formule_vol, transform=ax_vol.transAxes, fontsize=10, 
+                bbox=dict(boxstyle="round,pad=0.3", fc="#f8f9fa", ec="#b0bec5", alpha=0.9))
+    
+    fig1.tight_layout()
+    fname_vol = f"comparaison_volumes_details_{short_name}.png"
+    fig1.savefig(out_dir / fname_vol, bbox_inches="tight", dpi=150)
+    plt.close(fig1)
+    print(f"   💾 {fname_vol}")
+    
+    # ══════════════════════════════════════════════════════════════════════
+    # IMAGE 2 : COMPACITÉ LOCALE DÉDUITE
+    # ══════════════════════════════════════════════════════════════════════
+    fig2, ax_comp = plt.subplots(figsize=(11, 4.5))
+    
+    ax_comp.plot(x, compacite, marker='o', lw=2.5, color='#43a047', label='Compacité calculée $\phi_{locale}$')
+    ax_comp.axhline(y=0.64, color='#e53935', linestyle=':', lw=1.8, label='Limite théorique RCP (~0.64)')
+    
+    ax_comp.set_ylabel('Compacité $\phi$ (-)', fontweight='bold')
+    ax_comp.set_xlabel('Identifiant du Cluster (Cell ID)', fontweight='bold')
+    ax_comp.set_title(f'Analyse de la Compacité par Partition\n{short_name}', fontweight='bold')
+    ax_comp.set_xticks(x)
+    ax_comp.set_xticklabels([str(cid) for cid in cluster_ids])
+    ax_comp.set_ylim(0, 0.8)
+    ax_comp.legend(loc='upper right')
+    ax_comp.grid(True, linestyle='--', alpha=0.5)
+    
+    # Ajout du texte de la formule de compacité
+    formule_comp = r"$\phi_{locale} = \frac{V_{particules}}{V_{enveloppe}}$"
+    ax_comp.text(0.02, 0.05, formule_comp, transform=ax_comp.transAxes, fontsize=12,
+                 bbox=dict(boxstyle="round,pad=0.4", fc="#f8f9fa", ec="#b0bec5", alpha=0.9))
+    
+    fig2.tight_layout()
+    fname_comp = f"comparaison_compacite_details_{short_name}.png"
+    fig2.savefig(out_dir / fname_comp, bbox_inches="tight", dpi=150)
+    plt.close(fig2)
+    print(f"   💾 {fname_comp}")
 
-    all_cell_ids = np.full(len(df_start), -1, dtype=int)
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import json
+import pyvista as pv
+from scipy.spatial import ConvexHull
+from pathlib import Path
 
-    for sp in all_species:
-        times     = exp["species"][sp]["times"]
-        S_mat     = exp["species"][sp]["S_matrix"]
-        row_start = np.searchsorted(times, start)
-        S_start   = S_mat[row_start].astype(int)
+import shutil  # à ajouter en haut du fichier si pas déjà présent
 
-        if "Particle_Phase_ID" in df_start.columns:
-            # Trouver la phase correspondant à cette espèce
-            phase_id = next((k for k, v in phase_map.items() if v == sp), None)
-            if phase_id is not None:
-                mask    = df_start["Particle_Phase_ID"] == phase_id
-                df_sp   = df_start[mask]
-                ids_sp  = np.repeat(np.arange(len(S_start)), S_start)
-                if len(ids_sp) == len(df_sp):
-                    all_cell_ids[mask] = ids_sp
-                else:
-                    print(f"      ⚠️  {sp}: cell_ids={len(ids_sp)} vs df_sp={len(df_sp)}")
+
+def fig_mesh(
+    exp: dict,
+    df_start: pd.DataFrame,
+    short_name: str,
+    out_dir_img: Path,
+    out_dir_files: Path,
+    timestep_dict: dict | None = None,
+    frame_stride: int = 1,
+    series_theta_resolution: int = 8,
+    series_phi_resolution: int = 8,
+):
+    """
+    timestep_dict : dict {t_value -> DataFrame} donnant les positions réelles
+                    des particules à chaque pas de temps (ex: sortie de
+                    load_parquet_as_timestep_dict). Les clés doivent être dans
+                    la même unité que exp["species"][sp]["times"].
+    frame_stride  : ne garder qu'une frame sur N dans la série .vtp exportée
+                    (le label restant identique à toutes les frames, ce
+                    paramètre ne sert qu'à limiter le volume de fichiers et
+                    le temps d'exécution — pas de perte d'information sur le
+                    label).
+    """
+    config = exp["config"]
+    start  = config.get("start_index", 250)
+
+    # 1. Vérifications initiales des données
+    states_matrix = exp.get("matrix")  # Format attendu : (n_timesteps, n_particles)
+    if states_matrix is None:
+        print(f"   ⚠️  states_matrix.npy introuvable — maillage ignoré")
+        return
+
+    coord_cols = ["coordinates:0", "coordinates:1", "coordinates:2"]
+    missing_cols = [c for c in coord_cols if c not in df_start.columns]
+    if missing_cols:
+        print(f"   ⚠️  Colonnes manquantes dans df_start: {missing_cols} — maillage ignoré")
+        return
+
+    # Détection de la colonne de diamètre
+    diam_col = "Diameter" if "Diameter" in df_start.columns else ("diameter" if "diameter" in df_start.columns else None)
+    if diam_col is None:
+        print(f"   ⚠️  Colonne de diamètre introuvable dans df_start — Calcul précis de compacité impossible.")
+        return
+
+    coords = df_start[coord_cols].to_numpy()
+    diameters = df_start[diam_col].to_numpy()
+
+    # Identifiant stable de particule (indispensable pour réaligner les
+    # positions de chaque frame sur le même ordre que cell_ids/diameters)
+    id_candidates = ["id", "particle_id", "Particle_ID", "Particle_Id", "ID"]
+    id_col = next((c for c in id_candidates if c in df_start.columns), None)
+    if id_col is not None:
+        particle_ids = df_start[id_col].to_numpy()
+    else:
+        particle_ids = np.arange(len(df_start))
+        print(f"      ⚠️  Aucune colonne d'identifiant stable ('id'/'particle_id') dans df_start — "
+              f"on suppose que l'ordre des lignes est identique dans toutes les frames de timestep_dict.")
+        
+    first_species = next(iter(exp["species"]))
+    times         = exp["species"][first_species]["times"]
+
+    if states_matrix.shape[1] != len(df_start):
+        print(f"      ⚠️  Mismatch du nombre de particules (matrix vs df_start) — alignement requis")
+
+    # =========================================================================
+    # 🔄 EXPORT DE LA MATRICE TEMPORELLE COMPLÈTE
+    # =========================================================================
+    print(f"      📊 Extraction de la matrice temporelle complète...")
+    states_matrix_clean = np.squeeze(states_matrix)
+    n_timesteps, n_particles = states_matrix_clean.shape
+
+    npy_matrix_path = out_dir_files / f"matrix_cell_ids_evolution_{short_name}.npy"
+    np.save(npy_matrix_path, states_matrix_clean)
+
+    df_matrix = pd.DataFrame(
+        data=states_matrix_clean,
+        index=times[:n_timesteps],
+        columns=[f"Particule_{i}" for i in range(n_particles)]
+    )
+    df_matrix.index.name = "Temps"
+    csv_matrix_path = out_dir_files / f"matrix_cell_ids_evolution_{short_name}.csv"
+    df_matrix.to_csv(csv_matrix_path)
+    print(f"   💾 Matrice temporelle sauvegardée ({n_timesteps} pas x {n_particles} particules) [NPY & CSV]")
+
+    # =========================================================================
+    # 🏷️ LABEL DE PARTITION FIGÉ À L'INSTANT DE RÉFÉRENCE (START)
+    # =========================================================================
+    row_start = np.searchsorted(times, start)
+    if row_start >= len(times) or times[row_start] != start:
+        print(f"      ⚠️  Pas de timestep exact={start} dans 'times', utilisation de l'index le plus proche.")
+        row_start = min(row_start, len(times) - 1)
+
+    cell_ids = states_matrix_clean[row_start].astype(int)
+    print(f"      Focus instantané t={times[row_start]} : cell_ids={len(cell_ids)}  coords={len(coords)}  ✅")
+    print(f"      🔒 Label de partition figé à cet instant — appliqué identique à toutes les frames "
+          f"de la série temporelle (maillage fixe, particules mobiles).")
+
+    # =========================================================================
+    # 🎞️ EXPORT SÉRIE TEMPORELLE VTP (GLYPHES SPHÉRIQUES) + PVD (COMPRESSÉE EN .ZIP)
+    # =========================================================================
+    print(f"      🎞️  Génération de la série temporelle .vtp (glyphes sphériques) + .pvd...")
+
+    if timestep_dict is None:
+        print(f"      ⚠️  Aucun timestep_dict fourni : les particules resteront figées aux coordonnées "
+              f"de df_start dans la série .vtp (label constant + position constante = fichier statique répété).")
+        dict_keys_sorted = None
+    else:
+        dict_keys_sorted = np.array(sorted(timestep_dict.keys()))
+
+    def _lookup_frame_df(t_value):
+        """Retourne le DataFrame le plus proche de t_value dans timestep_dict, ou None."""
+        if dict_keys_sorted is None or len(dict_keys_sorted) == 0:
+            return None, None
+        idx = np.searchsorted(dict_keys_sorted, t_value)
+        candidates = [i for i in (idx - 1, idx) if 0 <= i < len(dict_keys_sorted)]
+        best_idx = min(candidates, key=lambda i: abs(dict_keys_sorted[i] - t_value))
+        key = dict_keys_sorted[best_idx]
+        return timestep_dict.get(key), key
+
+    tmp_series_dir = out_dir_files / f"_tmp_vtp_series_{short_name}"
+    tmp_series_dir.mkdir(parents=True, exist_ok=True)
+
+    # Géométrie du glyphe pour la série temporelle (résolution réduite par défaut
+    # pour limiter le poids des fichiers — la série statique mesh_3d_*.vtp plus
+    # bas garde une résolution plus fine)
+    sphere_geom_series = pv.Sphere(radius=0.5,
+                                    theta_resolution=series_theta_resolution,
+                                    phi_resolution=series_phi_resolution)
+
+    frame_indices = range(0, n_timesteps, max(1, frame_stride))
+    n_frames_written = 0
+    n_frames_missing = 0
+    pvd_entries = []
+    log_every = max(1, len(frame_indices) // 10)
+
+    for count, t_idx in enumerate(frame_indices):
+        t_value = float(times[t_idx])
+
+        if timestep_dict is not None:
+            df_t, matched_key = _lookup_frame_df(t_value)
         else:
-            # Fallback : filtrer par Diameter
-            median_d = df_start["Diameter"].median()
-            mask = (df_start["Diameter"] <= median_d) if sp == "small" \
-                   else (df_start["Diameter"] > median_d)
-            df_sp  = df_start[mask]
-            ids_sp = np.repeat(np.arange(len(S_start)), S_start)
-            if len(ids_sp) == len(df_sp):
-                all_cell_ids[mask.values] = ids_sp
-            else:
-                print(f"      ⚠️  {sp}: cell_ids={len(ids_sp)} vs df_sp={len(df_sp)}")
+            df_t, matched_key = None, None
 
-    unassigned = (all_cell_ids == -1).sum()
-    if unassigned > 0:
-        print(f"      ⚠️  {unassigned} particules non assignées → cellule 0")
-        all_cell_ids[all_cell_ids == -1] = 0
+        if df_t is None:
+            frame_coords = coords  # repli sur la position de référence
+            n_frames_missing += 1
+        elif id_col is not None and id_col in df_t.columns:
+            df_t_aligned = df_t.set_index(id_col).reindex(particle_ids)
+            if df_t_aligned[coord_cols].isna().any().any():
+                print(f"         ⚠️  Certaines particules absentes au pas t={t_value} (clé matchée={matched_key}) "
+                      f"— positions manquantes remplacées par la référence de df_start.")
+                df_t_aligned[coord_cols] = df_t_aligned[coord_cols].fillna(
+                    pd.DataFrame(coords, columns=coord_cols, index=df_t_aligned.index)
+                )
+            frame_coords = df_t_aligned[coord_cols].to_numpy()
+        else:
+            # Pas d'identifiant fiable : on suppose l'ordre des lignes identique à df_start
+            frame_coords = df_t[coord_cols].to_numpy()
 
-    cell_ids = all_cell_ids
-    print(f"      cell_ids={len(cell_ids)}  coords={len(coords)}  ✅")
+        frame_points = pv.PolyData(frame_coords)
+        frame_points.point_data["partition_label"] = cell_ids       # figé, identique pour toutes les frames
+        frame_points.point_data["particle_id"] = particle_ids
+        frame_points.point_data["Diameter"] = diameters
 
-    # --- reste inchangé à partir d'ici ---
+        frame_glyph = frame_points.glyph(geom=sphere_geom_series, orient=False, factor=1.0, scale="Diameter")
+
+        frame_name = f"frame_{t_idx:04d}.vtp"
+        frame_glyph.save(str(tmp_series_dir / frame_name))
+        pvd_entries.append((t_value, frame_name))
+        n_frames_written += 1
+
+        if count % log_every == 0:
+            print(f"         ...frame {count + 1}/{len(frame_indices)} écrite (t={t_value})")
+
+    if n_frames_missing:
+        print(f"      ⚠️  {n_frames_missing} frame(s) sans correspondance dans timestep_dict "
+              f"(position de repli utilisée).")
+
+    # Génération du fichier .pvd (collection ParaView)
+    pvd_lines = ['<?xml version="1.0"?>',
+                 '<VTKFile type="Collection" version="0.1">',
+                 '  <Collection>']
+    for t_val, fname in pvd_entries:
+        pvd_lines.append(f'    <DataSet timestep="{t_val}" file="{fname}"/>')
+    pvd_lines.append('  </Collection>')
+    pvd_lines.append('</VTKFile>')
+
+    pvd_path = tmp_series_dir / f"series_{short_name}.pvd"
+    pvd_path.write_text("\n".join(pvd_lines), encoding="utf-8")
+    print(f"      💾 {pvd_path.name} généré ({n_frames_written} frames référencées, stride={frame_stride})")
+
+    # Compression en .zip puis suppression du dossier non compressé
+    zip_base_path = out_dir_files / f"vtp_series_{short_name}"  # sans extension, make_archive l'ajoute
+    shutil.make_archive(
+        base_name=str(zip_base_path),
+        format="zip",
+        root_dir=str(tmp_series_dir.parent),
+        base_dir=tmp_series_dir.name,
+    )
+    shutil.rmtree(tmp_series_dir)
+    print(f"   💾 {zip_base_path.name}.zip (série .vtp + .pvd compressée, dossier temporaire supprimé)")
+
+    # =========================================================================
+    # CALCUL GÉOMÉTRIQUE POUR L'INSTANT DE RÉFÉRENCE (START)
+    # =========================================================================
+    v_individuel_particules = (4.0 / 3.0) * np.pi * (diameters / 2.0)**3
+
+    unique_cells = np.unique(cell_ids)
+    volumes_dict = {}
+    hulls_list = []
+
+    print(f"      📊 Analyse géométrique des {len(unique_cells)} domaines à l'instant t={start}...")
+
+    for c_id in unique_cells:
+        cluster_mask = (cell_ids == c_id)
+        cluster_coords = coords[cluster_mask]
+        cluster_diams = diameters[cluster_mask]
+        cluster_v_reels = v_individuel_particules[cluster_mask]
+
+        n_total = len(cluster_coords)
+        n_gros = int(np.sum(np.isclose(cluster_diams, 0.008, atol=1e-4)))
+        n_petits = int(np.sum(np.isclose(cluster_diams, 0.004, atol=1e-4)))
+        v_total_spheres = float(np.sum(cluster_v_reels))
+        fraction_gros = n_gros / n_total if n_total > 0 else 0.0
+
+        if n_total >= 4:
+            try:
+                hull = ConvexHull(cluster_coords)
+                v_mesh_hull = float(hull.volume)
+                compaction = v_total_spheres / v_mesh_hull if v_mesh_hull > 0 else 0.0
+
+                volumes_dict[int(c_id)] = {
+                    "volume_enveloppe": v_mesh_hull,
+                    "volume_particules_total": v_total_spheres,
+                    "compaction_locale": compaction,
+                    "n_total": n_total,
+                    "n_espece_008": n_gros,
+                    "n_espece_004": n_petits,
+                    "fraction_numerique_008": fraction_gros
+                }
+
+                n_faces = len(hull.simplices)
+                faces = np.column_stack((np.full(n_faces, 3), hull.simplices)).ravel()
+
+                hull_poly = pv.PolyData(hull.points, faces)
+                hull_poly.cell_data["cell_id"] = np.full(n_faces, c_id)
+                hull_poly.cell_data["cluster_volume"] = np.full(n_faces, v_mesh_hull)
+                hull_poly.cell_data["cluster_compaction"] = np.full(n_faces, compaction)
+                hull_poly.cell_data["fraction_008"] = np.full(n_faces, fraction_gros)
+
+                hulls_list.append(hull_poly)
+
+            except Exception as e:
+                volumes_dict[int(c_id)] = {"volume_enveloppe": 0.0, "n_total": n_total, "error": str(e)}
+        else:
+            volumes_dict[int(c_id)] = {"volume_enveloppe": 0.0, "n_total": n_total, "error": "Pas assez de points"}
+
+    # Sauvegarde du rapport JSON pour l'instant T
+    json_vol_path = out_dir_files / f"volumes_clusters_{short_name}_t{start}.json"
+    with open(json_vol_path, "w") as f:
+        json.dump(volumes_dict, f, indent=4)
+
+    # 3. Assemblage propre des enveloppes 3D
+    if hulls_list:
+        boundaries_poly = pv.PolyData()
+        for h in hulls_list:
+            boundaries_poly += h
+
+        if boundaries_poly.n_points > 0:
+            hulls_vtp_path = out_dir_files / f"boundaries_3d_{short_name}_t{start}.vtp"
+            boundaries_poly.save(str(hulls_vtp_path))
+            print(f"   💾 {hulls_vtp_path.name} (Surfaces ConvexHull enregistrées)")
+
+    # =========================================================================
+    # INJECTION DES SCALAIRES SUR LE MAILLAGE DES PARTICULES
+    # =========================================================================
+    vol_env_par_particule = np.zeros(len(cell_ids))
+    compaction_par_particule = np.zeros(len(cell_ids))
+    fraction_008_par_particule = np.zeros(len(cell_ids))
+
+    for c_id, data in volumes_dict.items():
+        if "error" not in data and data["volume_enveloppe"] > 0:
+            mask = (cell_ids == c_id)
+            vol_env_par_particule[mask] = data["volume_enveloppe"]
+            compaction_par_particule[mask] = data["compaction_locale"]
+            fraction_008_par_particule[mask] = data["fraction_numerique_008"]
+
     mesh = pv.PolyData(coords)
     mesh.point_data["cell_id"] = cell_ids
+    mesh.point_data["Diameter"] = diameters
+    mesh.point_data["cluster_volume_enveloppe"] = vol_env_par_particule
+    mesh.point_data["cluster_compaction"] = compaction_par_particule
+    mesh.point_data["cluster_fraction_grosses_particules"] = fraction_008_par_particule
 
-    if "Diameter" in df_start.columns:
-        mesh.point_data["Diameter"] = df_start["Diameter"].to_numpy()
-        sphere = pv.Sphere(radius=0.5, theta_resolution=12, phi_resolution=12)
-        glyph  = mesh.glyph(geom=sphere, orient=False, factor=1.0, scale="Diameter")
-        vtp_path = out_dir_files / f"mesh_3d_{short_name}.vtp"
-        glyph.save(str(vtp_path))
-        mesh_to_plot = glyph
-    else:
-        vtp_path = out_dir_files / f"mesh_3d_{short_name}.vtp"
-        mesh.save(str(vtp_path))
-        mesh_to_plot = mesh
+    # Application des tailles réelles sur les sphères 3D
+    sphere = pv.Sphere(radius=0.5, theta_resolution=12, phi_resolution=12)
+    glyph = mesh.glyph(geom=sphere, orient=False, factor=1.0, scale="Diameter")
+    vtp_path = out_dir_files / f"mesh_3d_{short_name}_t{start}.vtp"
+    glyph.save(str(vtp_path))
+    print(f"   💾 {vtp_path.name} (Particules enrichies enregistrées)")
 
-    print(f"   💾 {vtp_path.name}")
-
+    # =========================================================================
+    # VISUALISATIONS GRAPHIQUES ET HEATMAP D'ÉVOLUTION COMPLÈTE
+    # =========================================================================
     plotter = pv.Plotter(off_screen=True)
-    plotter.add_mesh(mesh_to_plot, scalars="cell_id", cmap="hsv",
-                     show_scalar_bar=True, scalar_bar_args={"title": "Cell ID"})
-    plotter.add_title(f"Maillage 3D — {short_name}", font_size=10)
-    fname_3d = f"mesh_3d_{short_name}.png"
+    plotter.add_mesh(glyph, scalars="cluster_compaction", cmap="viridis",
+                     show_scalar_bar=True, scalar_bar_args={"title": f"Compacite Locale (-) t={start}"})
+    plotter.add_title(f"Analyse de Compacite Multi-Especes — {short_name}", font_size=10)
+    fname_3d = f"mesh_3d_volume_{short_name}_t{start}.png"
     plotter.screenshot(str(out_dir_img / fname_3d))
     plotter.close()
     print(f"   💾 {fname_3d}")
@@ -1161,14 +1606,273 @@ def fig_mesh(exp, df_start, short_name, out_dir_img, out_dir_files):
     sc = ax.scatter(coords[:, 0], coords[:, 1], c=cell_ids,
                     cmap="hsv", s=12, alpha=0.85, edgecolors="none")
     plt.colorbar(sc, ax=ax, label="Cell ID")
-    ax.set_title(f"Maillage 2D — Projection XY\n{short_name}", fontweight="bold")
+    ax.set_title(f"Maillage 2D — Projection XY (t={start})\n{short_name}", fontweight="bold")
     ax.set_xlabel("x"); ax.set_ylabel("y")
     ax.set_aspect("equal")
-    fname_2d = f"mesh_2d_{short_name}.png"
+    fname_2d = f"mesh_2d_{short_name}_t{start}.png"
     fig.tight_layout()
     fig.savefig(out_dir_img / fname_2d, bbox_inches="tight")
     plt.close(fig)
     print(f"   💾 {fname_2d}")
+
+    fig, ax = plt.subplots(figsize=(11, 6))
+    im = ax.imshow(
+        states_matrix_clean,
+        aspect="auto",
+        cmap="hsv",
+        origin="lower",
+        extent=[0, n_particles, times[0], times[n_timesteps-1]]
+    )
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label("Cell ID assignée")
+    ax.set_title(f"Évolution de l'assignation des cellules par particule\n{short_name}", fontweight="bold")
+    ax.set_xlabel("Index de la particule")
+    ax.set_ylabel("Temps (pas)")
+    fname_heatmap = f"mesh_evolution_heatmap_{short_name}.png"
+    fig.tight_layout()
+    fig.savefig(out_dir_img / fname_heatmap, bbox_inches="tight")
+    plt.close(fig)
+    print(f"   💾 {fname_heatmap}")
+
+    try:
+        fig_compaction_population(volumes_dict, short_name, out_dir_img)
+    except NameError:
+        pass  # Si la fonction n'est pas définie globalement
+
+def fig_population_par_cellule(
+    sp: str,
+    sp_data: dict,
+    short_name: str,
+    out_dir: Path,
+):
+    """
+    Visualise l'évolution du nombre de particules dans chaque cellule au cours du temps.
+    Génère :
+    1. Un graphique temporel (courbes superposées)
+    2. Une heatmap de la distribution moyenne
+    """
+    S_dem       = np.asarray(sp_data["S_dem"]).squeeze()
+    times_dem   = np.asarray(sp_data["times_dem"]).ravel()
+    activated   = sp_data["activated"]
+    
+    # Filtrer uniquement les cellules activées
+    active_indices = np.where(activated)[0]
+    S_active = S_dem[:, active_indices]
+    
+    n_cells = len(active_indices)
+    
+    # ══════════════════════════════════════════════════════════════════════
+    # 1. Graphique temporel : évolution du nombre de particules par cellule
+    # ══════════════════════════════════════════════════════════════════════
+    fig, ax = plt.subplots(figsize=(14, 7))
+    
+    # Colormap pour distinguer les cellules
+    cmap = plt.cm.viridis
+    colors = [cmap(i / max(n_cells - 1, 1)) for i in range(n_cells)]
+    
+    # Tracer chaque cellule
+    for idx, cell in enumerate(active_indices):
+        ax.plot(
+            times_dem, S_active[:, idx],
+            "-", color=colors[idx], linewidth=1.2, alpha=0.7,
+            label=f"Cellule {cell}"
+        )
+    
+    ax.set_title(
+        f"Évolution du nombre de particules par cellule — espèce '{sp}'\n{short_name}",
+        fontweight="bold", fontsize=13
+    )
+    ax.set_xlabel("Temps (pas)", fontsize=11)
+    ax.set_ylabel("Nombre de particules", fontsize=11)
+    ax.legend(
+        fontsize=7, ncol=3, loc="upper right",
+        bbox_to_anchor=(1.0, 1.0),
+        title="Cellules activées"
+    )
+    ax.grid(True, alpha=0.3)
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{int(x)}"))
+    
+    fig.tight_layout()
+    fname_time = f"population_par_cellule_temps_{sp}.png"
+    fig.savefig(out_dir / fname_time, bbox_inches="tight", dpi=150)
+    plt.close(fig)
+    print(f"   💾 {fname_time}")
+    
+    # ══════════════════════════════════════════════════════════════════════
+    # 2. Heatmap : distribution moyenne des particules par cellule
+    # ══════════════════════════════════════════════════════════════════════
+    fig2, ax2 = plt.subplots(figsize=(10, 6))
+    
+    # Calculer la moyenne temporelle pour chaque cellule
+    mean_population = S_active.mean(axis=0)
+    std_population = S_active.std(axis=0)
+    
+    # Créer une barre horizontale pour chaque cellule
+    y_pos = np.arange(n_cells)
+    
+    # Barres avec erreur standard
+    bars = ax2.barh(
+        y_pos, mean_population,
+        xerr=std_population,
+        color=colors,
+        edgecolor='white',
+        linewidth=0.5,
+        alpha=0.85
+    )
+    
+    ax2.set_yticks(y_pos)
+    ax2.set_yticklabels([f"Cellule {cell}" for cell in active_indices], fontsize=9)
+    ax2.set_xlabel("Nombre moyen de particules (± écart-type)", fontsize=11)
+    ax2.set_title(
+        f"Distribution moyenne des particules par cellule — espèce '{sp}'\n{short_name}",
+        fontweight="bold", fontsize=13
+    )
+    ax2.grid(True, axis='x', alpha=0.3)
+    ax2.invert_yaxis()  # Cellule 0 en haut
+    
+    # Ajouter les valeurs numériques sur les barres
+    for idx, (bar, mean_val) in enumerate(zip(bars, mean_population)):
+        ax2.text(
+            bar.get_width() + std_population[idx] + 0.5,
+            bar.get_y() + bar.get_height()/2,
+            f"{mean_val:.1f}",
+            va='center', ha='left', fontsize=8, color='darkblue'
+        )
+    
+    fig2.tight_layout()
+    fname_heatmap = f"population_par_cellule_moyenne_{sp}.png"
+    fig2.savefig(out_dir / fname_heatmap, bbox_inches="tight", dpi=150)
+    plt.close(fig2)
+    print(f"   💾 {fname_heatmap}")
+    
+    # ══════════════════════════════════════════════════════════════════════
+    # 3. Graphique empilé (stacked area) : vue globale de la distribution
+    # ══════════════════════════════════════════════════════════════════════
+    fig3, ax3 = plt.subplots(figsize=(14, 7))
+    
+    # Limiter à un sous-ensemble de cellules si trop nombreuses (pour lisibilité)
+    max_cells_to_plot = min(n_cells, 20)
+    if n_cells > max_cells_to_plot:
+        # Prendre les cellules les plus peuplées
+        top_indices = np.argsort(mean_population)[::-1][:max_cells_to_plot]
+        S_plot = S_active[:, top_indices]
+        cells_plot = active_indices[top_indices]
+        colors_plot = [colors[i] for i in top_indices]
+        title_suffix = f" (top {max_cells_to_plot} cellules)"
+    else:
+        S_plot = S_active
+        cells_plot = active_indices
+        colors_plot = colors
+        title_suffix = ""
+    
+    ax3.stackplot(
+        times_dem, S_plot.T,
+        labels=[f"Cellule {cell}" for cell in cells_plot],
+        colors=colors_plot,
+        alpha=0.7
+    )
+    
+    ax3.set_title(
+        f"Répartition temporelle des particules par cellule{title_suffix} — espèce '{sp}'\n{short_name}",
+        fontweight="bold", fontsize=13
+    )
+    ax3.set_xlabel("Temps (pas)", fontsize=11)
+    ax3.set_ylabel("Nombre de particules", fontsize=11)
+    ax3.legend(
+        fontsize=7, ncol=3, loc="upper right",
+        bbox_to_anchor=(1.0, 1.0),
+        title="Cellules"
+    )
+    ax3.grid(True, alpha=0.3)
+    ax3.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{int(x)}"))
+    
+    fig3.tight_layout()
+    fname_stacked = f"population_par_cellule_stacked_{sp}.png"
+    fig3.savefig(out_dir / fname_stacked, bbox_inches="tight", dpi=150)
+    plt.close(fig3)
+    print(f"   💾 {fname_stacked}")
+    
+    # ══════════════════════════════════════════════════════════════════════
+    # 4. Export des données en CSV (tableau numérique)
+    # ══════════════════════════════════════════════════════════════════════
+    # Créer un DataFrame avec les données
+    df_population = pd.DataFrame(
+        S_active,
+        columns=[f"cellule_{cell}" for cell in active_indices],
+        index=times_dem
+    )
+    df_population.index.name = "temps"
+    
+    csv_path = out_dir / f"population_par_cellule_{sp}.csv"
+    df_population.to_csv(csv_path)
+    print(f"   💾 population_par_cellule_{sp}.csv")
+
+
+def fig_matrice_population_heatmap(
+    sp: str,
+    sp_data: dict,
+    short_name: str,
+    out_dir: Path,
+):
+    """
+    Crée une heatmap 2D (temps × cellules) montrant l'évolution de la population.
+    """
+    S_dem       = np.asarray(sp_data["S_dem"]).squeeze()
+    times_dem   = np.asarray(sp_data["times_dem"]).ravel()
+    activated   = sp_data["activated"]
+    
+    # Filtrer les cellules activées
+    active_indices = np.where(activated)[0]
+    S_active = S_dem[:, active_indices]
+    
+    # Sous-échantillonner le temps si trop de points (pour performance)
+    max_time_points = 500
+    if len(times_dem) > max_time_points:
+        step = len(times_dem) // max_time_points
+        S_plot = S_active[::step, :]
+        times_plot = times_dem[::step]
+    else:
+        S_plot = S_active
+        times_plot = times_dem
+    
+    # Créer la heatmap
+    fig, ax = plt.subplots(figsize=(14, 8))
+    
+    im = ax.imshow(
+        S_plot.T,  # Transposer pour avoir temps en x, cellules en y
+        aspect='auto',
+        cmap='viridis',
+        interpolation='nearest',
+        extent=[times_plot[0], times_plot[-1], -0.5, len(active_indices)-0.5]
+    )
+    
+    cbar = plt.colorbar(im, ax=ax, fraction=0.02, pad=0.02)
+    cbar.set_label("Nombre de particules", fontsize=10)
+    
+    ax.set_title(
+        f"Heatmap : Population par cellule au cours du temps — espèce '{sp}'\n{short_name}",
+        fontweight="bold", fontsize=13
+    )
+    ax.set_xlabel("Temps (pas)", fontsize=11)
+    ax.set_ylabel("Cellule", fontsize=11)
+    
+    # Labels des cellules (seulement quelques-uns si trop nombreux)
+    n_cells = len(active_indices)
+    if n_cells <= 30:
+        ax.set_yticks(range(n_cells))
+        ax.set_yticklabels([str(cell) for cell in active_indices], fontsize=8)
+    else:
+        # Afficher seulement quelques labels
+        n_labels = min(20, n_cells)
+        label_indices = np.linspace(0, n_cells-1, n_labels, dtype=int)
+        ax.set_yticks(label_indices)
+        ax.set_yticklabels([str(active_indices[i]) for i in label_indices], fontsize=8)
+    
+    fig.tight_layout()
+    fname = f"heatmap_population_{sp}.png"
+    fig.savefig(out_dir / fname, bbox_inches="tight", dpi=150)
+    plt.close(fig)
+    print(f"   💾 {fname}")
 
 # ── Export matrices de transition ─────────────────────────────────────────────
 
@@ -1183,13 +1887,137 @@ def export_transition_matrices(species_data: dict, short_name: str, out_dir: Pat
 # PIPELINE PRINCIPAL
 # ═════════════════════════════════════════════════════════════════════════════
 
+import shutil  # à ajouter en haut du fichier si pas déjà présent
+
+
+def main():
+    parser = _build_parser()
+    args   = parser.parse_args()
+
+    bucket_prefix = getattr(args, "bucket_prefix", "_Good/Experiment")
+    top_states    = getattr(args, "top_states", 6)
+    dry_run       = getattr(args, "dry_run", False)
+    dem_ref       = getattr(args, "dem_ref", "first")
+    bucket_hf     = f"hf://buckets/{BUCKET_ID}/{bucket_prefix}"
+
+    # ── Résolution du mode et de la liste d'expériences ─────────────────────
+    mode     = None
+    keywords = None
+    experiments = []
+
+    if args.subcommand == "single":
+        mode        = "single"
+        results = find_experiment_paths(bucket_hf, folder_name=args.folder)
+        if not results:
+            print(f"❌ Aucune expérience trouvée pour folder='{args.folder}'")
+            sys.exit(1)
+        experiments = results
+
+    elif args.subcommand == "keywords":
+        mode        = "keywords"
+        keywords    = args.keywords
+        results = find_experiment_paths(bucket_hf, keywords=keywords)
+        if not results:
+            print(f"❌ Aucune expérience trouvée pour keywords={keywords}")
+            sys.exit(1)
+        experiments = results
+
+    elif args.subcommand == "category":
+        mode        = "category"
+        experiments = list_category_paths(bucket_hf, args.category)
+        if not experiments:
+            print(f"❌ Aucune expérience trouvée dans '{args.category}'")
+            sys.exit(1)
+
+    elif args.subcommand == "compare":
+        mode     = "compare"
+        keywords = args.keywords
+        experiments = find_all_experiments_by_keywords(bucket_hf, keywords)
+        if not experiments:
+            print(f"❌ Aucune expérience trouvée pour {keywords}")
+            sys.exit(1)
+
+    # ── Style classique (pas de sous-commande) ───────────────────────────────
+    elif getattr(args, "folder", None):
+        mode        = "single"
+        results = find_experiment_paths(bucket_hf, folder_name=args.folder)
+        if not results:
+            print(f"❌ Aucune expérience trouvée pour folder='{args.folder}'")
+            sys.exit(1)
+        experiments = results
+
+    elif getattr(args, "keywords", None):
+        mode        = "keywords"
+        keywords    = args.keywords
+        results = find_experiment_paths(bucket_hf, keywords=keywords)
+        if not results:
+            print(f"❌ Aucune expérience trouvée pour keywords={keywords}")
+            sys.exit(1)
+        experiments = results
+
+    elif getattr(args, "category", None):
+        mode        = "category"
+        experiments = list_category_paths(bucket_hf, args.category)
+        if not experiments:
+            print(f"❌ Aucune expérience trouvée dans '{args.category}'")
+            sys.exit(1)
+
+    else:
+        print("❌ Aucun argument fourni. Utilisez --help pour voir les options.")
+        sys.exit(1)
+
+    # ── Dry-run ──────────────────────────────────────────────────────────────
+    if dry_run:
+        print(f"[DRY] mode={mode} — {len(experiments)} expérience(s) :")
+        for _, s in experiments:
+            print(f"  - {s}")
+        return
+
+    print(f"\n📋 {len(experiments)} expérience(s) à traiter")
+    for i, (_, s) in enumerate(experiments, 1):
+        print(f"  [{i}/{len(experiments)}] {s}")
+
+    # ── Chargement unique du parquet (sauf compare qui n'en a pas besoin) ────
+    df_start      = None
+    timestep_dict = None
+    if mode != "compare":
+        print("\n🔄 Chargement du parquet (une seule fois)...")
+        first_exp = load_experiment(experiments[0][0])
+        start     = first_exp["config"].get("start_index", 250)
+        timestep_dict = load_parquet_as_timestep_dict(
+            f"hf://buckets/{BUCKET_ID}/simulation_complete.parquet", fs
+        )
+        df_start = timestep_dict[start]
+        print(f"   ✅ df_start chargé (timestep {start}, {len(df_start)} particules)")
+        print(f"   ✅ timestep_dict chargé ({len(timestep_dict)} pas de temps disponibles)\n")
+
+    # ── Exécution ────────────────────────────────────────────────────────────
+    if mode == "compare":
+        run_comparison(experiments, keywords, bucket_prefix, top_states, dem_ref=dem_ref)
+
+    else:
+        for path_hf, short in experiments:
+            try:
+                # Extraire particle_diameter depuis config si disponible
+                exp_config = load_experiment(path_hf)["config"]
+                particle_diameter = exp_config.get("particle_diameter")
+
+                run_postprocess(path_hf, short, bucket_prefix, top_states,
+                                particle_diameter=particle_diameter,
+                                df_start=df_start,
+                                timestep_dict=timestep_dict)
+            except Exception as e:
+                print(f"⚠️  {short} — erreur : {e}")
+
+
 def run_postprocess(
     path_hf: str,
     short_name: str,
     bucket_prefix: str = "_Good/Experiment",
     top_states: int = 6,
     particle_diameter=None,
-    df_start=None, 
+    df_start=None,
+    timestep_dict=None,
 ):
     """Post-traite une expérience et upload les résultats dans le bucket."""
     category = get_simulation_category(short_name)
@@ -1202,21 +2030,20 @@ def run_postprocess(
     # Chargement
     exp          = load_experiment(path_hf)
     species_data = prepare_species(exp)
-
     bucket_subfolder = f"postraitement/{category}/{short_name}"
 
     with PostprocessingBucketUploader(
         bucket_subfolder=bucket_subfolder,
         particle_diameter=particle_diameter,
     ) as tmp:
-
         # ── Arborescence locale ──────────────────────────────────────────
-        img_etats   = tmp / "images" / "etats"
-        img_rsd     = tmp / "images" / "rsd"
-        img_matrices= tmp / "images" / "matrices"
-        img_mesh    = tmp / "images" / "mesh"
-        f_mesh      = tmp / "fichiers" / "mesh"
-        f_trans     = tmp / "fichiers" / "transitions"
+        img_etats    = tmp / "images" / "etats"
+        img_rsd      = tmp / "images" / "rsd"
+        img_matrices = tmp / "images" / "matrices"
+        img_mesh     = tmp / "images" / "mesh"
+        f_mesh       = tmp / "fichiers" / "mesh"
+        f_trans      = tmp / "fichiers" / "transitions"
+        # img_teneur  = tmp / "images"  / "teneurs"
         for d in [img_etats, img_rsd, img_matrices, img_mesh, f_mesh, f_trans]:
             d.mkdir(parents=True, exist_ok=True)
 
@@ -1239,16 +2066,23 @@ def run_postprocess(
                 fig_states_by_species(sp, sd, short_name, img_etats)
             except Exception as e:
                 print(f"   ⚠️  {sp} ignoré : {e}")
+
         # ── 3. RSD ───────────────────────────────────────────────────────
         print("\n📈 RSD & métriques...")
         fig_rsd(species_data, short_name, img_rsd)
         fig_concentration(species_data, short_name, img_rsd)
         fig_entropy_total(species_data, short_name, img_rsd)
+        print("Teneur !!!")
+        try:
+            fig_teneur(species_data, short_name, img_etats)
+        except Exception as e:
+            print(f" Teneur non construite \n{e}")
 
         # ── 4. Maillage ──────────────────────────────────────────────────
         print("\n🗺️  Maillage...")
         try:
-            fig_mesh(exp, df_start, short_name, img_mesh, f_mesh)
+            fig_mesh(exp, df_start, short_name, img_mesh, f_mesh,
+                     timestep_dict=timestep_dict)
         except Exception as e:
             print(f"   ⚠️  Maillage ignoré : {e}")
 
@@ -1256,7 +2090,17 @@ def run_postprocess(
         print("\n📁 Export matrices brutes...")
         export_transition_matrices(species_data, short_name, f_trans)
 
+        # ── 2.5 Population par cellule (NOUVEAU) ──────────────────────────────
+        print("\n📊 Population par cellule...")
+        for sp, sd in species_data.items():
+            try:
+                fig_population_par_cellule(sp, sd, short_name, img_etats)
+                fig_matrice_population_heatmap(sp, sd, short_name, img_etats)
+            except Exception as e:
+                print(f"   ⚠️  {sp} ignoré : {e}")
+
     print(f"\n✅ {short_name} — terminé.\n")
+
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1332,39 +2176,45 @@ Exemples :
 
     return p
 
-
 def main():
     parser = _build_parser()
     args   = parser.parse_args()
-
+ 
     bucket_prefix = getattr(args, "bucket_prefix", "_Good/Experiment")
     top_states    = getattr(args, "top_states", 6)
     dry_run       = getattr(args, "dry_run", False)
     dem_ref       = getattr(args, "dem_ref", "first")
     bucket_hf     = f"hf://buckets/{BUCKET_ID}/{bucket_prefix}"
-
+ 
     # ── Résolution du mode et de la liste d'expériences ─────────────────────
     mode     = None
     keywords = None
-
+    experiments = []
+ 
     if args.subcommand == "single":
         mode        = "single"
-        path_hf, short = find_experiment_path(bucket_hf, folder_name=args.folder)
-        experiments = [(path_hf, short)]
-
+        results = find_experiment_paths(bucket_hf, folder_name=args.folder)
+        if not results:
+            print(f"❌ Aucune expérience trouvée pour folder='{args.folder}'")
+            sys.exit(1)
+        experiments = results
+ 
     elif args.subcommand == "keywords":
         mode        = "keywords"
         keywords    = args.keywords
-        path_hf, short = find_experiment_path(bucket_hf, keywords=keywords)
-        experiments = [(path_hf, short)]
-
+        results = find_experiment_paths(bucket_hf, keywords=keywords)
+        if not results:
+            print(f"❌ Aucune expérience trouvée pour keywords={keywords}")
+            sys.exit(1)
+        experiments = results
+ 
     elif args.subcommand == "category":
         mode        = "category"
         experiments = list_category_paths(bucket_hf, args.category)
         if not experiments:
             print(f"❌ Aucune expérience trouvée dans '{args.category}'")
             sys.exit(1)
-
+ 
     elif args.subcommand == "compare":
         mode     = "compare"
         keywords = args.keywords
@@ -1372,43 +2222,50 @@ def main():
         if not experiments:
             print(f"❌ Aucune expérience trouvée pour {keywords}")
             sys.exit(1)
-
+ 
     # ── Style classique (pas de sous-commande) ───────────────────────────────
     elif getattr(args, "folder", None):
         mode        = "single"
-        path_hf, short = find_experiment_path(bucket_hf, folder_name=args.folder)
-        experiments = [(path_hf, short)]
-
+        results = find_experiment_paths(bucket_hf, folder_name=args.folder)
+        if not results:
+            print(f"❌ Aucune expérience trouvée pour folder='{args.folder}'")
+            sys.exit(1)
+        experiments = results
+ 
     elif getattr(args, "keywords", None):
         mode        = "keywords"
         keywords    = args.keywords
-        path_hf, short = find_experiment_path(bucket_hf, keywords=keywords)
-        experiments = [(path_hf, short)]
-
+        results = find_experiment_paths(bucket_hf, keywords=keywords)
+        if not results:
+            print(f"❌ Aucune expérience trouvée pour keywords={keywords}")
+            sys.exit(1)
+        experiments = results
+ 
     elif getattr(args, "category", None):
         mode        = "category"
         experiments = list_category_paths(bucket_hf, args.category)
         if not experiments:
             print(f"❌ Aucune expérience trouvée dans '{args.category}'")
             sys.exit(1)
-
+ 
     else:
-        parser.print_help()
-        sys.exit(0)
-
+        print("❌ Aucun argument fourni. Utilisez --help pour voir les options.")
+        sys.exit(1)
+ 
     # ── Dry-run ──────────────────────────────────────────────────────────────
     if dry_run:
         print(f"[DRY] mode={mode} — {len(experiments)} expérience(s) :")
         for _, s in experiments:
             print(f"  - {s}")
         return
-
+ 
     print(f"\n📋 {len(experiments)} expérience(s) à traiter")
     for i, (_, s) in enumerate(experiments, 1):
         print(f"  [{i}/{len(experiments)}] {s}")
-
+ 
     # ── Chargement unique du parquet (sauf compare qui n'en a pas besoin) ────
-    df_start = None
+    df_start      = None
+    timestep_dict = None
     if mode != "compare":
         print("\n🔄 Chargement du parquet (une seule fois)...")
         first_exp = load_experiment(experiments[0][0])
@@ -1417,21 +2274,28 @@ def main():
             f"hf://buckets/{BUCKET_ID}/simulation_complete.parquet", fs
         )
         df_start = timestep_dict[start]
-        print(f"   ✅ df_start chargé (timestep {start}, {len(df_start)} particules)\n")
-
+        print(f"   ✅ df_start chargé (timestep {start}, {len(df_start)} particules)")
+        print(f"   ✅ timestep_dict chargé ({len(timestep_dict)} pas de temps disponibles)\n")
+ 
     # ── Exécution ────────────────────────────────────────────────────────────
     if mode == "compare":
         run_comparison(experiments, keywords, bucket_prefix, top_states, dem_ref=dem_ref)
-        
+ 
     else:
         for path_hf, short in experiments:
             try:
+                # Extraire particle_diameter depuis config si disponible
+                exp_config = load_experiment(path_hf)["config"]
+                particle_diameter = exp_config.get("particle_diameter")
+ 
                 run_postprocess(path_hf, short, bucket_prefix, top_states,
-                                df_start=df_start)
+                                particle_diameter=particle_diameter,
+                                df_start=df_start,
+                                timestep_dict=timestep_dict)
             except Exception as e:
                 print(f"⚠️  {short} — erreur : {e}")
+ 
 
 
 if __name__ == "__main__":
     main()
-

@@ -1,15 +1,15 @@
 #!/bin/bash
 
 CATEGORIES=(
-    # "voronoi_simulations"
+    "voronoi_simulations"
     "cartesian_simulations"
     "cylindrical_simulations"
-    "gmm_simulations"
-    # "physics_simulations"
-    "spectral_simulations"
-    "adaptive_simulations"
+    "physics_simulations"
     "quantile_simulations"
     "octree_simulations"
+    "spectral_simulations"
+    "gmm_simulations"
+    "adaptive_simulations"
     "multizone_simulations"
     "single_simulations"
 )
@@ -18,7 +18,7 @@ LOG_DIR="logs_postprocess"
 mkdir -p "$LOG_DIR"
 
 pids=()
-N=3  # max parallèle
+N=2  # max parallèle
 for cat in "${CATEGORIES[@]}"; do
     log="$LOG_DIR/${cat}.log"
     echo "🚀 $cat → $log"

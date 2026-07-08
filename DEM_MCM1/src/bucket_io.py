@@ -259,7 +259,6 @@ def save_experiment_to_bucket(
         )
         print(f"   ✅ {len(files_to_upload)} fichiers uploadés → {bucket_base_path}/")
 
-
 def upload_postprocessing_to_bucket(
     local_dir="outputs",
     bucket_subfolder="postraitement",
@@ -272,7 +271,7 @@ def upload_postprocessing_to_bucket(
     """
     bucket_prefix = _get_bucket_prefix_from_particle_diameter(particle_diameter)
     api = get_api()
-    fs=get_fs()
+    fs = get_fs()
 
     local_path = Path(local_dir).resolve()
     if not local_path.exists():
@@ -280,34 +279,47 @@ def upload_postprocessing_to_bucket(
         return
 
     files_to_upload = []
+    vtp_files_count = 0
+    
     for file_path in local_path.rglob("*"):
         if file_path.is_file():
-            rel_path    = file_path.relative_to(local_path)
+            rel_path = file_path.relative_to(local_path)
             bucket_path = f"{bucket_prefix}/{bucket_subfolder}/{rel_path.as_posix()}"
+            
+            # TOUS les fichiers sont ajoutés à la liste pour le batch
+            files_to_upload.append((str(file_path), bucket_path))
+            
+            # Les fichiers VTK sont ALSO uploadés immédiatement via fs.put
             if file_path.suffix in (".vtp", ".vtu", ".vtk"):
-                fs.put(str(file_path), f"hf://buckets/{BUCKET_ID}/{bucket_path}")
-                print(f"   📤 {rel_path}")
-            else:
-                files_to_upload.append((str(file_path), bucket_path))
+                try:
+                    fs.put(str(file_path), f"hf://buckets/{BUCKET_ID}/{bucket_path}")
+                    print(f"   📤 {rel_path} (VTK upload immédiat)")
+                    vtp_files_count += 1
+                except Exception as e:
+                    print(f"   ⚠️  Échec upload VTK {rel_path}: {e}")
 
     if not files_to_upload:
         print(f"⚠️  Aucun fichier trouvé dans {local_path}")
         return
 
+    # Batch upload pour TOUS les fichiers (y compris VTK déjà uploadés)
     api.batch_bucket_files(
         bucket_id=BUCKET_ID,
         add=[(lp, bp) for lp, bp in files_to_upload],
     )
+    
+    total_files = len(files_to_upload)
     print(
-        f"✅ {len(files_to_upload)} fichiers de post-traitement uploadés → "
+        f"✅ {total_files} fichiers de post-traitement uploadés → "
         f"{bucket_prefix}/{bucket_subfolder}/"
+        f" (dont {vtp_files_count} fichiers VTK)"
     )
 
     if cleanup:
         shutil.rmtree(local_path)
         print(f"🧹 Dossier local supprimé : {local_path}")
 
-
+        
 # ─────────────────────────────────────────────────────────────────────────────
 # LECTURE
 # ─────────────────────────────────────────────────────────────────────────────

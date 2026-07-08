@@ -64,9 +64,9 @@ class ExperimentConfig:
 
     method: str = "cartesian"
     method_kwargs: dict = field(default_factory=dict)
-    nlt: int = 30
+    nlt: int = 3
     tau: int = 157  # Écart entre start et end pour chaque paire
-    step: int = 10  # Distance entre 2 starts principaux (quand NLT > 1)
+    step: int =tau  # Distance entre 2 starts principaux (quand NLT > 1)
     dt: int = None  # type: ignore # Raffinage temporel à l'intérieur de chaque step
     start_index: int = 250
     particle_diameter: Optional[float] = None  # Diamètre de particule (0.004, 0.008, ou None)
@@ -76,7 +76,7 @@ class ExperimentConfig:
             self.method_kwargs = {}
         if self.dt is None:
             # Raffinage par défaut : 5 apprentissages par step
-            self.dt = max(1, self.step // 5)
+            self.dt = max(1, self.step // 100)
             
     def output_folder(self, base_dir=BASE_OUTPUT_DIR, sample_coords=None):
         p = create_partitioner(self.method, **self.method_kwargs)
@@ -133,6 +133,17 @@ def get_configs(method, particle_diameter=None):
                     method_kwargs={
                         "nr": nr, "ntheta": 3, "nz": 3,
                         "radial_mode": "equal_area",
+                    },
+                    particle_diameter=particle_diameter,
+                )
+            )
+    elif method == "dbscan":
+        for nr in [3, 4, 5, 6]:
+            configs.append(
+                ExperimentConfig(
+                    method="dbscan",
+                    method_kwargs={
+                        "min_samples":nr,
                     },
                     particle_diameter=particle_diameter,
                 )
@@ -292,7 +303,18 @@ def get_configs(method, particle_diameter=None):
                     particle_diameter=particle_diameter,
                 )
             )
-
+    elif method == "spectral_biclustering":
+        for n_cells, n_col in [(20, 3), (30, 3), (40, 4), (50, 4)]:
+            configs.append(ExperimentConfig(
+                method="spectral_biclustering",
+                method_kwargs={
+                    "n_cells":        n_cells,
+                    "n_col_clusters": n_col,
+                    "method":         "log",
+                    "velocity_weight": 0.6,
+                },
+                particle_diameter=particle_diameter,
+            ))
     elif method == "adaptive":
         for y_q in [0.5, 0.6, 0.7, 0.8, 0.9]:
             configs.append(
@@ -544,6 +566,12 @@ def _get_default_kwargs(method):
         "physics_full_vel": {"n_cells": 30, "velocity_weight": 0.5},
         "spectral": {"n_cells": 20, "velocity_weight": 0.5, "n_neighbors": 15, "max_samples": 5000},
         "gmm": {"n_cells": 20, "velocity_weight": 0.5},
+        "spectral_biclustering": {
+                                "n_cells":        30,
+                                "n_col_clusters": 3,
+                                "method":         "log",
+                                "velocity_weight": 0.6,
+                            },
         "adaptive": {
             "y_split": 0.90,
             "y_split_mode": "quantile",
@@ -602,14 +630,14 @@ def compute_P_matrix_torch(states_prev, states_curr, n_states, device="cpu", spe
     phi_prev = (s_prev.unsqueeze(1) == torch.arange(n_states, device=device)).float()
     phi_curr = (s_curr.unsqueeze(1) == torch.arange(n_states, device=device)).float()
     
-    transitions = phi_prev.T @ phi_curr
-    denominator = phi_prev.sum(dim=0)
+    transitions = phi_prev.T @ phi_curr # c'est la raison pour laquelle ni le modèle de Zhou, ni celui de Doucet ne correspond réellement à mon cas
+    # car au lieu de d'observer les transitions dans le sens indirect(Doucet et Zhou), je les observe dans le sens direct et puis je suis la construction
+    denominator = phi_prev.sum(dim=0) #Doucet,Zhou
     
     P = transitions.T / denominator
     P[denominator == 0] = 0.0
     
     return P.to(torch.float64)
-
 
 def save_results(config, partitioner, results: dict, stats: dict, 
                  image_data=None, folder_name=None):
@@ -630,18 +658,16 @@ def save_results(config, partitioner, results: dict, stats: dict,
         partitioner_data["x_edges"] = partitioner._x_edges
         partitioner_data["y_edges"] = partitioner._y_edges
         partitioner_data["z_edges"] = partitioner._z_edges
-        
     if isinstance(partitioner, part.PhysicsAwarePartitioner):
         if partitioner._mean is not None:
             partitioner_data["mean"] = partitioner._mean
         if partitioner._std is not None:
             partitioner_data["std"] = partitioner._std
         partitioner_data["physics_params"] = {
-            "n_features": partitioner._n_features,
+            "n_features":      partitioner._n_features,
             "velocity_weight": partitioner.velocity_weight,
-            "velocity_mode": partitioner.velocity_mode,  # ✅ AJOUT velocity_mode
+            "velocity_mode":   partitioner.velocity_mode,
         }
-        
     partitioner_data["partitioner_meta"] = {
         "type":    type(partitioner).__name__,
         "label":   partitioner.label,
@@ -649,14 +675,23 @@ def save_results(config, partitioner, results: dict, stats: dict,
     }
 
     species_data = {}
+    
+    # ✅ NOUVEAU : Sauvegarde de la matrice complète des cell_ids
+    if "matrix" in results:
+        species_data["states_matrix"] = results["matrix"]
+        print(f"   📦 states_matrix à sauvegarder : {results['matrix'].shape}")
+    
+    # Sauvegarde des matrices par espèce
     for species, data in results.items():
+        if species == "matrix":
+            continue  # Déjà traité ci-dessus
         species_data[f"transitionmatrix_{species}"] = data["P"]
         species_data[f"S_matrix_{species}"]         = data["S_matrix"]
         species_data[f"times_{species}"]            = data["times"]
 
     stats_with_species = {
         **stats,
-        "species_list": list(results.keys()),
+        "species_list": [k for k in results if k != "matrix"],
     }
 
     save_experiment_to_bucket(
@@ -675,7 +710,7 @@ def save_results(config, partitioner, results: dict, stats: dict,
         "Experiments"
     )
     print(f"   💾 Bucket: {bucket_name}/{folder_name}/ "
-          f"({list(results.keys())})")
+          f"({[k for k in results if k != 'matrix']})")
 
 
 def sample_coordinates(timestep_dict: dict[int, pd.DataFrame]):
@@ -684,7 +719,7 @@ def sample_coordinates(timestep_dict: dict[int, pd.DataFrame]):
     """
     all_coords, all_velocities, all_diameters = [], [], []
 
-    for idx in sorted(timestep_dict.keys()):
+    for idx in sorted(timestep_dict.keys()): # Recupère toutes les features
         df = timestep_dict[idx]
         all_coords.append(np.column_stack([
             df["coordinates:0"].to_numpy(),
@@ -705,32 +740,26 @@ def sample_coordinates(timestep_dict: dict[int, pd.DataFrame]):
         np.concatenate(all_diameters),
     )
 
-
 def _detect_species(df: pd.DataFrame) -> dict[str, np.ndarray]:
     """
     Détecte automatiquement les espèces par diamètre et retourne un masque booléen par espèce.
     """
     diameters = df["Diameter"].to_numpy()
     unique_diams = np.sort(np.unique(diameters))
-    
     if len(unique_diams) == 1:
         print(f"   ⚠️  Un seul diamètre trouvé ({unique_diams[0]}) — pas de séparation d'espèces")
         return {"all": np.ones(len(diameters), dtype=bool)}
-    
     if len(unique_diams) == 2:
         labels = ["small", "large"]
     else:
         labels = [f"d{str(d).replace('.', '')}" for d in unique_diams]
         print(f"   ℹ️  {len(unique_diams)} diamètres détectés : {unique_diams}")
-    
     species_masks = {}
     for label, diam in zip(labels, unique_diams):
         mask = diameters == diam
         species_masks[label] = mask
         print(f"   ✅ Espèce '{label}' (d={diam:.4f}) : {mask.sum()} particules")
-    
     return species_masks
-
 
 def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], device="cpu"):
     """
@@ -750,47 +779,63 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
         df_init = timestep_dict[start_base]
     except KeyError:
         raise KeyError(f"Timestep start_base={start_base} absent du dict")
-    
+
     species_masks = _detect_species(df_init)
 
     sorted_indices = sorted(timestep_dict.keys())
+    # ✅ On ne garde que les timesteps >= start_base
+    sorted_indices = [idx for idx in sorted_indices 
+                    #   if idx >= start_base # On labélise les particules depuis l'instant initial
+                      ]
     n_timesteps    = len(sorted_indices)
     n_particles    = len(timestep_dict[sorted_indices[0]])
     idx_to_row     = {idx: row for row, idx in enumerate(sorted_indices)}
 
-    print(f"   🔧 Calcul des états : {n_timesteps} timesteps × {n_particles} particules...")
+    print(f"   🔧 Calcul des états : {n_timesteps} timesteps × {n_particles} particules "
+          f"(à partir de t={start_base})...")
 
     all_x, all_y, all_z = [], [], []
     all_vx, all_vy, all_vz = [], [], []
     is_physics = isinstance(partitioner, part.PhysicsAwarePartitioner)
+    is_bicluster = isinstance(partitioner, part.SpectralBiclusteringPartitioner)
+    is_gaussian=isinstance(partitioner,part.GaussianMixturePartitioner)
+    is_dbscan = isinstance(partitioner, part.DBSCANPartitioner)
+    is_spectral=isinstance(partitioner,part.SpectralClusteringPartitioner)
 
     for idx in sorted_indices:
         df = timestep_dict[idx]
         all_x.append(df["coordinates:0"].to_numpy())
         all_y.append(df["coordinates:1"].to_numpy())
         all_z.append(df["coordinates:2"].to_numpy())
-        if is_physics:
+        # all_x.append(df["Velocity:0"].to_numpy())
+        # all_y.append(df["Velocity:1"].to_numpy())
+        # all_z.append(df["Velocity:2"].to_numpy())
+        
+        if is_physics or is_bicluster or is_gaussian or is_dbscan or is_spectral:
             all_vx.append(df["Velocity:0"].to_numpy())
             all_vy.append(df["Velocity:1"].to_numpy())
             all_vz.append(df["Velocity:2"].to_numpy())
-            
+
     coords_x = np.concatenate(all_x)
     coords_y = np.concatenate(all_y)
     coords_z = np.concatenate(all_z)
 
-    if is_physics:
+    if is_physics or is_bicluster or is_gaussian or is_dbscan or is_spectral:
         vx_all = np.concatenate(all_vx)
         vy_all = np.concatenate(all_vy)
         vz_all = np.concatenate(all_vz)
-        partitioner.dem_velocities = np.column_stack([vx_all, vy_all, vz_all])
+        if is_physics or is_gaussian or is_bicluster or is_spectral or is_dbscan:
+            partitioner.use_velocity=True
+            partitioner.dem_velocities = np.column_stack([vx_all, vy_all, vz_all])
         states_flat = partitioner.compute_states(
             coords_x, coords_y, coords_z, vx_all, vy_all, vz_all
         )
     else:
         states_flat = partitioner.compute_states(coords_x, coords_y, coords_z)
 
+    # ✅ shape correcte : (n_timesteps, n_particles) depuis start_base
     states_matrix = states_flat.reshape(n_timesteps, n_particles)
-    print(f"   ✅ states_matrix brute: {states_matrix.shape}")
+    print(f"   ✅ states_matrix: {states_matrix.shape}")
 
     S_matrices = {}
     for species, mask in species_masks.items():
@@ -798,7 +843,6 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
         S = np.zeros((n_timesteps, n_states), dtype=np.float64)
         for t in range(n_timesteps):
             S[t] = np.bincount(states_species[t], minlength=n_states)
-
         S_matrices[species] = S
         print(f"   ✅ S_matrix '{species}': {S.shape} | "
               f"sum t=0: {S[0].sum():.0f} particules ({mask.sum()} attendues)")
@@ -857,6 +901,8 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
             ))
 
     results = {}
+    results["matrix"] = states_matrix  # shape (n_timesteps, n_particles), depuis start_base
+
     for species in species_masks:
         print(f"\n   📐 Matrice P — espèce '{species}'...")
 
@@ -885,7 +931,7 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
     n_blocs_complets      = len(all_pairs) // n_paires_par_bloc
     n_paires_dernier_bloc = len(all_pairs) % n_paires_par_bloc
 
-    first_species = next(iter(results))
+    first_species = next(iter(species_masks))
     P_ref         = results[first_species]["P"]
     col_sums      = P_ref.sum(axis=0)
     visited       = col_sums > 0
@@ -914,7 +960,6 @@ def run_experiment(config, partitioner, timestep_dict: dict[int, pd.DataFrame], 
     }
 
     return results, stats
-
 
 # =============================================================================
 # run_markov_sweep
@@ -955,33 +1000,45 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None,
     results_summary = []
     for i, config in enumerate(all_configs):
         # ✅ MODIFICATION 7 : physics et physics_full_vel ont besoin de sample_coords pour le fit
-        if config.method in ["adaptive", "multizone", "physics", "physics_full_vel"]:
-            folder_name = config.output_folder(base_dir=base_dir, sample_coords=sample_coords)
-        else:
-            folder_name = config.output_folder(base_dir)
-
-        print(f"\n[{i+1}/{len(all_configs)}] {folder_name}")
 
         try:
             partitioner = create_partitioner(config.method, **config.method_kwargs)
+            permanent_start=250*1030
             print("   🔧 Fit partitionneur...")
+
             
             # ✅ MODIFICATION 3 : Les deux variantes physics ont besoin des vitesses
-            if config.method in ("physics", "physics_full_vel"):
-                partitioner.use_velocity = True
-                partitioner.dem_velocities = s_velocities
-                partitioner.fit(sample_coords)
-                diag = partitioner.diagnostics(s_velocities)
-            else:
-                partitioner.fit(sample_coords)
-                diag = partitioner.diagnostics(sample_coords)
+            if config.method in (
+                "physics",
+                  "physics_full_vel",
+                  "spectral_biclustering",
+                  "dbscan",
+                #   "spectral",
 
-            print(
-                f"   📊 {partitioner.n_cells} cellules | "
-                f"{diag['n_visited']} visitées | "
-                f"pop: [{diag['pop_min']}, {diag['pop_max']}] "
-                f"μ={diag['pop_mean']:.0f} σ={diag['pop_std']:.0f}"
-            )
+                  ):
+                partitioner.use_velocity = True
+                partitioner.dem_velocities = s_velocities[permanent_start:,:]
+                partitioner.fit(sample_coords[permanent_start:,:])
+                # diag = partitioner.diagnostics(sample_coords[250:,:])
+            else:
+                # partitioner.fit(sample_coords[250:,:]) # effectue le fit sur les coordonnées sur la phase stationnaire
+                # partitioner.fit(s_velocities[permanent_start:,:]) # effectue le fit sur les coordonnées sur la phase stationnaire
+                partitioner.fit(sample_coords[permanent_start:,:]) # effectue le fit sur les coordonnées sur la phase stationnaire
+                # diag = partitioner.diagnostics(sample_coords)
+                # diag = partitioner.diagnostics(s_velocities)
+
+
+            if config.method in ["adaptive", "multizone", "physics", "physics_full_vel","dbscan"]:
+                folder_name = config.output_folder(base_dir=base_dir, sample_coords=sample_coords)
+            else:
+                folder_name = config.output_folder(base_dir)
+            print(f"\n[{i+1}/{len(all_configs)}] {folder_name}")
+            # print(
+            #     f"   📊 {partitioner.n_cells} cellules | "
+            #     f"{diag['n_visited']} visitées | "
+            #     f"pop: [{diag['pop_min']}, {diag['pop_max']}] "
+            #     f"μ={diag['pop_mean']:.0f} σ={diag['pop_std']:.0f}"
+            # )
 
             results, stats = run_experiment(config, partitioner, timestep_dict, device)
 
