@@ -30,6 +30,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import mpl_toolkits
 from scipy.spatial import ConvexHull, Voronoi
+from sklearn.cluster import SpectralBiclustering
 import matplotlib.animation as animation
 import streamlit as st
 
@@ -53,6 +54,7 @@ __all__ = [
     "AdaptivePartitioner",
     "MultiZonePartitioner",
     "SingleCellPartitioner",
+    "DBSCANPartitioner"
     "create_partitioner",
     "REGISTRY",
 ]
@@ -675,120 +677,288 @@ class CartesianPartitioner(BasePartitioner):
 # =============================================================================
 # 2. CYLINDRIQUE
 # =============================================================================
-
-
 class CylindricalPartitioner(BasePartitioner):
     """
-    Grille cylindrique (r, θ, z).
+    Grille cylindrique (r, θ, z) — version corrigée.
 
-    Idéal pour les mélangeurs à symétrie axiale.
-    Deux modes radiaux:
+    Corrections apportées :
+      - Bords angulaires gérés avec une marge epsilon pour éviter les cellules
+        vides dues aux particules exactement sur theta=0 ou theta=2π
+      - Numérotation des états vérifiée : état = ir + itheta*nr + iz*nr*ntheta
+      - r_min_limit par défaut à 0, mais détecté automatiquement si les données
+        ne couvrent pas r=0 (axe vide)
+      - mask_in_zone exposé pour diagnostic
+
+    Deux modes radiaux :
       - "equal_dr"  : Δr constant
       - "equal_area": aire de section constante (recommandé)
 
-    Avec ntheta=1 → partitionnement purement axisymétrique.
+    Paramètres optionnels :
+      - theta_min, theta_max : limites angulaires en radians [0, 2π]
+                               Si None, utilise [0, 2π] complet
+      - z_min_limit, z_max_limit : limites axiales
+                                   Si None, calculées depuis les données
+      - r_min_limit, r_max_limit : limites radiales
+                                   Si None, r_min=0 et r_max depuis les données
     """
 
-    def __init__(self:CylindricalPartitioner, nr:int=5, ntheta:int=8, nz:int=5, radial_mode:str="equal_area")->None:
+    def __init__(
+        self: "CylindricalPartitioner",
+        nr: int = 5,
+        ntheta: int = 8,
+        nz: int = 5,
+        radial_mode: str = "equal_area",
+        theta_min: float = None,
+        theta_max: float = None,
+        z_min_limit: float = None,
+        z_max_limit: float = None,
+        r_min_limit: float = None,
+        r_max_limit: float = None,
+    ) -> None:
         super().__init__()
         self.nr = nr
         self.ntheta = ntheta
         self.nz = nz
         self.radial_mode = radial_mode
-        self._x_center:float = None#type: ignore
-        self._y_center:float = None#type: ignore
-        self._r_max:float = None#type: ignore
-        self._z_min:float = None#type: ignore
-        self._z_max:float = None#type: ignore
-        self._r_edges:np.ndarray = None#type: ignore
-        self._splitting_method:str = "cylindrical"
+
+        # Paramètres fournis par l'utilisateur
+        self.theta_min_input = theta_min
+        self.theta_max_input = theta_max
+        self.z_min_limit_input = z_min_limit
+        self.z_max_limit_input = z_max_limit
+        self.r_min_limit_input = r_min_limit
+        self.r_max_limit_input = r_max_limit
+
+        # Limites effectives (calculées lors du fit)
+        self.theta_min: float = None
+        self.theta_max: float = None
+        self.z_min_limit: float = None
+        self.z_max_limit: float = None
+        self.r_min_limit: float = None
+        self.r_max_limit: float = None
+
+        self._x_center: float = None
+        self._y_center: float = None
+        self._r_edges: np.ndarray = None
+        self._z_edges: np.ndarray = None
+        self._theta_edges: np.ndarray = None
+        self._splitting_method: str = "cylindrical"
+
+    # ------------------------------------------------------------------
+    # Propriétés
+    # ------------------------------------------------------------------
 
     @property
-    def n_cells(self:CylindricalPartitioner)-> int:
+    def n_cells(self: "CylindricalPartitioner") -> int:
         return self.nr * self.ntheta * self.nz
 
     @property
-    def label(self:CylindricalPartitioner)-> str:
+    def label(self: "CylindricalPartitioner") -> str:
+        tmin = f"{self.theta_min:.2f}" if self.theta_min is not None else "auto"
+        tmax = f"{self.theta_max:.2f}" if self.theta_max is not None else "auto"
         return (
             f"cylindrical_nr{self.nr}_nth{self.ntheta}"
             f"_nz{self.nz}_{self.radial_mode}"
+            f"_theta{tmin}_{tmax}"
         )
 
-    def fit(self:CylindricalPartitioner, coordinates: np.ndarray)->CylindricalPartitioner:
-        eps = 0.00
-        coordinates=np.asarray(coordinates)
+    # ------------------------------------------------------------------
+    # fit
+    # ------------------------------------------------------------------
+
+    def fit(
+        self: "CylindricalPartitioner", coordinates: np.ndarray
+    ) -> "CylindricalPartitioner":
+        coordinates = np.asarray(coordinates)
         x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
 
-        # self._x_center = (x.min() + x.max()) / 2  # est un scalaire       # position en x du centre de la distribution des particules 
-        # self._y_center = (y.min() + y.max()) / 2  # est un scalaire       # position en y du centre de la distribution des particules
-        self._x_center = 0 # est un scalaire       # position en x du centre de la distribution des particules 
-        self._y_center = 0 # est un scalaire       # position en y du centre de la distribution des particules
-
-        r = np.sqrt((x - self._x_center) ** 2 + (y - self._y_center) ** 2) # rayon issue des positions recentrées des particules
-        self._r_max = r.max() + eps
-        self._z_min = z.min() - eps
-        self._z_max = z.max() + eps
-
-        if self.radial_mode == "equal_area":
-            # aire π(r_{i+1}² - r_i²) = constante → r_i = R√(i/nr)
-            self._r_edges = self._r_max * np.sqrt(np.linspace(0, 1, self.nr + 1)) # construction de la liste des Rayons pour respecter le fait que les surfaces soient identiques
-        elif self.radial_mode == "equal_dr":
-            self._r_edges = np.linspace(0, self._r_max, self.nr + 1)
-        else:
-            raise ValueError(f"radial_mode inconnu: {self.radial_mode}")
-
-        return self
-
-    def compute_states(self:CylindricalPartitioner, x:np.ndarray, y:np.ndarray, z:np.ndarray,vx:np.ndarray=None,vy:np.ndarray=None,vz:np.ndarray=None): #type: ignore
-        x = np.asarray(x, dtype=np.float64)
-        y = np.asarray(y, dtype=np.float64)
-        z = np.asarray(z, dtype=np.float64)
-        # analyzer=ar.MarkovAnalyzer()
+        # Centre fixé à l'origine
+        self._x_center = 0.0
+        self._y_center = 0.0
 
         dx = x - self._x_center
         dy = y - self._y_center
-        # convertit la position des particules du système de coordonnées cartésiens vers le système de coordonnées cylindriques
-        r = np.sqrt(dx**2 + dy**2) 
-        theta = (np.arctan2(dy, dx) + 2 * np.pi) % (2 * np.pi)  # [0, 2π]
+        r_all = np.sqrt(dx**2 + dy**2)
 
-        ir = np.clip(
-            np.searchsorted(self._r_edges, r, side="right") - 1, # renvoit la liste d'indices  de la liste des partitions(selon le rayon) dans laquelle les rayons des particules ont été insérés 
-            # le vecteur que renvoir la fonction  searchsorted est de dimension de r (nombres de particules)
-            0, self.nr - 1  # les particules sont raménées dans l'intervalle des partitions suivant le rayon
+        # ── Limites radiales ──────────────────────────────────────────
+        self.r_min_limit = (
+            self.r_min_limit_input if self.r_min_limit_input is not None else 0.0
         )
-        itheta = np.clip(
-            (theta * self.ntheta / (2 * np.pi)).astype(np.int64), 0, self.ntheta - 1 # le cylindre est partionné sur toute la circonference de sa base
-            # chaque particule est placée dans une partition en fonction de son angle theta
+        self.r_max_limit = (
+            self.r_max_limit_input if self.r_max_limit_input is not None else float(r_all.max())
         )
-        dz = (self._z_max - self._z_min) / self.nz
-        iz = np.clip(
-            ((z - self._z_min) / dz).astype(np.int64), 0, self.nz - 1
-        )
-        #n=int(len(x)/self.PARTICLE_NUMBER)
-        self.states=ir + itheta * self.nr + iz * self.nr * self.ntheta
-        return  self.states#[np.tile(self.species_labels,n)] # la numérotation des partitons se fait partant des rayons, puis les angles et enfin les hauteurs z
 
-    def _save_data(self:CylindricalPartitioner, path: str)->None:
-        params = {
+        # ── Limites angulaires ────────────────────────────────────────
+        # Par défaut : cercle complet [0, 2π]
+        self.theta_min = self.theta_min_input if self.theta_min_input is not None else 0.0
+        self.theta_max = self.theta_max_input if self.theta_max_input is not None else 2 * np.pi
+
+        # ── Limites axiales ───────────────────────────────────────────
+        self.z_min_limit = (
+            self.z_min_limit_input if self.z_min_limit_input is not None else float(z.min())
+        )
+        self.z_max_limit = (
+            self.z_max_limit_input if self.z_max_limit_input is not None else float(z.max())
+        )
+
+        # ── Bords radiaux ─────────────────────────────────────────────
+        if self.radial_mode == "equal_area":
+            r2_min = self.r_min_limit**2
+            r2_max = self.r_max_limit**2
+            self._r_edges = np.sqrt(np.linspace(r2_min, r2_max, self.nr + 1))
+        elif self.radial_mode == "equal_dr":
+            self._r_edges = np.linspace(self.r_min_limit, self.r_max_limit, self.nr + 1)
+        else:
+            raise ValueError(f"radial_mode inconnu : {self.radial_mode}")
+
+        # FIX : forcer les bords extrêmes pour capturer toutes les particules
+        self._r_edges[0] = self.r_min_limit
+        self._r_edges[-1] = self.r_max_limit * (1 + 1e-9)  # borne supérieure inclusive
+
+        # ── Bords angulaires ──────────────────────────────────────────
+        self._theta_edges = np.linspace(self.theta_min, self.theta_max, self.ntheta + 1)
+        # FIX : borne supérieure légèrement au-delà de 2π pour inclure theta≈2π
+        self._theta_edges[-1] += 1e-9
+
+        # ── Bords axiaux ──────────────────────────────────────────────
+        self._z_edges = np.linspace(self.z_min_limit, self.z_max_limit, self.nz + 1)
+        self._z_edges[-1] *= (1 + 1e-9) if self._z_edges[-1] > 0 else 1.0
+        self._z_edges[-1] += 1e-9  # cas z_max ≤ 0
+
+        return self
+
+    # ------------------------------------------------------------------
+    # compute_states
+    # ------------------------------------------------------------------
+
+    def compute_states(
+        self: "CylindricalPartitioner",
+        x: np.ndarray,
+        y: np.ndarray,
+        z: np.ndarray,
+        vx: np.ndarray = None,
+        vy: np.ndarray = None,
+        vz: np.ndarray = None,
+    ) -> np.ndarray:
+        x = np.asarray(x, dtype=np.float64)
+        y = np.asarray(y, dtype=np.float64)
+        z = np.asarray(z, dtype=np.float64)
+
+        dx = x - self._x_center
+        dy = y - self._y_center
+
+        r = np.sqrt(dx**2 + dy**2)
+
+        # FIX : theta ∈ [0, 2π[ — les particules à theta≈2π sont bien dans
+        # la dernière cellule angulaire grâce à _theta_edges[-1] += ε
+        theta = (np.arctan2(dy, dx) + 2 * np.pi) % (2 * np.pi)
+
+        # ── Masque de la zone active ──────────────────────────────────
+        mask_r     = (r     >= self.r_min_limit)  & (r     <  self._r_edges[-1])
+        mask_theta = (theta >= self.theta_min)     & (theta <  self._theta_edges[-1])
+        mask_z     = (z     >= self.z_min_limit)   & (z     <  self._z_edges[-1])
+        mask = mask_r & mask_theta & mask_z
+
+        # ── Initialisation des indices ────────────────────────────────
+        # Les particules hors zone reçoivent l'état -1
+        states = np.full(len(x), -1, dtype=np.int64)
+
+        if np.any(mask):
+            r_v     = r[mask]
+            theta_v = theta[mask]
+            z_v     = z[mask]
+
+            # FIX : utiliser searchsorted sur les bords précalculés
+            # → garantit une bijection parfaite entre particule et cellule
+            ir_v = np.clip(
+                np.searchsorted(self._r_edges, r_v, side="right") - 1,
+                0, self.nr - 1,
+            )
+            itheta_v = np.clip(
+                np.searchsorted(self._theta_edges, theta_v, side="right") - 1,
+                0, self.ntheta - 1,
+            )
+            iz_v = np.clip(
+                np.searchsorted(self._z_edges, z_v, side="right") - 1,
+                0, self.nz - 1,
+            )
+
+            # Numérotation : état = ir + itheta*nr + iz*nr*ntheta
+            states[mask] = ir_v + itheta_v * self.nr + iz_v * self.nr * self.ntheta
+
+        self.states = states
+        self.mask_in_zone = mask
+        return self.states
+
+    # ------------------------------------------------------------------
+    # Diagnostic
+    # ------------------------------------------------------------------
+
+    def print_cell_counts(self: "CylindricalPartitioner") -> None:
+        """Affiche le nombre de particules par cellule (utile pour déboguer)."""
+        if len(self.states) == 0:
+            print("Aucun état calculé.")
+            return
+
+        active = self.states[self.mask_in_zone]
+        total_out = int((self.states == -1).sum())
+        print(f"\n{'─'*55}")
+        print(f"  Particules hors zone : {total_out}")
+        print(f"{'─'*55}")
+        print(f"  {'iz':>3} {'ith':>4} {'ir':>3}  →  {'état':>5}  {'count':>6}")
+        print(f"{'─'*55}")
+        for iz_ in range(self.nz):
+            for ith_ in range(self.ntheta):
+                for ir_ in range(self.nr):
+                    state = ir_ + ith_ * self.nr + iz_ * self.nr * self.ntheta
+                    count = int((active == state).sum())
+                    flag = " ⚠ VIDE" if count == 0 else ""
+                    print(f"  {iz_:>3} {ith_:>4} {ir_:>3}  →  {state:>5}  {count:>6}{flag}")
+        print(f"{'─'*55}\n")
+
+    # ------------------------------------------------------------------
+    # Save / Load
+    # ------------------------------------------------------------------
+
+    def _save_data(self: "CylindricalPartitioner", path: str) -> None:
+        data = {
+            "nr": self.nr,
+            "ntheta": self.ntheta,
+            "nz": self.nz,
+            "radial_mode": self.radial_mode,
+            "theta_min": self.theta_min,
+            "theta_max": self.theta_max,
+            "z_min_limit": self.z_min_limit,
+            "z_max_limit": self.z_max_limit,
+            "r_min_limit": self.r_min_limit,
+            "r_max_limit": self.r_max_limit,
             "x_center": self._x_center,
             "y_center": self._y_center,
-            "r_max": self._r_max,
-            "z_min": self._z_min,
-            "z_max": self._z_max,
+            "r_edges": self._r_edges.tolist(),
+            "theta_edges": self._theta_edges.tolist(),
+            "z_edges": self._z_edges.tolist(),
         }
-        with open(os.path.join(path, "cylindrical_params.json"), "w") as f:
-            json.dump(params, f, indent=2)
-        np.save(os.path.join(path, "r_edges.npy"), self._r_edges)
+        with open(os.path.join(path, "cylindrical_data.json"), "w") as f:
+            json.dump(data, f, indent=2)
 
-    def _load_data(self:CylindricalPartitioner, path: str)->None:
-        with open(os.path.join(path, "cylindrical_params.json")) as f:
-            p = json.load(f)
-        self._x_center = p["x_center"]
-        self._y_center = p["y_center"]
-        self._r_max = p["r_max"]
-        self._z_min = p["z_min"]
-        self._z_max = p["z_max"]
-        self._r_edges = np.load(os.path.join(path, "r_edges.npy"))
+    def _load_data(self: "CylindricalPartitioner", path: str) -> None:
+        with open(os.path.join(path, "cylindrical_data.json")) as f:
+            data = json.load(f)
+        self.nr            = data["nr"]
+        self.ntheta        = data["ntheta"]
+        self.nz            = data["nz"]
+        self.radial_mode   = data["radial_mode"]
+        self.theta_min     = data["theta_min"]
+        self.theta_max     = data["theta_max"]
+        self.z_min_limit   = data["z_min_limit"]
+        self.z_max_limit   = data["z_max_limit"]
+        self.r_min_limit   = data["r_min_limit"]
+        self.r_max_limit   = data["r_max_limit"]
+        self._x_center     = data["x_center"]
+        self._y_center     = data["y_center"]
+        self._r_edges      = np.array(data["r_edges"])
+        self._theta_edges  = np.array(data["theta_edges"])
+        self._z_edges      = np.array(data["z_edges"])
 
     def _arc_points(self:CylindricalPartitioner, r:float, theta_start:float, theta_end:float, n_segments:int=20)->np.ndarray:
         theta_vals = np.linspace(theta_start, theta_end, n_segments)
@@ -894,7 +1064,7 @@ class VoronoiPartitioner(BasePartitioner):
 
     def fit(self: VoronoiPartitioner, coordinates: np.ndarray)->VoronoiPartitioner:
         coordinates=np.asarray(coordinates)
-        from sklearn.cluster import MiniBatchKMeans
+        from sklearn.cluster import MiniBatchKMeans,KMeans
         from scipy.spatial import cKDTree # type:ignore
 
         rng = np.random.RandomState(self.random_state)
@@ -903,11 +1073,17 @@ class VoronoiPartitioner(BasePartitioner):
             fit_data = coordinates[idx]
         else:
             fit_data = coordinates
-        kmeans = MiniBatchKMeans(
+        # kmeans = MiniBatchKMeans(
+        #     n_clusters=self._n_cells,
+        #     random_state=self.random_state, # me rassure que je commence avec les points au initiaux identiques
+        #     batch_size=min(10_000, len(fit_data)),
+        #     n_init=10, # j'initialise 10 fois pour être sur que les centres tombent bien au même endroit après l'exécution de l'algorithme ou du moins de façon proche
+        # )
+        kmeans=KMeans(
             n_clusters=self._n_cells,
-            random_state=self.random_state, # me rassure que je commence avec les points au initiaux identiques
-            batch_size=min(10_000, len(fit_data)),
-            n_init=10, # j'initialise 10 fois pour être sur que les centres tombent bien au même endroit après l'exécution de l'algorithme ou du moins de façon proche
+            random_state=self.random_state,
+            init='k-means++',
+            n_init=10,
         )
         kmeans.fit(fit_data)
         self.centroids = kmeans.cluster_centers_
@@ -2521,7 +2697,7 @@ class SpectralClusteringPartitioner(BasePartitioner):
     Spectral Clustering pour capturer les structures topologiques / connectivité de l'écoulement.
     Lié à l'analyse des modes collectifs et SVD de Tjakra 2013.
     """
-    def __init__(self, n_cells=125, velocity_weight=0.5, n_neighbors=15, max_samples=5000, random_state=42):
+    def __init__(self, n_cells=125, velocity_weight=1, n_neighbors=15, max_samples=5000, random_state=42):
         super().__init__()
         self._n_cells: int = n_cells
         self.velocity_weight: float = velocity_weight
@@ -2534,7 +2710,7 @@ class SpectralClusteringPartitioner(BasePartitioner):
         self._tree = None  # Sera un KDTree sur les points de support
         self._mean: np.ndarray = None
         self._std: np.ndarray = None
-        self._n_features: int = 6
+        self._n_features: int = 4
         self._splitting_method: str = "spectral"
         self.use_velocity: bool = True
         self.features: np.ndarray = None
@@ -2545,22 +2721,54 @@ class SpectralClusteringPartitioner(BasePartitioner):
 
     @property
     def label(self) -> str:
-        return f"spectral_{self._n_cells}cells_vw{self.velocity_weight}_k{self.n_neighbors}"
+        return f"spectral_{self._n_cells}cells_vw{self.velocity_weight}_k{self.n_neighbors}_{self.use_velocity}_{self._n_features}"
 
     def fit(self, coordinates: np.ndarray, use_velocities: bool = None) -> 'SpectralClusteringPartitioner':
         use_velocities = self.use_velocity if use_velocities is None else use_velocities
         coordinates = np.asarray(coordinates)
 
+        omega = 4.0   
         if use_velocities and self.dem_velocities is not None:
             vel = np.asarray(self.dem_velocities)
-            if len(vel) == len(coordinates):
-                self.features = np.hstack([coordinates, vel])
-                self._n_features = 6
-                return self._fit_internal(self.features, n_pos=3)
+            # omega = 4.0   
+
+        # rad/s — même valeur que ton "rayon*4"
+            x = coordinates[:, 0]
+            y = coordinates[:, 1]
+
+            
+
+        # vitesse d'entraînement (rotation solide autour de z)
+            vx_entr = -omega * y
+            vy_entr =  omega * x
+
+            
+
+        # vitesse relative (fluctuation dans le repère tournant)
+            v_rel = np.column_stack([
+                vel[:, 0] - vx_entr,
+                vel[:, 1] - vy_entr,
+                vel[:, 2],                # composante axiale inchangée
+            ])                            
+
+        # (N, 3)                                                 
+
+            # if len(v_rel) == len(coordinates):
+            v_rel_norm=np.linalg.norm(v_rel,axis=1)
+            self.features = np.column_stack([coordinates, v_rel_norm])
+            self._n_features = 4
+            print("Use velocity!!")
+            return self._fit_internal(self.features, n_pos=3)
         
+        # vx_ent=-omega*coordinates[:,1]
+        # vy_ent=omega*coordinates[:,0]
+        # coordinates[:,0]-=vx_ent
+        # coordinates[:,1]-=vy_ent
         self.features = coordinates
         self._n_features = 3
-        return self._fit_internal(coordinates, n_pos=3)
+        print(" Don't use velocity!!")
+        print(self._n_features)
+        return self._fit_internal(self.features, n_pos=3)
 
     def _fit_internal(self, features: np.ndarray, n_pos: int = 3) -> 'SpectralClusteringPartitioner':
         self._n_features = features.shape[1]
@@ -2582,8 +2790,14 @@ class SpectralClusteringPartitioner(BasePartitioner):
         X_sub = X[idx]
 
         spectral = SpectralClustering(
-            n_clusters=self._n_cells, affinity='nearest_neighbors', 
-            n_neighbors=self.n_neighbors, random_state=self.random_state, assign_labels='kmeans'
+            n_clusters=self._n_cells,
+            #   affinity='nearest_neighbors', 
+              affinity='rbf', 
+            n_neighbors=self.n_neighbors,
+              random_state=self.random_state,
+                # assign_labels='kmeans',
+                assign_labels='discretize',
+                # assign_labels='cluster_qr',
         )
         labels_sub = spectral.fit_predict(X_sub)
 
@@ -2596,13 +2810,15 @@ class SpectralClusteringPartitioner(BasePartitioner):
     def compute_states(self, x, y, z, vx=None, vy=None, vz=None) -> np.ndarray:
         pos = np.column_stack([np.asarray(x), np.asarray(y), np.asarray(z)])
 
-        if self._n_features == 6 and vx is not None and vy is not None and vz is not None:
-            vel = np.column_stack([np.asarray(vx), np.asarray(vy), np.asarray(vz)])
-            features = np.hstack([pos, vel])
-        elif self._n_features == 6:
-            features = np.hstack([pos, np.zeros((len(pos), 3))])
-        else:
-            features = pos
+        # if self._n_features == 6 and vx is not None and vy is not None and vz is not None:
+        #     vel = np.column_stack([np.asarray(vx), np.asarray(vy), np.asarray(vz)])
+        #     features = np.hstack([pos, vel])
+        # elif self._n_features == 6:
+        #     features = np.hstack([pos, np.zeros((len(pos), 3))])
+        # elif self._n_features == 4 and self.dem_velocities is not None:
+        #     features = np.hstack([pos, np.zeros((len(pos), 3))])
+        # else:
+        features = pos
 
         X = (features - self._mean) / self._std
         if X.shape[1] > 3:
@@ -2634,8 +2850,156 @@ class SpectralClusteringPartitioner(BasePartitioner):
             params = json.load(f)
             self._n_features = params["n_features"]
 
+from sklearn.cluster import DBSCAN
+
+class DBSCANPartitioner(BasePartitioner):
+    """
+    DBSCAN pour un découpage basé sur la densité locale du mélangeur.
+    Capture naturellement les zones de mélange irrégulières / non-convexes
+    sans imposer un nombre de cellules a priori (contrairement à Spectral/GMM).
+    Les particules en zone de faible densité sont marquées comme bruit (-1),
+    cohérent avec la convention "hors-zone" du pipeline.
+    """
+    def __init__(self, eps=0.1, min_samples=10, velocity_weight=0.5, max_samples=5000, random_state=42):
+        super().__init__()
+        self.eps: float = eps
+        self.min_samples: int = min_samples
+        self.velocity_weight: float = velocity_weight
+        self.max_samples: int = max_samples
+        self.random_state: int = random_state
+
+        self._support_data: np.ndarray = None
+        self._support_labels: np.ndarray = None
+        self._tree = None  # KDTree sur les points de support (cores + bordures)
+        self._mean: np.ndarray = None
+        self._std: np.ndarray = None
+        self._n_features: int = 6
+        self._n_cells: int = 0  # déterminé dynamiquement après fit
+        self._splitting_method: str = "dbscan"
+        self.use_velocity: bool = False
+        self.features: np.ndarray = None
+
+    @property
+    def n_cells(self) -> int:
+        return self._n_cells
+
+    @property
+    def label(self) -> str:
+        return f"dbscan_eps{self.eps}_min{self.min_samples}_vw{self.velocity_weight}"
+
+    def fit(self, coordinates: np.ndarray, use_velocities: bool = None) -> 'DBSCANPartitioner':
+        use_velocities = self.use_velocity if use_velocities is None else use_velocities
+        coordinates = np.asarray(coordinates)
+
+        if use_velocities and self.dem_velocities is not None:
+            vel = np.asarray(self.dem_velocities)
+            if len(vel) == len(coordinates):
+                self.features = np.hstack([coordinates, vel])
+                self._n_features = 6
+                return self._fit_internal(self.features, n_pos=3)
+
+        self.features = coordinates
+        self._n_features = 3
+        return self._fit_internal(coordinates, n_pos=3)
+
+    def _fit_internal(self, features: np.ndarray, n_pos: int = 3) -> 'DBSCANPartitioner':
+        self._n_features = features.shape[1]
+
+        self._mean = features.mean(axis=0)
+        self._std = features.std(axis=0)
+        self._std[self._std == 0] = 1.0
+        X = (features - self._mean) / self._std
+
+        if X.shape[1] > n_pos:
+            weights = np.ones(X.shape[1])
+            weights[n_pos:] = self.velocity_weight
+            X = X * weights[np.newaxis, :]
+
+        # Sous-échantillonnage pour le fit (DBSCAN reste coûteux en O(N log N) à O(N^2)
+        # selon la dimension/densité, on garde la même logique que Spectral)
+        rng = np.random.RandomState(self.random_state)
+        n_samples = min(self.max_samples, len(X))
+        idx = rng.choice(len(X), n_samples, replace=False)
+        X_sub = X[idx]
+
+        dbscan = DBSCAN(
+            eps=self.eps,
+            min_samples=self.min_samples,
+            metric='euclidean',
+            n_jobs=-1,
+        )
+        labels_sub = dbscan.fit_predict(X_sub)  # -1 = bruit
+
+        n_found = len(set(labels_sub) - {-1})
+        self._n_cells = n_found
+        if n_found == 0:
+            raise ValueError(
+                f"DBSCAN n'a trouvé aucun cluster (tout est bruit). "
+                f"Essayez d'augmenter eps (actuel={self.eps}) ou de diminuer min_samples (actuel={self.min_samples})."
+            )
+
+        # Sauvegarde des points de support pour l'inférence 1-NN
+        # (le bruit est conservé tel quel : un nouveau point proche d'un point de bruit
+        #  hérite de -1, ce qui est le comportement souhaité)
+        self._support_data = X_sub
+        self._support_labels = labels_sub
+        self._tree = cKDTree(self._support_data)
+        return self
+
+    def compute_states(self, x, y, z, vx=None, vy=None, vz=None) -> np.ndarray:
+        pos = np.column_stack([np.asarray(x), np.asarray(y), np.asarray(z)])
+
+        if self._n_features == 6 and vx is not None and vy is not None and vz is not None:
+            vel = np.column_stack([np.asarray(vx), np.asarray(vy), np.asarray(vz)])
+            features = np.hstack([pos, vel])
+        elif self._n_features == 6:
+            features = np.hstack([pos, np.zeros((len(pos), 3))])
+        else:
+            features = pos
+
+        X = (features - self._mean) / self._std
+        if X.shape[1] > 3:
+            weights = np.ones(X.shape[1])
+            weights[3:] = self.velocity_weight
+            X = X * weights[np.newaxis, :]
+
+        # Inférence par proximité aux points de support DBSCAN (cores/bordures/bruit)
+        _, indices = self._tree.query(X)
+        self.states = self._support_labels[indices].astype(np.int64)
+        return self.states
+
+    def _save_data(self, path: str) -> None:
+        os.makedirs(path, exist_ok=True)
+        np.save(os.path.join(path, "support_data.npy"), self._support_data)
+        np.save(os.path.join(path, "support_labels.npy"), self._support_labels)
+        np.save(os.path.join(path, "mean.npy"), self._mean)
+        np.save(os.path.join(path, "std.npy"), self._std)
+        with open(os.path.join(path, "params.json"), "w") as f:
+            json.dump({
+                "n_features": self._n_features,
+                "n_cells": self._n_cells,
+                "eps": self.eps,
+                "min_samples": self.min_samples,
+                "vw": self.velocity_weight,
+            }, f)
+
+    def _load_data(self, path: str) -> None:
+        self._support_data = np.load(os.path.join(path, "support_data.npy"))
+        self._support_labels = np.load(os.path.join(path, "support_labels.npy"))
+        self._mean = np.load(os.path.join(path, "mean.npy"))
+        self._std = np.load(os.path.join(path, "std.npy"))
+        self._tree = cKDTree(self._support_data)
+        with open(os.path.join(path, "params.json")) as f:
+            params = json.load(f)
+            self._n_features = params["n_features"]
+            self._n_cells = params["n_cells"]
+            self.eps = params["eps"]
+            self.min_samples = params["min_samples"]
+            self.vw = params.get("vw", self.velocity_weight)
+
 
 from sklearn.mixture import GaussianMixture
+from sklearn import mixture
 import numpy as np
 import pickle
 import os
@@ -2645,7 +3009,7 @@ class GaussianMixturePartitioner(BasePartitioner):
     Gaussian Mixture Model (covariance_type='full').
     Optimisé avec sous-échantillonnage pour la vitesse.
     """
-    def __init__(self, n_cells=125, velocity_weight=0.5, random_state=42, max_fit_samples=500_000):
+    def __init__(self, n_cells=125, velocity_weight=0.5, random_state=42, max_fit_samples=50_000):
         super().__init__()
         self._n_cells: int = n_cells
         self.velocity_weight: float = velocity_weight
@@ -2658,6 +3022,7 @@ class GaussianMixturePartitioner(BasePartitioner):
         self._n_features: int = 6
         self._splitting_method: str = "gmm_full"
         self.use_velocity: bool = True
+        # self.use_velocity: bool = False
         self.features: np.ndarray = None
 
     @property
@@ -2707,10 +3072,10 @@ class GaussianMixturePartitioner(BasePartitioner):
         # Paramètres optimisés pour la vitesse sans trop perdre en précision
         self._gmm = GaussianMixture(
             n_components=self._n_cells, 
-            covariance_type='full', 
+            covariance_type='full', # full
             random_state=self.random_state, 
             n_init=1,          # Réduit de 5 à 1 (suffisant pour un sweep)
-            max_iter=100,      # Réduit de 200 à 100
+            max_iter=50,      # Réduit de 200 à 100
             tol=1e-3,          # Tolérance légèrement assouplie
             init_params='kmeans' # Initialisation par KMeans (beaucoup plus rapide que random)
         )
@@ -2755,6 +3120,233 @@ class GaussianMixturePartitioner(BasePartitioner):
         self._mean = np.load(os.path.join(path, "mean.npy"))
         self._std = np.load(os.path.join(path, "std.npy"))
         self._centroids = self._gmm.means_
+
+
+
+class SpectralBiclusteringPartitioner(BasePartitioner):
+    """
+    SpectralBiclustering pour capturer la cinétique couplée position×vitesse.
+    Nécessite absolument dem_velocities avant fit().
+    """
+
+    def __init__(
+        self,
+        n_cells: int = 30,
+        n_col_clusters: int = 3,
+        method: str = "log",
+        velocity_weight: float = 0.6,
+        n_components: int = 10,
+        n_best: int = 5,
+        svd_method: str = "randomized",
+        max_samples: int = 4000,
+        random_state: int = 42,
+    ):
+        super().__init__()
+        self._n_cells         = n_cells
+        self.n_col_clusters   = n_col_clusters
+        self.method           = method
+        self.velocity_weight  = velocity_weight
+        self.n_components     = n_components
+        self.n_best           = n_best
+        self.svd_method       = svd_method
+        self.max_samples      = max_samples
+        self.random_state     = random_state
+
+        self._support_data    : np.ndarray = None
+        self._support_labels  : np.ndarray = None
+        self._tree            = None
+        self._mean            : np.ndarray = None
+        self._std             : np.ndarray = None
+        self._log_shift       : np.ndarray = None   # ✅ shift log stocké
+        self._n_features      : int = 7
+        self._col_labels      : np.ndarray = None
+        self._splitting_method: str = "spectral_biclustering"
+        self.use_velocity     : bool = True
+        self.features         : np.ndarray = None
+
+    @property
+    def n_cells(self) -> int:
+        return self._n_cells
+
+    @property
+    def label(self) -> str:
+        return (
+            f"spectral_biclustering_{self._n_cells}cells"
+            f"_nc{self.n_col_clusters}_m{self.method}"
+            f"_vw{self.velocity_weight}"
+        )
+
+    def _build_features(self, x, y, z, vx=None, vy=None, vz=None) -> np.ndarray:
+        r_cyl = np.sqrt(x**2 + y**2)
+        theta = np.arctan2(y, x)
+        if vx is not None and vy is not None and vz is not None:
+            v_norm = np.linalg.norm(np.column_stack([vx, vy, vz]), axis=1)
+            return np.column_stack([r_cyl, theta, z, v_norm, vx, vy, vz])
+        return np.column_stack([r_cyl, theta, z])
+
+    def fit(self, coordinates: np.ndarray, use_velocities=None) -> "SpectralBiclusteringPartitioner":
+        coordinates = np.asarray(coordinates)
+        x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
+
+        if self.dem_velocities is not None and len(self.dem_velocities) == len(coordinates):
+            vel = np.asarray(self.dem_velocities)
+            vx, vy, vz = vel[:, 0], vel[:, 1], vel[:, 2]
+            self.features = self._build_features(x, y, z, vx, vy, vz)
+            print(f"   ✅ Features avec vitesses : {self.features.shape}")
+        else:
+            # ✅ Fallback clair avec warning
+            print("   ⚠️  dem_velocities absent — fit sur coordonnées seules (3 features)")
+            self.features = self._build_features(x, y, z)
+
+        self._n_features = self.features.shape[1]
+        return self._fit_internal(self.features)
+
+    def _fit_internal(self, features: np.ndarray) -> "SpectralBiclusteringPartitioner":
+        # Normalisation
+        self._mean = features.mean(axis=0)   # shape (n_features,)
+        self._std  = features.std(axis=0)    # shape (n_features,)
+        self._std[self._std == 0] = 1.0
+        X = (features - self._mean) / self._std
+
+        # Pondération vitesses
+        if X.shape[1] > 3:
+            weights     = np.ones(X.shape[1])
+            weights[3:] = self.velocity_weight
+            X           = X * weights[np.newaxis, :]
+
+        # Sous-échantillonnage
+        rng       = np.random.RandomState(self.random_state)
+        n_samples = min(self.max_samples, len(X))
+        idx       = rng.choice(len(X), n_samples, replace=False)
+        X_sub     = X[idx]
+
+        # ✅ Shift log stocké ici une fois pour toutes
+        if self.method == "log":
+            self._log_shift = X_sub.min(axis=0)   # shape (n_features,)
+            X_sub = X_sub - self._log_shift + 1e-6
+
+        model = SpectralBiclustering(
+            n_clusters   = (self._n_cells, self.n_col_clusters),
+            method       = self.method,
+            n_components = max(self.n_components, self._n_cells + self.n_col_clusters),
+            n_best       = self.n_best,
+            svd_method   = self.svd_method,
+            random_state = self.random_state,
+        )
+        model.fit(X_sub)
+
+        n_distinct = len(np.unique(model.row_labels_))
+        if n_distinct < self._n_cells:
+            print(f"   ⚠️  {n_distinct} clusters distincts / {self._n_cells} demandés "
+                  f"→ augmente max_samples ou réduis n_cells")
+
+        self._support_data   = X_sub
+        self._support_labels = model.row_labels_.astype(np.int64)
+        self._col_labels     = model.column_labels_
+        self._tree           = cKDTree(self._support_data)
+
+        self._log_feature_groups()
+        return self
+
+    def _log_feature_groups(self):
+        feature_names = ["r_cyl", "theta", "z", "|v|", "vx", "vy", "vz"][: self._n_features]
+        print("   🔬 Groupes de features (SpectralBiclustering) :")
+        for g in range(self.n_col_clusters):
+            names = [feature_names[i] for i, lbl in enumerate(self._col_labels) if lbl == g]
+            print(f"      Groupe {g} : {names}")
+
+    def compute_states(self, x, y, z, vx=None, vy=None, vz=None) -> np.ndarray:
+        x = np.asarray(x)
+        y = np.asarray(y)
+        z = np.asarray(z)
+
+        features = self._build_features(
+            x, y, z,
+            np.asarray(vx) if vx is not None else None,
+            np.asarray(vy) if vy is not None else None,
+            np.asarray(vz) if vz is not None else None,
+        )
+
+        # ✅ Normalisation avec les MÊMES mean/std que le fit
+        X = (features - self._mean) / self._std
+
+        if X.shape[1] > 3:
+            weights     = np.ones(X.shape[1])
+            weights[3:] = self.velocity_weight
+            X           = X * weights[np.newaxis, :]
+
+        # ✅ Shift log cohérent avec le fit
+        if self.method == "log" and self._log_shift is not None:
+            X = X - self._log_shift + 1e-6
+
+        _, indices  = self._tree.query(X)
+        self.states = self._support_labels[indices].astype(np.int64)
+        return self.states
+    
+    def diagnostics(self, coords: np.ndarray) -> dict:
+        """
+        Override nécessaire : diagnostics doit passer des vitesses nulles
+        si elles ne sont pas disponibles, pour rester cohérent avec _n_features=7.
+        """
+        coords = np.asarray(coords)
+        x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
+
+        # Vitesses nulles si non disponibles — la normalisation reste cohérente
+        n = len(x)
+        vx = np.zeros(n)
+        vy = np.zeros(n)
+        vz = np.zeros(n)
+
+        states = self.compute_states(x, y, z, vx, vy, vz)
+
+        counts = np.bincount(states, minlength=self._n_cells)
+        visited = counts > 0
+
+        return {
+            "n_visited":  int(visited.sum()),
+            "n_empty":    int((~visited).sum()),
+            "pop_min":    int(counts[visited].min()) if visited.any() else 0,
+            "pop_max":    int(counts.max()),
+            "pop_mean":   float(counts[visited].mean()) if visited.any() else 0.0,
+            "pop_std":    float(counts[visited].std())  if visited.any() else 0.0,
+        }
+
+    def _save_data(self, path: str) -> None:
+        os.makedirs(path, exist_ok=True)
+        np.save(os.path.join(path, "support_data.npy"),   self._support_data)
+        np.save(os.path.join(path, "support_labels.npy"), self._support_labels)
+        np.save(os.path.join(path, "mean.npy"),           self._mean)
+        np.save(os.path.join(path, "std.npy"),            self._std)
+        np.save(os.path.join(path, "col_labels.npy"),     self._col_labels)
+        if self._log_shift is not None:
+            np.save(os.path.join(path, "log_shift.npy"), self._log_shift)
+        with open(os.path.join(path, "params.json"), "w") as f:
+            json.dump({
+                "n_features":      self._n_features,
+                "n_cells":         self._n_cells,
+                "n_col_clusters":  self.n_col_clusters,
+                "method":          self.method,
+                "velocity_weight": self.velocity_weight,
+                "n_components":    self.n_components,
+                "n_best":          self.n_best,
+            }, f, indent=2)
+
+    def _load_data(self, path: str) -> None:
+        self._support_data   = np.load(os.path.join(path, "support_data.npy"))
+        self._support_labels = np.load(os.path.join(path, "support_labels.npy"))
+        self._mean           = np.load(os.path.join(path, "mean.npy"))
+        self._std            = np.load(os.path.join(path, "std.npy"))
+        self._col_labels     = np.load(os.path.join(path, "col_labels.npy"))
+        self._tree           = cKDTree(self._support_data)
+        log_shift_path = os.path.join(path, "log_shift.npy")
+        if os.path.exists(log_shift_path):
+            self._log_shift = np.load(log_shift_path)
+        with open(os.path.join(path, "params.json")) as f:
+            p = json.load(f)
+            self._n_features   = p["n_features"]
+            self._n_cells      = p["n_cells"]
+            self.n_col_clusters = p["n_col_clusters"]
+            self.method        = p["method"]
 # =============================================================================
 # 7. PARTITIONNEMENT ADAPTATIF HAUT/BAS
 # =============================================================================
@@ -3170,11 +3762,13 @@ REGISTRY = {
     "physics_full_vel": FullVectorVelocityKMeansPartitioner, # K-Means avec le vecteur vitesse complet (vx, vy, vz)
     "spectral": SpectralClusteringPartitioner,        # Spectral Clustering (topologie/connexion du graphe)
     "gmm": GaussianMixturePartitioner,                # Gaussian Mixture Model (cellules ellipsoïdales)
-    
+    "spectral_biclustering": SpectralBiclusteringPartitioner,
     # Autres méthodes avancées
     "adaptive": AdaptivePartitioner,      
     "multizone": MultiZonePartitioner,     
-    "single": SingleCellPartitioner,       
+    "single": SingleCellPartitioner,
+    "dbscan":DBSCANPartitioner,
+
 }
 
 # =============================================================================
