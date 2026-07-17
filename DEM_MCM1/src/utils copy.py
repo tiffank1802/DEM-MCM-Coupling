@@ -1,17 +1,16 @@
-"""
-utils.py — Utilitaires généraux pour le module DEM_MCM.
-"""
+"""utils.py — Utilitaires généraux pour le module DEM_MCM."""
+
 from __future__ import annotations
+
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 from tqdm import tqdm
-from typing import Optional, Tuple
 
 
 def load_parquet_as_timestep_dict(
     parquet_path: str,
-    fs,
+    fs: HfFileSystem,
 ) -> dict[int, pd.DataFrame]:
     """
     Charge le fichier Parquet entier et retourne un dict {idx: DataFrame}.
@@ -26,7 +25,7 @@ def load_parquet_as_timestep_dict(
         dict[int, pd.DataFrame] — une entrée par timestep disponible
     """
     with fs.open(parquet_path, "rb") as fh:
-        pf       = pq.ParquetFile(fh)
+        pf = pq.ParquetFile(fh)
         list_dfs = []
         with tqdm(
             total=pf.num_row_groups,
@@ -42,11 +41,7 @@ def load_parquet_as_timestep_dict(
     timestep_dict: dict[int, pd.DataFrame] = {}
     for source, group_df in df_full.groupby("Fichier_Source"):
         # "data_42.csv" → 42
-        idx = int(
-            str(source)
-            .replace("data_", "")
-            .replace(".csv", "")
-        )
+        idx = int(str(source).replace("data_", "").replace(".csv", ""))
         timestep_dict[idx] = group_df.reset_index(drop=True)
 
     print(
@@ -58,7 +53,7 @@ def load_parquet_as_timestep_dict(
 
 def apply_species_mask(
     states: np.ndarray,
-    species_labels: Optional[np.ndarray],
+    species_labels: np.ndarray | None,
 ) -> np.ndarray:
     """
     Filtre un vecteur d'états pour garder seulement les particules
@@ -86,9 +81,9 @@ def apply_species_mask(
 
 
 def filter_by_diameter(
-    df: "pl.DataFrame",
+    df: pl.DataFrame,
     diameter: float,
-) -> Tuple["pl.DataFrame", np.ndarray]:
+) -> tuple[pl.DataFrame, np.ndarray]:
     """
     Filtre un DataFrame Polars par diamètre de particule.
 
@@ -101,11 +96,9 @@ def filter_by_diameter(
     """
     valid_diameters = [0.004, 0.008]
     if diameter not in valid_diameters:
-        raise ValueError(
-            f"diameter doit être dans {valid_diameters}, reçu {diameter}"
-        )
+        raise ValueError(f"diameter doit être dans {valid_diameters}, reçu {diameter}")
 
-    mask        = df["Diameter"] == diameter
+    mask = df["Diameter"] == diameter
     filtered_df = df.filter(mask)
     particle_ids_kept = filtered_df["Particle_ID"].to_numpy()
 

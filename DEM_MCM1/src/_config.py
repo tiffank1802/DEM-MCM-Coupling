@@ -7,10 +7,11 @@ proper typing for all public APIs.
 """
 
 from __future__ import annotations
-from typing import Any, Literal, TypedDict
-from dataclasses import dataclass
-import numpy as np
 
+from dataclasses import dataclass
+from typing import Any, Literal, TypedDict
+
+import numpy as np
 
 # =============================================================================
 # TYPE ALIASES
@@ -54,16 +55,18 @@ TransitionMatrix = Array2D  # Shape (n_states, n_states)
 # DATA CLASSES
 # =============================================================================
 
+
 @dataclass(frozen=True, slots=True)
 class PartitionerConfig:
     """Configuration for a partitioner instance.
-    
+
     Attributes:
         method: Type of partitioning method.
         method_kwargs: Keyword arguments for the partitioner constructor.
         n_cells: Number of partition cells (computed from method_kwargs).
         label: Human-readable identifier for this configuration.
     """
+
     method: PartitioningMethod
     method_kwargs: dict[str, Any]
     n_cells: int
@@ -73,7 +76,7 @@ class PartitionerConfig:
 @dataclass(frozen=True, slots=True)
 class LoadedModel:
     """Metadata for a loaded Markov model from the bucket.
-    
+
     Attributes:
         folder_name: Unique folder name in the bucket.
         method: Partitioning method used.
@@ -84,6 +87,7 @@ class LoadedModel:
         tau: Time step between snapshots.
         fraction_visited: Fraction of cells visited during learning.
     """
+
     folder_name: str
     method: PartitioningMethod
     particle_diameter: ParticleDiameter | None
@@ -92,41 +96,42 @@ class LoadedModel:
     nlt: int
     tau: int
     fraction_visited: float
-    
+
     def is_data_loaded(self) -> bool:
         """Check if transition matrices are loaded."""
-        return hasattr(self, '_matrices_loaded') and self._matrices_loaded
-    
+        return hasattr(self, "_matrices_loaded") and self._matrices_loaded
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary for API responses."""
         return {
-            'folder_name': self.folder_name,
-            'method': self.method,
-            'particle_diameter': self.particle_diameter,
-            'n_states': self.n_states,
-            'n_particles': self.n_particles,
-            'nlt': self.nlt,
-            'tau': self.tau,
-            'fraction_visited': self.fraction_visited,
+            "folder_name": self.folder_name,
+            "method": self.method,
+            "particle_diameter": self.particle_diameter,
+            "n_states": self.n_states,
+            "n_particles": self.n_particles,
+            "nlt": self.nlt,
+            "tau": self.tau,
+            "fraction_visited": self.fraction_visited,
         }
 
 
 @dataclass(frozen=True, slots=True)
 class AppContext:
     """Application context for session state synchronization across pages.
-    
+
     This is a singleton-like context that maintains the selected models and
     notifies pages of changes via version increments.
     """
+
     selected_models: list[LoadedModel]
     version: int = 0
-    
+
     def add_model(self, model: LoadedModel) -> None:
         """Add a model to the selection if not already present."""
         if model not in self.selected_models:
             self.selected_models.append(model)
             self.version += 1
-    
+
     def remove_model(self, folder_name: str) -> bool:
         """Remove a model by folder name. Returns True if removed."""
         for i, model in enumerate(self.selected_models):
@@ -135,14 +140,14 @@ class AppContext:
                 self.version += 1
                 return True
         return False
-    
+
     def get_model(self, folder_name: str) -> LoadedModel | None:
         """Get a model by folder name."""
         for model in self.selected_models:
             if model.folder_name == folder_name:
                 return model
         return None
-    
+
     def clear_models(self) -> None:
         """Clear all selected models."""
         if self.selected_models:
@@ -169,27 +174,52 @@ TIMESTEP_TO_SECONDS: float = 0.01  # 1 timestep = 0.01 seconds
 DEFAULT_BUCKET_PREFIX: str = BUCKET_PREFIXES[None]
 
 
+def get_bucket_prefix(
+    particle_diameter: ParticleDiameter | None = None,
+) -> str:
+    """Get the bucket prefix for a given particle diameter.
+
+    Args:
+        particle_diameter: Diameter of particles (0.004, 0.008, or None).
+
+    Returns:
+        Bucket prefix string (e.g., "_Good/SMALL", "_Good/BIG").
+    """
+    return BUCKET_PREFIXES.get(particle_diameter, DEFAULT_BUCKET_PREFIX)
+
+
 # =============================================================================
 # VALIDATION FUNCTIONS
 # =============================================================================
 
+
 def validate_partitioning_method(method: str) -> PartitioningMethod:
     """Validate and return a partitioning method.
-    
+
     Args:
         method: String identifier for the partitioning method.
-        
+
     Returns:
         Validated PartitioningMethod literal.
-        
+
     Raises:
         ValueError: If method is not recognized.
     """
     valid_methods: set[PartitioningMethod] = {
-        "cartesian", "cylindrical", "voronoi", "quantile", "octree",
-        "physics", "gmm", "spectral", "adaptive", "multizone", "single", "dbscan"
+        "cartesian",
+        "cylindrical",
+        "voronoi",
+        "quantile",
+        "octree",
+        "physics",
+        "gmm",
+        "spectral",
+        "adaptive",
+        "multizone",
+        "single",
+        "dbscan",
     }
-    
+
     if method not in valid_methods:
         raise ValueError(
             f"Unknown partitioning method: '{method}'. "
@@ -200,10 +230,10 @@ def validate_partitioning_method(method: str) -> PartitioningMethod:
 
 def get_bucket_prefix(particle_diameter: ParticleDiameter | None = None) -> str:
     """Get the bucket prefix for a given particle diameter.
-    
+
     Args:
         particle_diameter: Particle diameter in meters (0.004, 0.008, or None).
-        
+
     Returns:
         Bucket prefix string (e.g., "_Good/Experiment", "_Good/SMALL").
     """
@@ -214,8 +244,10 @@ def get_bucket_prefix(particle_diameter: ParticleDiameter | None = None) -> str:
 # TYPED DICTS FOR COMPLEX STRUCTURES
 # =============================================================================
 
+
 class SpeciesData(TypedDict):
     """Data for a single particle species."""
+
     P_raw: TransitionMatrix
     S_matrix: StateTrajectory
     times: Array1D
@@ -223,7 +255,22 @@ class SpeciesData(TypedDict):
 
 class ExperimentData(TypedDict):
     """Complete experiment data loaded from bucket."""
+
     config: dict[str, Any]
     stats: dict[str, Any]
     species: dict[str, SpeciesData]
     matrix: StateTrajectory | None
+
+
+class InhomogeneousExperimentData(TypedDict):
+    """Inhomogeneous experiment data with multiple transition matrices (one per NLT block).
+
+    Attributes:
+        P_blocks: 3D array of transition matrices, shape (n_blocks, n_states, n_states).
+        S_matrix: State trajectory matrix, shape (n_timesteps, n_states).
+        times: Timestep indices.
+    """
+
+    P_blocks: TransitionMatrix  # (n_blocks, n_states, n_states)
+    S_matrix: StateTrajectory
+    times: Array1D
