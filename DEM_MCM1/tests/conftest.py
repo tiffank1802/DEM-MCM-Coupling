@@ -8,6 +8,7 @@ import os
 import sys
 
 import pytest
+from typing import Generator
 
 # Add project root to path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -15,13 +16,13 @@ sys.path.insert(0, project_root)
 
 
 @pytest.fixture(scope="session")
-def project_root_dir():
+def project_root_dir() -> str:
     """Get project root directory."""
     return project_root
 
 
 @pytest.fixture(autouse=True)
-def reset_logging():
+def reset_logging() -> Generator[None, None, None]:
     """Reset logging between tests."""
     import logging
 

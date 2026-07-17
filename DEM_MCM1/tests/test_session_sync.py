@@ -12,7 +12,7 @@ Tests verify that:
 
 import os
 import sys
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -26,13 +26,17 @@ from src.Markov._config import (
     StateVector,
 )
 
+from typing import Any
+
+# ============================================================================
+
 # ============================================================================
 # FIXTURES
 # ============================================================================
 
 
 @pytest.fixture
-def sample_loaded_model():
+def sample_loaded_model() -> LoadedModel:
     """Create a sample LoadedModel for testing."""
     return LoadedModel(
         folder_name="voronoi_125_run1",
@@ -47,7 +51,7 @@ def sample_loaded_model():
 
 
 @pytest.fixture
-def sample_transition_matrix():
+def sample_transition_matrix() -> np.ndarray:
     """Create a valid transition matrix for testing."""
     n = 10
     M = np.random.rand(n, n)
@@ -56,7 +60,7 @@ def sample_transition_matrix():
 
 
 @pytest.fixture
-def app_context():
+def app_context() -> AppContext:
     """Create an AppContext instance."""
     return AppContext()
 
@@ -69,7 +73,7 @@ def app_context():
 class TestAppContextStateManagement:
     """Test AppContext add/remove/update operations."""
 
-    def test_add_model(self, app_context, sample_loaded_model) -> None:
+    def test_add_model(self, app_context: AppContext, sample_loaded_model: LoadedModel) -> None:
         """Test adding a model to context."""
         assert len(app_context.selected_models) == 0
 
@@ -78,14 +82,14 @@ class TestAppContextStateManagement:
         assert len(app_context.selected_models) == 1
         assert sample_loaded_model in app_context.selected_models
 
-    def test_add_duplicate_model(self, app_context, sample_loaded_model) -> None:
+    def test_add_duplicate_model(self, app_context: AppContext, sample_loaded_model: LoadedModel) -> None:
         """Test that duplicate models are not added."""
         app_context.add_model(sample_loaded_model)
         app_context.add_model(sample_loaded_model)
 
         assert len(app_context.selected_models) == 1
 
-    def test_remove_model(self, app_context, sample_loaded_model) -> None:
+    def test_remove_model(self, app_context: AppContext, sample_loaded_model: LoadedModel) -> None:
         """Test removing a model."""
         app_context.add_model(sample_loaded_model)
         assert len(app_context.selected_models) == 1
@@ -94,7 +98,7 @@ class TestAppContextStateManagement:
 
         assert len(app_context.selected_models) == 0
 
-    def test_version_increment_on_add(self, app_context, sample_loaded_model) -> None:
+    def test_version_increment_on_add(self, app_context: AppContext, sample_loaded_model: LoadedModel) -> None:
         """Test that version increments when model is added."""
         initial_version = app_context.version
 
@@ -103,7 +107,7 @@ class TestAppContextStateManagement:
         assert app_context.version > initial_version
 
     def test_version_increment_on_remove(
-        self, app_context, sample_loaded_model
+        self, app_context: AppContext, sample_loaded_model: LoadedModel
     ) -> None:
         """Test that version increments when model is removed."""
         app_context.add_model(sample_loaded_model)
@@ -113,7 +117,7 @@ class TestAppContextStateManagement:
 
         assert app_context.version > version_after_add
 
-    def test_clear_models(self, app_context, sample_loaded_model) -> None:
+    def test_clear_models(self, app_context: AppContext, sample_loaded_model: LoadedModel) -> None:
         """Test clearing all models."""
         app_context.add_model(sample_loaded_model)
         assert len(app_context.selected_models) > 0
@@ -122,7 +126,7 @@ class TestAppContextStateManagement:
 
         assert len(app_context.selected_models) == 0
 
-    def test_get_model(self, app_context, sample_loaded_model) -> None:
+    def test_get_model(self, app_context: AppContext, sample_loaded_model: LoadedModel) -> None:
         """Test retrieving a model by folder name."""
         app_context.add_model(sample_loaded_model)
 
@@ -139,12 +143,12 @@ class TestAppContextStateManagement:
 class TestLoadedModelTypeSafety:
     """Test LoadedModel dataclass constraints."""
 
-    def test_loaded_model_immutable(self, sample_loaded_model) -> None:
+    def test_loaded_model_immutable(self, sample_loaded_model: LoadedModel) -> None:
         """Test that LoadedModel is immutable."""
         with pytest.raises((AttributeError, TypeError)):
             sample_loaded_model.n_states = 200
 
-    def test_loaded_model_repr(self, sample_loaded_model) -> None:
+    def test_loaded_model_repr(self, sample_loaded_model: LoadedModel) -> None:
         """Test LoadedModel string representation."""
         repr_str = repr(sample_loaded_model)
 
@@ -152,11 +156,11 @@ class TestLoadedModelTypeSafety:
         assert "0.004" in repr_str
         assert "125" in repr_str
 
-    def test_loaded_model_is_data_loaded_false(self, sample_loaded_model) -> None:
+    def test_loaded_model_is_data_loaded_false(self, sample_loaded_model: LoadedModel) -> None:
         """Test is_data_loaded when matrices not loaded."""
         assert not sample_loaded_model.is_data_loaded()
 
-    def test_loaded_model_to_dict(self, sample_loaded_model) -> None:
+    def test_loaded_model_to_dict(self, sample_loaded_model: LoadedModel) -> None:
         """Test serialization to dict."""
         d = sample_loaded_model.to_dict()
 
@@ -231,24 +235,24 @@ class TestStateVectorValidation:
 class TestTransitionMatrixProperties:
     """Test transition matrix validation."""
 
-    def test_matrix_row_stochastic(self, sample_transition_matrix) -> None:
+    def test_matrix_row_stochastic(self, sample_transition_matrix: np.ndarray) -> None:
         """Test that matrix is row-stochastic (rows sum to 1)."""
         row_sums = sample_transition_matrix.sum(axis=1)
 
         np.testing.assert_allclose(row_sums, 1.0, rtol=1e-7)
 
-    def test_matrix_all_nonnegative(self, sample_transition_matrix) -> None:
+    def test_matrix_all_nonnegative(self, sample_transition_matrix: np.ndarray) -> None:
         """Test that all elements are non-negative."""
         assert np.all(sample_transition_matrix >= 0)
 
-    def test_matrix_eigenvalues_magnitude(self, sample_transition_matrix) -> None:
+    def test_matrix_eigenvalues_magnitude(self, sample_transition_matrix: np.ndarray) -> None:
         """Test that eigenvalues have magnitude ≤ 1."""
         eigenvalues = np.linalg.eigvals(sample_transition_matrix)
         magnitudes = np.abs(eigenvalues)
 
         assert np.all(magnitudes <= 1.0 + 1e-10)
 
-    def test_matrix_largest_eigenvalue(self, sample_transition_matrix) -> None:
+    def test_matrix_largest_eigenvalue(self, sample_transition_matrix: np.ndarray) -> None:
         """Test that largest eigenvalue is approximately 1."""
         eigenvalues = np.linalg.eigvals(sample_transition_matrix)
         largest = np.max(np.abs(eigenvalues))
@@ -264,7 +268,7 @@ class TestTransitionMatrixProperties:
 class TestIntegrationScenarios:
     """Test realistic workflows."""
 
-    def test_workflow_load_multiple_models(self, app_context) -> None:
+    def test_workflow_load_multiple_models(self, app_context: AppContext) -> None:
         """Test loading multiple models into context."""
         models = [
             LoadedModel(
@@ -284,7 +288,7 @@ class TestIntegrationScenarios:
         assert app_context.version > 0
 
     def test_workflow_switch_active_model(
-        self, app_context, sample_loaded_model
+        self, app_context: AppContext, sample_loaded_model: LoadedModel
     ) -> None:
         """Test switching active model in context."""
         model2 = LoadedModel(
@@ -303,7 +307,7 @@ class TestIntegrationScenarios:
 
         assert app_context.selected_models[app_context.active_model_index] == model2
 
-    def test_workflow_filter_by_diameter(self, app_context) -> None:
+    def test_workflow_filter_by_diameter(self, app_context: AppContext) -> None:
         """Test filtering models by particle diameter."""
         model_small = LoadedModel(
             folder_name="voronoi_small",
@@ -341,7 +345,7 @@ class TestIntegrationScenarios:
 class TestEdgeCases:
     """Test edge cases and error conditions."""
 
-    def test_empty_context_operations(self, app_context) -> None:
+    def test_empty_context_operations(self, app_context: AppContext) -> None:
         """Test operations on empty context."""
         assert len(app_context.selected_models) == 0
         assert app_context.get_model("nonexistent") is None
@@ -387,7 +391,7 @@ if __name__ == "__main__":
 
 
 @pytest.fixture
-def mock_streamlit_session():
+def mock_streamlit_session() -> MagicMock:
     """Mock Streamlit session_state for testing."""
     mock_session = {}
 
@@ -397,7 +401,7 @@ def mock_streamlit_session():
 
 
 @pytest.fixture
-def sample_loaded_model():
+def sample_loaded_model() -> LoadedModel:
     """Create a sample LoadedModel for testing."""
     return LoadedModel(
         folder_name="voronoi_125_run1",
@@ -412,7 +416,7 @@ def sample_loaded_model():
 
 
 @pytest.fixture
-def sample_transition_matrix():
+def sample_transition_matrix() -> np.ndarray:
     """Create a valid transition matrix for testing."""
     n = 10
     M = np.random.rand(n, n)
@@ -421,7 +425,7 @@ def sample_transition_matrix():
 
 
 @pytest.fixture
-def app_context():
+def app_context() -> AppContext:
     """Create an AppContext instance."""
     return AppContext()
 
@@ -434,7 +438,7 @@ def app_context():
 class TestAppContextStateManagement:
     """Test AppContext add/remove/update operations."""
 
-    def test_add_model(self, app_context, sample_loaded_model) -> None:
+    def test_add_model(self, app_context: AppContext, sample_loaded_model: LoadedModel) -> None:
         """Test adding a model to context."""
         assert len(app_context.selected_models) == 0
 
@@ -443,14 +447,14 @@ class TestAppContextStateManagement:
         assert len(app_context.selected_models) == 1
         assert sample_loaded_model in app_context.selected_models
 
-    def test_add_duplicate_model(self, app_context, sample_loaded_model) -> None:
+    def test_add_duplicate_model(self, app_context: AppContext, sample_loaded_model: LoadedModel) -> None:
         """Test that duplicate models are not added."""
         app_context.add_model(sample_loaded_model)
         app_context.add_model(sample_loaded_model)
 
         assert len(app_context.selected_models) == 1
 
-    def test_remove_model(self, app_context, sample_loaded_model) -> None:
+    def test_remove_model(self, app_context: AppContext, sample_loaded_model: LoadedModel) -> None:
         """Test removing a model."""
         app_context.add_model(sample_loaded_model)
         assert len(app_context.selected_models) == 1
@@ -459,7 +463,7 @@ class TestAppContextStateManagement:
 
         assert len(app_context.selected_models) == 0
 
-    def test_version_increment_on_add(self, app_context, sample_loaded_model) -> None:
+    def test_version_increment_on_add(self, app_context: AppContext, sample_loaded_model: LoadedModel) -> None:
         """Test that version increments when model is added."""
         initial_version = app_context.version
 
@@ -468,7 +472,7 @@ class TestAppContextStateManagement:
         assert app_context.version > initial_version
 
     def test_version_increment_on_remove(
-        self, app_context, sample_loaded_model
+        self, app_context: AppContext, sample_loaded_model: LoadedModel
     ) -> None:
         """Test that version increments when model is removed."""
         app_context.add_model(sample_loaded_model)
@@ -478,7 +482,7 @@ class TestAppContextStateManagement:
 
         assert app_context.version > version_after_add
 
-    def test_clear_models(self, app_context, sample_loaded_model) -> None:
+    def test_clear_models(self, app_context: AppContext, sample_loaded_model: LoadedModel) -> None:
         """Test clearing all models."""
         app_context.add_model(sample_loaded_model)
         assert len(app_context.selected_models) > 0
@@ -487,7 +491,7 @@ class TestAppContextStateManagement:
 
         assert len(app_context.selected_models) == 0
 
-    def test_get_model(self, app_context, sample_loaded_model) -> None:
+    def test_get_model(self, app_context: AppContext, sample_loaded_model: LoadedModel) -> None:
         """Test retrieving a model by folder name."""
         app_context.add_model(sample_loaded_model)
 
@@ -504,12 +508,12 @@ class TestAppContextStateManagement:
 class TestLoadedModelTypeSafety:
     """Test LoadedModel dataclass constraints."""
 
-    def test_loaded_model_immutable(self, sample_loaded_model) -> None:
+    def test_loaded_model_immutable(self, sample_loaded_model: LoadedModel) -> None:
         """Test that LoadedModel is immutable."""
         with pytest.raises((AttributeError, TypeError)):
             sample_loaded_model.n_states = 200
 
-    def test_loaded_model_repr(self, sample_loaded_model) -> None:
+    def test_loaded_model_repr(self, sample_loaded_model: LoadedModel) -> None:
         """Test LoadedModel string representation."""
         repr_str = repr(sample_loaded_model)
 
@@ -517,11 +521,11 @@ class TestLoadedModelTypeSafety:
         assert "0.004" in repr_str
         assert "125" in repr_str
 
-    def test_loaded_model_is_data_loaded_false(self, sample_loaded_model) -> None:
+    def test_loaded_model_is_data_loaded_false(self, sample_loaded_model: LoadedModel) -> None:
         """Test is_data_loaded when matrices not loaded."""
         assert not sample_loaded_model.is_data_loaded()
 
-    def test_loaded_model_to_dict(self, sample_loaded_model) -> None:
+    def test_loaded_model_to_dict(self, sample_loaded_model: LoadedModel) -> None:
         """Test serialization to dict."""
         d = sample_loaded_model.to_dict()
 
@@ -626,7 +630,7 @@ class TestModelLoaderCache:
 
     @patch("app.components.model_loader.get_fs")
     @patch("builtins.open", create=True)
-    def test_get_or_load_hit(self, mock_open, mock_fs, sample_loaded_model) -> None:
+    def test_get_or_load_hit(self, mock_open: MagicMock, mock_fs: MagicMock, sample_loaded_model: LoadedModel) -> None:
         """Test cache hit on get_or_load."""
         cache = ModelLoaderCache()
 
@@ -648,24 +652,24 @@ class TestModelLoaderCache:
 class TestTransitionMatrixProperties:
     """Test transition matrix validation."""
 
-    def test_matrix_row_stochastic(self, sample_transition_matrix) -> None:
+    def test_matrix_row_stochastic(self, sample_transition_matrix: np.ndarray) -> None:
         """Test that matrix is row-stochastic (rows sum to 1)."""
         row_sums = sample_transition_matrix.sum(axis=1)
 
         np.testing.assert_allclose(row_sums, 1.0, rtol=1e-7)
 
-    def test_matrix_all_nonnegative(self, sample_transition_matrix) -> None:
+    def test_matrix_all_nonnegative(self, sample_transition_matrix: np.ndarray) -> None:
         """Test that all elements are non-negative."""
         assert np.all(sample_transition_matrix >= 0)
 
-    def test_matrix_eigenvalues_magnitude(self, sample_transition_matrix) -> None:
+    def test_matrix_eigenvalues_magnitude(self, sample_transition_matrix: np.ndarray) -> None:
         """Test that eigenvalues have magnitude ≤ 1."""
         eigenvalues = np.linalg.eigvals(sample_transition_matrix)
         magnitudes = np.abs(eigenvalues)
 
         assert np.all(magnitudes <= 1.0 + 1e-10)
 
-    def test_matrix_largest_eigenvalue(self, sample_transition_matrix) -> None:
+    def test_matrix_largest_eigenvalue(self, sample_transition_matrix: np.ndarray) -> None:
         """Test that largest eigenvalue is approximately 1."""
         eigenvalues = np.linalg.eigvals(sample_transition_matrix)
         largest = np.max(np.abs(eigenvalues))
@@ -681,7 +685,7 @@ class TestTransitionMatrixProperties:
 class TestIntegrationScenarios:
     """Test realistic workflows."""
 
-    def test_workflow_load_multiple_models(self, app_context) -> None:
+    def test_workflow_load_multiple_models(self, app_context: AppContext) -> None:
         """Test loading multiple models into context."""
         models = [
             LoadedModel(
@@ -701,7 +705,7 @@ class TestIntegrationScenarios:
         assert app_context.version > 0
 
     def test_workflow_switch_active_model(
-        self, app_context, sample_loaded_model
+        self, app_context: AppContext, sample_loaded_model: LoadedModel
     ) -> None:
         """Test switching active model in context."""
         model2 = LoadedModel(
@@ -720,7 +724,7 @@ class TestIntegrationScenarios:
 
         assert app_context.selected_models[app_context.active_model_index] == model2
 
-    def test_workflow_filter_by_diameter(self, app_context) -> None:
+    def test_workflow_filter_by_diameter(self, app_context: AppContext) -> None:
         """Test filtering models by particle diameter."""
         model_small = LoadedModel(
             folder_name="voronoi_small",
@@ -758,7 +762,7 @@ class TestIntegrationScenarios:
 class TestEdgeCases:
     """Test edge cases and error conditions."""
 
-    def test_empty_context_operations(self, app_context) -> None:
+    def test_empty_context_operations(self, app_context: AppContext) -> None:
         """Test operations on empty context."""
         assert len(app_context.selected_models) == 0
         assert app_context.get_model("nonexistent") is None

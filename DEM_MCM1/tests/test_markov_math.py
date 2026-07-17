@@ -32,7 +32,7 @@ from src.Markov.markov_math import (
 
 
 @pytest.fixture
-def stochastic_matrix():
+def stochastic_matrix() -> np.ndarray:
     """Create a valid stochastic matrix."""
     M = np.array(
         [
@@ -46,7 +46,7 @@ def stochastic_matrix():
 
 
 @pytest.fixture
-def markov_trajectory():
+def markov_trajectory() -> np.ndarray:
     """Create a sample Markov trajectory."""
     n_timesteps = 100
     n_states = 5
@@ -59,7 +59,7 @@ def markov_trajectory():
 
 
 @pytest.fixture
-def segregated_trajectory():
+def segregated_trajectory() -> np.ndarray:
     """Create a segregated trajectory (non-mixed)."""
     n_timesteps = 100
     n_states = 5
@@ -75,7 +75,7 @@ def segregated_trajectory():
 
 
 @pytest.fixture
-def mixed_trajectory():
+def mixed_trajectory() -> np.ndarray:
     """Create a well-mixed trajectory."""
     n_timesteps = 100
     n_states = 5
@@ -91,7 +91,7 @@ def mixed_trajectory():
 class TestAnalyzeTransitionMatrix:
     """Test matrix analysis functions."""
 
-    def test_analyze_basic_matrix(self, stochastic_matrix) -> None:
+    def test_analyze_basic_matrix(self, stochastic_matrix: np.ndarray) -> None:
         """Test analyzing a basic stochastic matrix."""
         props = analyze_transition_matrix(stochastic_matrix)
 
@@ -99,20 +99,20 @@ class TestAnalyzeTransitionMatrix:
         assert "spectral_gap" in props
         assert "condition_number" in props
 
-    def test_largest_eigenvalue_one(self, stochastic_matrix) -> None:
+    def test_largest_eigenvalue_one(self, stochastic_matrix: np.ndarray) -> None:
         """Test that largest eigenvalue is 1 for stochastic matrix."""
         props = analyze_transition_matrix(stochastic_matrix)
 
         assert np.isclose(props["largest_eigenvalue"], 1.0, atol=1e-10)
 
-    def test_spectral_gap_positive(self, stochastic_matrix) -> None:
+    def test_spectral_gap_positive(self, stochastic_matrix: np.ndarray) -> None:
         """Test that spectral gap is positive (mixing)."""
         props = analyze_transition_matrix(stochastic_matrix)
 
         assert props["spectral_gap"] > 0
         assert props["spectral_gap"] < 1
 
-    def test_condition_number_positive(self, stochastic_matrix) -> None:
+    def test_condition_number_positive(self, stochastic_matrix: np.ndarray) -> None:
         """Test that condition number is positive."""
         props = analyze_transition_matrix(stochastic_matrix)
 
@@ -176,7 +176,7 @@ class TestComputeRSD:
 class TestValidateNormalization:
     """Test normalization checking."""
 
-    def test_valid_trajectory(self, markov_trajectory) -> None:
+    def test_valid_trajectory(self, markov_trajectory: np.ndarray) -> None:
         """Test trajectory with proper normalization."""
         total_particles = markov_trajectory.sum(axis=1)
 
@@ -254,7 +254,7 @@ class TestComputeEntropy:
 class TestCompareTrajectories:
     """Test trajectory comparison metrics."""
 
-    def test_identical_trajectories(self, markov_trajectory) -> None:
+    def test_identical_trajectories(self, markov_trajectory: np.ndarray) -> None:
         """Test comparison of identical trajectories."""
         result = compare_trajectories(markov_trajectory, markov_trajectory)
 
@@ -263,7 +263,7 @@ class TestCompareTrajectories:
         assert np.allclose(result["distances"], 0)
 
     def test_different_trajectories(
-        self, segregated_trajectory, mixed_trajectory
+        self, segregated_trajectory: np.ndarray, mixed_trajectory: np.ndarray
     ) -> None:
         """Test comparison of different trajectories."""
         result = compare_trajectories(segregated_trajectory, mixed_trajectory)
@@ -271,7 +271,7 @@ class TestCompareTrajectories:
         # Distance should be significant
         assert result["mean_distance"] > 0
 
-    def test_distance_symmetry(self, markov_trajectory) -> None:
+    def test_distance_symmetry(self, markov_trajectory: np.ndarray) -> None:
         """Test that distance is symmetric."""
         traj1 = markov_trajectory[:50]
         traj2 = markov_trajectory[50:]
@@ -291,7 +291,7 @@ class TestCompareTrajectories:
 class TestTrajectoryIntegration:
     """Test integration of math functions with trajectories."""
 
-    def test_segregated_to_mixed_analysis(self, segregated_trajectory) -> None:
+    def test_segregated_to_mixed_analysis(self, segregated_trajectory: np.ndarray) -> None:
         """Test analyzing segregation evolution."""
         # Compute RSD at each timestep
         rsd_evolution = np.array(
@@ -304,7 +304,7 @@ class TestTrajectoryIntegration:
         # RSD should decrease over time
         assert rsd_evolution[0] > rsd_evolution[-1]
 
-    def test_entropy_increase_over_time(self, segregated_trajectory) -> None:
+    def test_entropy_increase_over_time(self, segregated_trajectory: np.ndarray) -> None:
         """Test that entropy increases with mixing."""
         entropy_evolution = np.array(
             [
@@ -316,7 +316,7 @@ class TestTrajectoryIntegration:
         # Entropy should generally increase
         assert entropy_evolution[-1] > entropy_evolution[0]
 
-    def test_convergence_to_steady_state(self, mixed_trajectory) -> None:
+    def test_convergence_to_steady_state(self, mixed_trajectory: np.ndarray) -> None:
         """Test that well-mixed trajectory stays mixed."""
         rsd_evolution = np.array(
             [compute_rsd(mixed_trajectory[t]) for t in range(len(mixed_trajectory))]
