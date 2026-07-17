@@ -1,44 +1,53 @@
 """
-===================================================================================
- PARTITIONERS — Méthodes de partitionnement spatial pour chaînes de Markov
-===================================================================================
+partitioners.py — Spatial partitioning methods for Markov chain models
+======================================================================
 
- Interface commune:
-     partitioner = create_partitioner("voronoi", n_cells=125)
-     partitioner.fit(coordinates)                    # (N, 3) numpy array
-     states = partitioner.compute_states(x, y, z)    # → indices int64
-     partitioner.save("output/")
-     partitioner.load("output/")
- 
- Méthodes disponibles:
-     cartesian    — grille régulière (x, y, z)
-     cylindrical  — grille cylindrique (r, θ, z)
-     voronoi      — clustering K-means / cellules de Voronoï
-     quantile     — grille avec bords par quantiles (équi-population)
-     octree       — octree adaptatif à la densité
-     physics      — K-means sur position + champs physiques
-===================================================================================
+Provides the abstract base class and all concrete implementations for
+spatial partitioning of a granular mixer domain. Each method subdivides
+the 3D space into discrete states (cells) used to build Markov transition
+matrices.
+
+Common interface:
+    partitioner = create_partitioner("voronoi", n_cells=125)
+    partitioner.fit(coordinates)                 # (N, 3) numpy array
+    states = partitioner.compute_states(x, y, z) # → int64 indices
+    partitioner.save("output/")
+    partitioner.load("output/")
+
+Available methods:
+    cartesian    — Regular (x, y, z) grid
+    cylindrical  — Cylindrical (r, θ, z) grid
+    voronoi      — K-means clustering / Voronoï cells
+    quantile     — Quantile-bounded grid (equi-population)
+    octree       — Adaptive octree (5 splitting strategies)
+    physics      — K-means on position + velocity fields
+    gmm          — Gaussian Mixture Model
+    spectral     — Spectral clustering (graph topology)
+    adaptive     — Adaptive zoning (fine bottom, coarse top)
+    multizone    — Two independent zones with different methods
+    single       — Single cell (1-state baseline)
+    dbscan       — Density-based spatial clustering
+======================================================================
 """
 from __future__ import annotations
-import numpy as np
+
+import json
+import logging
 import os
 import io
-import pyvista as pv
-import json
 from abc import ABC, abstractmethod
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-import mpl_toolkits
-from scipy.spatial import ConvexHull, Voronoi
-from sklearn.cluster import SpectralBiclustering
-import matplotlib.animation as animation
-import streamlit as st
+from typing import Any, Optional
 
-# Imports relatifs (notebooks) vs absolus (script direct)
-try:
-    from . import analyze_results as ar
-except ImportError:
-    import analyze_results as ar
+import matplotlib.pyplot as plt
+import numpy as np
+import pyvista as pv
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401  (kept for 3D projection)
+from scipy.spatial import ConvexHull, Voronoi, cKDTree
+from sklearn.cluster import KMeans, MiniBatchKMeans, SpectralBiclustering
+
+from . import analyze_results as ar
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "BasePartitioner",
@@ -54,76 +63,98 @@ __all__ = [
     "AdaptivePartitioner",
     "MultiZonePartitioner",
     "SingleCellPartitioner",
-    "DBSCANPartitioner"
+    "DBSCANPartitioner",
     "create_partitioner",
     "REGISTRY",
 ]
 
 # =============================================================================
-# CLASSE DE BASE
+# ABSTRACT BASE CLASS
 # =============================================================================
 
 
-class BasePartitioner(ABC,ar.MarkovAnalyzer):
-    """Interface commune pour tous les partitionneurs."""
-    def __init__(self:BasePartitioner)->None:
-        self._y_split:float=0
-        self.y_seuil:float=None # type:ignore
-        self._splitting_method: str = None #type: ignore
-        super().__init__()
-        self.PARTICLE_NUMBER:int=1030
-        self.particle_diameters:np.ndarray=None #type:ignore
-        self.states=np.array([])
-        
-    # analyzer=ar.MarkovAnalyzer()
+class BasePartitioner(ABC):
+    """
+    Abstract base class for all spatial partitioners.
+
+    Defines the common interface:
+        - fit(coordinates) — learn cell boundaries from particle data
+        - compute_states(x, y, z) — assign each particle to a cell
+        - save/load — persist/restore the partitioner
+        - diagnostics — per-cell population statistics
+        - visualize_scientific — publication-quality figures
+
+    Subclasses must implement:
+        - n_cells (property)
+        - label (property)
+        - fit()
+        - compute_states()
+    """
+
+    def __init__(self) -> None:
+        self.z_split: float = 0.0
+        self.y_threshold: Optional[float] = None
+        self.splitting_method: Optional[str] = None
+        self.particle_number: int = 1030
+        self.particle_diameters: Optional[np.ndarray] = None
+        self.states: np.ndarray = np.array([], dtype=np.int64)
+
+    # ── Abstract properties ────────────────────────────────────────────────
 
     @property
     @abstractmethod
-    def n_cells(self:BasePartitioner)-> int:
-        """Nombre total d'états."""
+    def n_cells(self) -> int:
+        """Total number of partition cells (Markov states)."""
         ...
 
     @property
     @abstractmethod
-    def label(self:BasePartitioner)-> str:
-        """Identifiant unique (utilisé pour le nom de dossier)."""
+    def label(self) -> str:
+        """Unique identifier string (used for folder naming)."""
+        ...
+
+    # ── Abstract methods ───────────────────────────────────────────────────
+
+    @abstractmethod
+    def fit(self, coordinates: np.ndarray) -> "BasePartitioner":
+        """
+        Learn the partition boundaries from representative particle coordinates.
+
+        Args:
+            coordinates: Array of shape (N, 3) with (x, y, z) positions.
+
+        Returns:
+            Self, fitted in-place.
+        """
         ...
 
     @abstractmethod
-    @st.cache_data(
-        hash_funcs={"__main__.BasePartitioner":lambda x:x.label}
-    )
-    def fit(_self:BasePartitioner, coordinates: np.ndarray)->BasePartitioner:
+    def compute_states(
+        self,
+        x: np.ndarray,
+        y: np.ndarray,
+        z: np.ndarray,
+        vx: Optional[np.ndarray] = None,
+        vy: Optional[np.ndarray] = None,
+        vz: Optional[np.ndarray] = None,
+    ) -> np.ndarray:
         """
-        Apprend le partitionnement sur des données représentatives.
+        Assign each particle to its partition state (cell index).
 
         Args:
-            coordinates: np.ndarray shape (N, 3)
+            x, y, z: Particle position arrays.
+            vx, vy, vz: Optional velocity arrays (used by physics-aware methods).
+
         Returns:
-            self
+            Array of int64 state indices, shape (n_particles,).
         """
         ...
 
-    @abstractmethod
-    @st.cache_data(
-        hash_funcs={"__main__.BasePartitioner":lambda x:x.label}
-    )
-    def compute_states(self:BasePartitioner, x:np.ndarray, y:np.ndarray, z:np.ndarray,vx: np.ndarray=None,vy: np.ndarray=None,vz: np.ndarray=None)->np.ndarray: #type: ignore   
-        """
-        Assigne un indice d'état à chaque particule.
+    # ── Serialisation ──────────────────────────────────────────────────────
 
-        Args:
-            x, y, z: arrays ou Polars Series
-        Returns:
-            np.ndarray dtype int64
-        """
-        ...
-
-    def save(self: BasePartitioner, path: str)->None:
-        """Sauvegarde le partitionneur dans un dossier."""
-        os.makedirs(path, # The above code is not valid Python code. It appears to be a comment with
-        # the text "ex" followed by multiple pound symbols.
-        exist_ok=True)
+    def save(self, path: str) -> None:
+        """Save the partitioner state to a directory."""
+        os.makedirs(path, exist_ok=True)
         meta = {
             "type": type(self).__name__,
             "label": self.label,
@@ -133,17 +164,20 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
             json.dump(meta, f, indent=2)
         self._save_data(path)
 
-    def _save_data(self: BasePartitioner, path: str)->None:
+    def _save_data(self, path: str) -> None:
+        """Subclass-specific serialisation hook. Override to persist extra data."""
         pass
 
-    def load(self: BasePartitioner, path: str)->BasePartitioner:
-        """Charge le partitionneur depuis un dossier."""
+    def load(self, path: str) -> "BasePartitioner":
+        """Restore the partitioner state from a directory."""
         self._load_data(path)
         return self
 
-    def _load_data(self: BasePartitioner, path: str)->None:
+    def _load_data(self, path: str) -> None:
+        """Subclass-specific deserialisation hook. Override to restore extra data."""
         pass
 
+    # ── Visualisation ──────────────────────────────────────────────────────
 
     def visualize_scientific(
     self,
@@ -509,8 +543,8 @@ class BasePartitioner(ABC,ar.MarkovAnalyzer):
             cb.set_label("État (ID partition)", fontweight="bold")
             
             fig.text(0.5, 0.01,
-                    f"Méthode: {self._splitting_method} | N_cells: {self.n_cells} | "
-                    f"t={time_index} | N_particules: {len(x_instant)}",
+                    f"Method: {self.splitting_method} | N_cells: {self.n_cells} | "
+                    f"t={time_index} | N_particles: {len(x_instant)}",
                     ha="center", fontsize=8, color="dimgray", style="italic")
             
             plt.tight_layout(rect=[0, 0.04, 1, 1])
@@ -562,7 +596,7 @@ class CartesianPartitioner(BasePartitioner):
         super().__init__()
         self.nx, self.ny, self.nz = nx, ny, nz
         self._bounds:tuple = None #type:ignore
-        self._splitting_method: str = "cartesian"
+        self.splitting_method: str = "cartesian"
 
     @property
     def n_cells(self:CartesianPartitioner)-> int:
@@ -742,7 +776,7 @@ class CylindricalPartitioner(BasePartitioner):
         self._r_edges: np.ndarray = None
         self._z_edges: np.ndarray = None
         self._theta_edges: np.ndarray = None
-        self._splitting_method: str = "cylindrical"
+        self.splitting_method: str = "cylindrical"
 
     # ------------------------------------------------------------------
     # Propriétés
@@ -1052,7 +1086,7 @@ class VoronoiPartitioner(BasePartitioner):
         self.random_state = random_state
         self.centroids:np.ndarray = None #type: ignore
         self._tree:scipy.spacial.cKDTree = None #type: ignore
-        self._splitting_method:str = "voronoi"
+        self.splitting_method: str = "voronoi"
 
     @property
     def n_cells(self: VoronoiPartitioner)-> int:
@@ -1064,7 +1098,6 @@ class VoronoiPartitioner(BasePartitioner):
 
     def fit(self: VoronoiPartitioner, coordinates: np.ndarray)->VoronoiPartitioner:
         coordinates=np.asarray(coordinates)
-        from sklearn.cluster import MiniBatchKMeans,KMeans
         from scipy.spatial import cKDTree # type:ignore
 
         rng = np.random.RandomState(self.random_state)
@@ -1195,7 +1228,7 @@ class QuantileGridPartitioner(BasePartitioner):
         self._x_edges:np.ndarray = None # type: ignore
         self._y_edges:np.ndarray = None # type: ignore
         self._z_edges:np.ndarray = None # type: ignore
-        self._splitting_method:str = "quantile"
+        self.splitting_method: str = "quantile"
 
     @property
     def n_cells(self: QuantileGridPartitioner)-> int:
@@ -1364,7 +1397,7 @@ class OctreePartitioner(BasePartitioner):
         self._stats = {}           # statistiques (min, max) pour la normalisation
         self._oblique_root = None  # racine de l'arbre binaire oblique (dict)
         om = oblique_method or "axis"
-        self._splitting_method = f"octree_{om}"
+        self.splitting_method = f"octree_{om}"
 
     @property
     def n_cells(self: OctreePartitioner)-> int:
@@ -2130,9 +2163,9 @@ class OctreePartitioner(BasePartitioner):
             plt.colorbar(im, ax=ax, label='P(i→j)')
             ax.set_xlabel('État précédent (i)', fontsize=12)
             ax.set_ylabel('État suivant (j)', fontsize=12)
-            ax.set_title(f'Matrice P — octree_{method} ({P.shape[0]} états)',
+            ax.set_title(f'Transition matrix — octree_{method} ({P.shape[0]} states)',
                         fontsize=14, fontweight='bold')
-            info = f"Méthode de découpage : octree_{method}"
+            info = f"Partition method: octree_{method}"
             fig.text(0.02, 0.01, info, fontsize=9, style='italic', alpha=0.7,
                      transform=fig.transFigure)
             plt.tight_layout(rect=(0, 0.03, 1, 1))
@@ -2163,7 +2196,7 @@ class OctreePartitioner(BasePartitioner):
             ax.set_title(f'RSD — octree_{method}', fontsize=14, fontweight='bold')
             ax.grid(True, alpha=0.3)
             ax.set_ylim(bottom=0)
-            info = f"Méthode de découpage : octree_{method}"
+            info = f"Partition method: octree_{method}"
             fig.text(0.02, 0.01, info, fontsize=9, style='italic', alpha=0.7,
                      transform=fig.transFigure)
             plt.tight_layout(rect=(0, 0.03, 1, 1))
@@ -2247,7 +2280,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
         self._mean: np.ndarray = None
         self._std: np.ndarray = None
         self._n_features: int = 3
-        self._splitting_method: str = "physics"
+        self.splitting_method: str = "physics"
         self.use_velocity = False
         self.velocity_mode: str = velocity_mode  # "norm" ou "components"
         self.features: np.ndarray = None
@@ -2272,11 +2305,45 @@ class PhysicsAwarePartitioner(BasePartitioner):
         return f"physics_{self._n_cells}cells_{suffix}_vw{self.velocity_weight}"
 
     # ------------------------------------------------------------------
+    def _compute_relative_velocity(self, coordinates: np.ndarray, vel: np.ndarray) -> np.ndarray:
+        """
+        Calcule la vitesse relative (fluctuation dans le repère tournant)
+        en soustrayant la rotation solide autour de l'axe z.
+
+        Paramètres
+        ----------
+        coordinates : ndarray (N, 3) — positions (x, y, z)
+        vel : ndarray (N, 3) — vitesse absolue (vx, vy, vz)
+
+        Retour
+        ------
+        v_rel : ndarray (N, 3) — vitesse relative
+        """
+        omega = 4.0  # rad/s — vitesse angulaire du mélangeur
+        x = coordinates[:, 0]
+        y = coordinates[:, 1]
+
+        # Vitesse d'entraînement (rotation solide autour de z)
+        vx_entr = -omega * y
+        vy_entr = omega * x
+
+        # Vitesse relative (fluctuation dans le repère tournant)
+        v_rel = np.column_stack([
+            vel[:, 0] - vx_entr,
+            vel[:, 1] - vy_entr,
+            vel[:, 2],  # composante axiale inchangée
+        ])
+        return v_rel
+
     def fit(self, coordinates: np.ndarray, use_velocities: bool = None) -> "PhysicsAwarePartitioner":
         """
         Fit le partitionneur. Si use_velocities est True et self.dem_velocities
         est disponible, construit les features selon velocity_mode.
         Sinon, fit sur les positions seules.
+
+        La vitesse utilisée est la vitesse RELATIVE (fluctuation dans le
+        repère tournant), obtenue en soustrayant la rotation solide autour
+        de l'axe z (omega = 4 rad/s), comme dans SpectralClusteringPartitioner.
         """
         coordinates = np.asarray(coordinates)
         use_velocities = self.use_velocity if use_velocities is None else use_velocities
@@ -2289,16 +2356,20 @@ class PhysicsAwarePartitioner(BasePartitioner):
                     f"({len(coordinates)}), fallback positions only"
                 )
             else:
+                # Vitesse relative (soustraction de la rotation solide)
+                v_rel = self._compute_relative_velocity(coordinates, vel)
+
                 if self.velocity_mode == "norm":
-                    # 4D : (x, y, z, ‖v‖)
-                    speed = np.linalg.norm(vel, axis=1, keepdims=True)
+                    # 4D : (x, y, z, ‖v_rel‖)
+                    speed = np.linalg.norm(v_rel, axis=1, keepdims=True)
                     self.features = np.hstack([coordinates, speed])
                     self._n_features = 4
+                    print(self._n_features)
                     return self._fit_internal(self.features, n_pos=3)
 
                 elif self.velocity_mode == "components":
-                    # 6D : (x, y, z, vx, vy, vz)
-                    self.features = np.hstack([coordinates, vel])
+                    # 6D : (x, y, z, vx_rel, vy_rel, vz_rel)
+                    self.features = np.hstack([coordinates, v_rel])
                     self._n_features = 6
                     return self._fit_internal(self.features, n_pos=3)
 
@@ -2342,10 +2413,10 @@ class PhysicsAwarePartitioner(BasePartitioner):
         else:
             X_fit = X
 
-        kmeans = MiniBatchKMeans(
+        kmeans=KMeans(
             n_clusters=self._n_cells,
             random_state=self.random_state,
-            batch_size=min(10_000, len(X_fit)),
+            init='k-means++',
             n_init=10,
         )
         kmeans.fit(X_fit)
@@ -2359,23 +2430,28 @@ class PhysicsAwarePartitioner(BasePartitioner):
         Calcule l'état (indice de cellule) pour des points donnés.
         Si le modèle a été entraîné avec de la vitesse, il faut fournir
         vx, vy, vz (sinon padding à zéro).
+
+        La vitesse relative est utilisée (soustraction de la rotation solide
+        autour de z), cohérent avec fit().
         """
         pos = np.column_stack([np.asarray(x), np.asarray(y), np.asarray(z)])
 
         if self._n_features == 4:
-            # Mode norm : besoin de ‖v‖
+            # Mode norm : besoin de ‖v_rel‖
             if vx is not None and vy is not None and vz is not None:
                 vel = np.column_stack([np.asarray(vx), np.asarray(vy), np.asarray(vz)])
-                speed = np.linalg.norm(vel, axis=1, keepdims=True)
+                v_rel = self._compute_relative_velocity(pos, vel)
+                speed = np.linalg.norm(v_rel, axis=1, keepdims=True)
             else:
                 speed = np.zeros((len(pos), 1))
             features = np.hstack([pos, speed])
 
         elif self._n_features == 6:
-            # Mode components : besoin de (vx, vy, vz)
+            # Mode components : besoin de (vx_rel, vy_rel, vz_rel)
             if vx is not None and vy is not None and vz is not None:
                 vel = np.column_stack([np.asarray(vx), np.asarray(vy), np.asarray(vz)])
-                features = np.hstack([pos, vel])
+                v_rel = self._compute_relative_velocity(pos, vel)
+                features = np.hstack([pos, v_rel])
             else:
                 features = np.hstack([pos, np.zeros((len(pos), 3))])
                 print("⚠️ velocity_mode='components' mais vitesses absentes → padding zéro")
@@ -2471,7 +2547,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
 
         if "2d_xy" in plot_types:
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
-            info = f"Méthode de découpage : {self._splitting_method}"
+            info = f"Partition method: {self.splitting_method}"
             fig.text(0.02, 0.01, info, fontsize=9, style="italic", alpha=0.7, transform=fig.transFigure)
 
             sc1 = ax1.scatter(
@@ -2509,7 +2585,7 @@ class PhysicsAwarePartitioner(BasePartitioner):
 
         if "3d" in plot_types:
             fig = plt.figure(figsize=(12, 10))
-            info = f"Méthode de découpage : {self._splitting_method}"
+            info = f"Partition method: {self.splitting_method}"
             fig.text(0.02, 0.01, info, fontsize=9, style="italic", alpha=0.7, transform=fig.transFigure)
 
             ax = fig.add_subplot(111, projection="3d")
@@ -2591,7 +2667,7 @@ class FullVectorVelocityKMeansPartitioner(BasePartitioner):
         self._mean: np.ndarray = None
         self._std: np.ndarray = None
         self._n_features: int = 6  # x, y, z, vx, vy, vz
-        self._splitting_method: str = "fullvel_kmeans"
+        self.splitting_method: str = "fullvel_kmeans"
         self.use_velocity: bool = True
         self.features: np.ndarray = None
 
@@ -2711,7 +2787,7 @@ class SpectralClusteringPartitioner(BasePartitioner):
         self._mean: np.ndarray = None
         self._std: np.ndarray = None
         self._n_features: int = 4
-        self._splitting_method: str = "spectral"
+        self.splitting_method: str = "spectral"
         self.use_velocity: bool = True
         self.features: np.ndarray = None
 
@@ -2875,7 +2951,7 @@ class DBSCANPartitioner(BasePartitioner):
         self._std: np.ndarray = None
         self._n_features: int = 6
         self._n_cells: int = 0  # déterminé dynamiquement après fit
-        self._splitting_method: str = "dbscan"
+        self.splitting_method: str = "dbscan"
         self.use_velocity: bool = False
         self.features: np.ndarray = None
 
@@ -3020,7 +3096,7 @@ class GaussianMixturePartitioner(BasePartitioner):
         self._mean: np.ndarray = None
         self._std: np.ndarray = None
         self._n_features: int = 6
-        self._splitting_method: str = "gmm_full"
+        self.splitting_method: str = "gmm_full"
         self.use_velocity: bool = True
         # self.use_velocity: bool = False
         self.features: np.ndarray = None
@@ -3160,7 +3236,7 @@ class SpectralBiclusteringPartitioner(BasePartitioner):
         self._log_shift       : np.ndarray = None   # ✅ shift log stocké
         self._n_features      : int = 7
         self._col_labels      : np.ndarray = None
-        self._splitting_method: str = "spectral_biclustering"
+        self.splitting_method: str = "spectral_biclustering"
         self.use_velocity     : bool = True
         self.features         : np.ndarray = None
 
@@ -3381,7 +3457,7 @@ class AdaptivePartitioner(BasePartitioner):
         bottom_method: str = "cylindrical",
         bottom_kwargs: dict = None,#type: ignore
     ):
-        self._splitting_method = "adaptive"
+        self.splitting_method = "adaptive"
         self.y_split_input = y_split
         self.y_split_mode = y_split_mode
         self.n_cells_top_target = n_cells_top
@@ -3390,9 +3466,9 @@ class AdaptivePartitioner(BasePartitioner):
         self.bottom_method = bottom_method
         self.bottom_kwargs = bottom_kwargs or {}
         
-        # Calculés au fit
-        self._y_split:float = None #type: ignore
-        self.y_seuil:float = None #type: ignore
+        # Attributes computed during fit
+        self.y_split: float = None  # type: ignore[assignment]
+        self.y_threshold: float = None  # type: ignore[assignment]
         self._y_min:float = None #type: ignore
         self._y_max:float = None #type: ignore
         self._top_partitioner:BasePartitioner = None #type: ignore
@@ -3422,23 +3498,23 @@ class AdaptivePartitioner(BasePartitioner):
         self._y_min = y.min()
         self._y_max = y.max()
         
-        # ── Déterminer y_split ──
+        # ── Determine split position (y_split) ──
         if self.y_split_mode == "quantile":
             quantile = self.y_split_input if self.y_split_input else 0.7
-            self._y_split = np.quantile(y, quantile) #type:ignore
+            self.y_split = np.quantile(y, quantile)
         elif self.y_split_mode == "absolute":
             if self.y_split_input is None:
-                self._y_split = (self._y_min + self._y_max) / 2
+                self.y_split = (self._y_min + self._y_max) / 2
             else:
-                self._y_split = self.y_split_input
+                self.y_split = self.y_split_input
         else:
-            raise ValueError(f"y_split_mode inconnu: {self.y_split_mode}")
+            raise ValueError(f"Unknown y_split_mode: {self.y_split_mode}")
         
-        self.y_seuil = self._y_split
+        self.y_threshold = self.y_split
         
-        # ── Séparer les données ──
-        mask_bottom = y <= self._y_split
-        mask_top = y > self._y_split
+        # ── Split data ──
+        mask_bottom = y <= self.y_split
+        mask_top = y > self.y_split
         
         coords_bottom = coordinates[mask_bottom]
         coords_top = coordinates[mask_top]
@@ -3473,7 +3549,7 @@ class AdaptivePartitioner(BasePartitioner):
         n = len(x)
         states = np.zeros(n, dtype=np.int64)
         
-        mask_bottom = y <= self._y_split
+        mask_bottom = y <= self.y_split
         mask_top = ~mask_bottom
         
         # ── Zone basse : états 0 à n_cells_bottom-1 ──
@@ -3492,7 +3568,7 @@ class AdaptivePartitioner(BasePartitioner):
                 )
                 states[mask_top] = top_states + self._n_cells_bottom
         # #n=int(len(x)/self.PARTICLE_NUMBER)
-        self.states= states # Les méthode de découpage hybrides comme le adaptive et le multizone ne necessite pas l'application de masque car
+        self.states= states # Hybrid methods like adaptive/multizone don't need mask application
         # elles appellent déjà d'autres méthode de computestate des classes de découpage qu'elle instancient.
         return self.states
 
@@ -3548,7 +3624,7 @@ class MultiZonePartitioner(BasePartitioner):
         zones: list,
         y_mode: str = "absolute"
     ):
-        self._splitting_method:str = "multizone"
+        self.splitting_method: str = "multizone"
         self.zones_config = zones
         self.y_mode = y_mode
         self._zones:list = []  # [(y_min, y_max, partitioner), ...]
@@ -3702,7 +3778,7 @@ class SingleCellPartitioner(BasePartitioner):
 
     def __init__(self:SingleCellPartitioner, **kwargs)->None:
         super().__init__(**kwargs)
-        self._splitting_method = "single"
+        self.splitting_method = "single"
 
     @property
     def n_cells(self:SingleCellPartitioner)-> int:

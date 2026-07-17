@@ -18,9 +18,9 @@ import argparse
 import asyncio
 import io
 import json
-import os
+import re
+import shutil
 import sys
-import tempfile
 from pathlib import Path
 from scipy.spatial import ConvexHull
 
@@ -39,8 +39,6 @@ pv.OFF_SCREEN = True
 
 # ── Imports projet ────────────────────────────────────────────────────────────
 from huggingface_hub import HfFileSystem
-from DEM_MCM1.src.partitioners import create_partitioner
-from DEM_MCM1.src.run_sweep import _detect_species  # même fonction que dans run_experiment — ne pas dupliquer
 
 from DEM_MCM1.src.utils import load_parquet_as_timestep_dict
 from DEM_MCM1.src.bucket_io import (
@@ -49,7 +47,6 @@ from DEM_MCM1.src.bucket_io import (
     CATEGORY_MAP,
     get_simulation_category,
     PostprocessingBucketUploader,
-    _get_bucket_prefix_from_particle_diameter,
 )
 
 fs = HfFileSystem()
@@ -289,7 +286,6 @@ def _short_label(name: str, all_names: list[str]) -> str:
         return "_".join(parts[i] for i in varying if i < len(parts))
     
     # Fallback : extraire les paramètres clés avec regex
-    import re
     tokens = []
     for key in ["tau", "start", "step", "dt", "NLT"]:
         m = re.search(rf"{key}(\d+)", name)
@@ -312,7 +308,6 @@ def _common_prefix(all_names: list[str]) -> str:
 
 def _extract_model_type(names: list[str]) -> str:
     """Extrait le type de modèle (voronoi, cartesian, gmm, ...) depuis les noms."""
-    # known = ["voronoi", "cartesian", "gmm", "cylindrical", "physics"]
     known = list(CATEGORY_MAP.keys())
     for name in names:
         for model in known:
@@ -413,61 +408,142 @@ def fig_compare_rsd(
     model_type: str = "",
 ):
     """
-    RSD par espèce.
-    - Une courbe DEM de référence (marron, légère).
-    - Une courbe Markov par expérience (couleurs tab10).
+    RSD de concentration (cross-espèce) — compare la variation du ratio
+    small/(small+large) entre les cellules.
+    - Une courbe DEM de référence (grise).
+    - Une courbe Markov par expérience (couleurs viridis).
     """
     all_species = sorted({sp for sd in all_species_data.values() for sp in sd})
+    if len(all_species) < 2:
+        print("   ⚠️  Moins de 2 espèces — fig_compare_rsd ignorée.")
+        return
 
-    fig, axes = plt.subplots(
-        1, len(all_species),
-        figsize=(8.5 * len(all_species), 5) ,
-        squeeze=False,
+    sp_a, sp_b = all_species[1], all_species[0]
+    # sp_a, sp_b = all_species[0], all_species[1]
+    names = list(all_species_data.keys())
+
+    # ── Détection du paramètre NLT ─────────────────────────────────────────
+    import re
+    nlt_values = []
+    for name in names:
+        m = re.search(r'NLT(\d+)', name)
+        nlt_values.append(int(m.group(1)) if m else None)
+
+    is_nlt_comparison = (
+        all(v is not None for v in nlt_values)
+        and len(set(nlt_values)) > 1
     )
-    fig.suptitle(f"Comparaison RSD — {model_type}", fontweight="bold")
 
-    cmap   = plt.cm.tab10
-    names  = list(all_species_data.keys())
-    colors = {n: cmap(i / max(len(names) - 1, 1)) for i, n in enumerate(names)}
+    # ── Calcul de l'erreur relative entre matrices P (NLT seulement) ───────
+    error_text_parts = []
+    if is_nlt_comparison:
+        # Trier les expériences par NLT croissant
+        sorted_indices = sorted(range(len(names)), key=lambda i: nlt_values[i])
+        sorted_names   = [names[i] for i in sorted_indices]
+        sorted_values  = [nlt_values[i] for i in sorted_indices]
 
-    for col, sp in enumerate(all_species):
-        ax = axes[0][col]
+        for sp in [sp_a, sp_b]:
+            parts = []
+            for j in range(1, len(sorted_indices)):
+                idx_prev = sorted_indices[j - 1]
+                idx_curr = sorted_indices[j]
+                name_prev = names[idx_prev]
+                name_curr = names[idx_curr]
 
-        # ── DEM référence ────────────────────────────────────────────────
-        if dem_ref_data and sp in dem_ref_data:
-            d_ref  = dem_ref_data[sp]
-            rsd_ref = rsd_from_S(d_ref["S_dem"], d_ref["activated"])
-            ax.plot(
-                d_ref["times_dem"], rsd_ref,
-                "-", color="#AAAAAA", lw=1.5, alpha=0.4,
-                label=f"DEM — {dem_ref_label}",
-                zorder=5,
-            )
+                # Récupérer les matrices P des deux expériences pour cette espèce
+                P_prev = list(all_species_data.values())[idx_prev][sp]["P"]
+                P_curr = list(all_species_data.values())[idx_curr][sp]["P"]
 
-        # ── Markov : une courbe par expérience ───────────────────────────
-        for name, species_data in all_species_data.items():
-            if sp not in species_data:
-                continue
-            d     = species_data[sp]
-            rsd_m = rsd_from_S(d["traj_markov"], d["activated"])
-            ax.plot(
-                d["times_markov"], rsd_m,
-                "-", color=colors[name], lw=1.6, alpha=0.8,
-                label = _short_label(name, names),
-                zorder=3,
-            )
+                norm_diff = np.sum(np.abs(P_curr - P_prev))
+                norm_prev = np.sum(np.abs(P_prev))
+                rel_err   = norm_diff / norm_prev if norm_prev > 0 else 0.0
 
-        ax.set_title(f"RSD — espèce '{sp}'")
-        ax.set_xlabel("Temps (pas)")
-        ax.set_ylabel("RSD")
-        ax.legend(fontsize=6, ncol=1, borderpad=0.4, labelspacing=0.3,
-          handlelength=1.5, handletextpad=0.4)
-        ax.set_ylim(bottom=0)
+                parts.append(f"{sorted_values[j-1]}→{sorted_values[j]}: {rel_err:.4f}")
+
+            error_text_parts.append(f"{sp}: {' | '.join(parts)}")
+
+    # ── Construction de la figure ──────────────────────────────────────────
+    fig, ax = plt.subplots(figsize=(10, 5.5))
+    fig.suptitle(f"Comparaison RSD de concentration — {model_type}", fontweight="bold")
+
+    # Palette viridis (triée par NLT si c'est une comparaison NLT)
+    if is_nlt_comparison:
+        ordered_names = sorted(names, key=lambda n: nlt_values[names.index(n)])
+    else:
+        ordered_names = names
+
+    cmap   = plt.cm.viridis
+    colors = {n: cmap(i / max(len(ordered_names) - 1, 1))
+              for i, n in enumerate(ordered_names)}
+
+    # ── DEM référence (concentration) ────────────────────────────────────
+    rsd_d = None
+    if dem_ref_data and sp_a in dem_ref_data and sp_b in dem_ref_data:
+        d_ref_a = dem_ref_data[sp_a]
+        d_ref_b = dem_ref_data[sp_b]
+        n_d     = min(len(d_ref_a["times_dem"]), len(d_ref_b["times_dem"]))
+        rsd_d   = rsd_concentration(
+            d_ref_a["S_dem"][:n_d], d_ref_b["S_dem"][:n_d],
+            d_ref_a["activated"], d_ref_b["activated"],
+        )
+        # ax.plot(  # commenté intentionnellement
+        #     d_ref_a["times_dem"][:n_d], rsd_d,
+        #     "-", color="#AAAAAA", lw=1.5, alpha=0.4,
+        #     label=f"DEM — {dem_ref_label}",
+        #     zorder=5,
+        # )
+
+    # ── Markov : une courbe par expérience ───────────────────────────────
+    for name in ordered_names:
+        species_data = all_species_data[name]
+        if sp_a not in species_data or sp_b not in species_data:
+            continue
+        d_a = species_data[sp_a]
+        d_b = species_data[sp_b]
+        n_m = min(len(d_a["times_markov"]), len(d_b["times_markov"]))
+        rsd_m = rsd_concentration(
+            d_a["traj_markov"][:n_m], d_b["traj_markov"][:n_m],
+            d_a["activated"], d_b["activated"],
+        )
+
+        # RMSE entre la courbe Markov et la référence DEM
+        label = _short_label(name, names)
+        if rsd_d is not None:
+            n_min = min(len(rsd_m), len(rsd_d))
+            if n_min > 0:
+                rmse = np.sqrt(np.mean((rsd_m[:n_min] - rsd_d[:n_min])**2))
+                label += f"  (RMSE={rmse:.4f})"
+
+        ax.plot(
+            d_a["times_markov"][:n_m], rsd_m,
+            "-P", color=colors[name], lw=1.6, alpha=0.8,
+            label=label,
+            zorder=3,
+        )
+
+    ax.set_title(f"RSD de concentration C({sp_a})")
+    ax.set_xlabel("Temps (centièmes de seconde)")
+    ax.set_ylabel("RSD de concentration")
+    ax.legend(fontsize=7, ncol=1, borderpad=0.4, labelspacing=0.3,
+              handlelength=1.5, handletextpad=0.4)
+    ax.set_ylim(bottom=0)
+
+    # ── Affichage de l'erreur relative P (NLT seulement) ───────────────────
+    if is_nlt_comparison and error_text_parts:
+        error_text = "Erreur relative P (norme 1):\n" + "\n".join(error_text_parts)
+        ax.text(
+            0.02, 0.02, error_text,
+            transform=ax.transAxes,
+            fontsize=8,
+            verticalalignment="bottom",
+            horizontalalignment="left",
+            bbox=dict(boxstyle="round,pad=0.4", fc="#f8f9fa", ec="#b0bec5", alpha=0.9),
+        )
 
     fig.tight_layout()
     fig.savefig(out_dir / "compare_rsd.png", bbox_inches="tight")
     plt.close(fig)
-    print("   💾 compare_rsd.png")
+    print("   💾 compare_rsd.png  (RSD de concentration)")
 
 
 def fig_compare_states(
@@ -540,7 +616,7 @@ def fig_compare_states(
                     )
 
             ax.set_title(f"Cellule {cell}")
-            ax.set_xlabel("Temps (pas)")
+            ax.set_xlabel("Temps (centièmes de seconde)")
             ax.set_ylabel("Nb particules")
             ax.legend(fontsize=6, ncol=1, borderpad=0.4, labelspacing=0.3,
           handlelength=1.5, handletextpad=0.4)
@@ -610,7 +686,7 @@ def fig_compare_n_particles(
             )
 
         ax.set_title(f"N particules — espèce '{sp}'")
-        ax.set_xlabel("Temps (pas)")
+        ax.set_xlabel("Temps (centièmes de seconde)")
         ax.set_ylabel("N particules")
         ax.legend(fontsize=6, ncol=1, borderpad=0.4, labelspacing=0.3,
           handlelength=1.5, handletextpad=0.4)
@@ -620,6 +696,129 @@ def fig_compare_n_particles(
     fig.savefig(out_dir / "compare_n_particules.png", bbox_inches="tight")
     plt.close(fig)
     print("   💾 compare_n_particules.png")
+
+
+def fig_compare_teneur(
+    all_species_data: dict[str, dict],
+    out_dir: Path,
+    dem_ref_label: str = "",
+    dem_ref_data: dict | None = None,
+    model_type: str = "",
+    max_cells: int = 9,
+):
+    """
+    Comparaison de la teneur (fraction de petites particules) par cellule.
+    - DEM référence : traits gris fins.
+    - Une courbe Markov par expérience (couleurs viridis).
+    """
+    all_species = sorted({sp for sd in all_species_data.values() for sp in sd})
+    if len(all_species) < 2:
+        print("   ⚠️  Moins de 2 espèces — fig_compare_teneur ignorée.")
+        return
+
+    sp_a, sp_b = all_species[1], all_species[0]
+    # sp_a, sp_b = all_species[0], all_species[1]
+    names = list(all_species_data.keys())
+
+    # ── Cellules activées (top max_cells par occupation DEM) ──────────────
+    if dem_ref_data and sp_a in dem_ref_data and sp_b in dem_ref_data:
+        ref_a, ref_b = dem_ref_data[sp_a], dem_ref_data[sp_b]
+        activated = ref_a["activated"]
+    else:
+        first_key = list(all_species_data.keys())[0]
+        ref_a = all_species_data[first_key][sp_a]
+        ref_b = all_species_data[first_key][sp_b]
+        activated = ref_a["activated"]
+
+    active_indices = np.where(activated)[0]
+    if len(active_indices) == 0:
+        print("   ⚠️  Aucune cellule activée — fig_compare_teneur ignorée.")
+        return
+
+    # Trier par occupation totale moyenne (small + large) dans la DEM référence
+    occ_total = (
+        np.asarray(ref_a["S_dem"]).squeeze()[:, active_indices].mean(axis=0)
+        + np.asarray(ref_b["S_dem"]).squeeze()[:, active_indices].mean(axis=0)
+    )
+    sorted_cells = active_indices[np.argsort(occ_total)[::-1]]
+    cells_to_plot = sorted_cells[:max_cells]
+    n_cells = len(cells_to_plot)
+    ncols = min(3, n_cells)
+    nrows = (n_cells + ncols - 1) // ncols
+
+    cmap_exp = plt.cm.viridis
+    exp_colors = {n: cmap_exp(i / max(len(names) - 1, 1)) for i, n in enumerate(names)}
+
+    fig, axes = plt.subplots(
+        nrows, ncols,
+        figsize=(5.5 * ncols, 4 * nrows),
+        squeeze=False,
+    )
+    fig.suptitle(
+        f"Comparaison de la teneur — {model_type}",
+        fontweight="bold", fontsize=14,
+    )
+
+    for idx, cell in enumerate(cells_to_plot):
+        ax = axes[idx // ncols][idx % ncols]
+
+        # ── DEM référence ────────────────────────────────────────────────
+        if dem_ref_data and sp_a in dem_ref_data and sp_b in dem_ref_data:
+            d_ref_a = dem_ref_data[sp_a]
+            d_ref_b = dem_ref_data[sp_b]
+            t_d = np.asarray(d_ref_a["times_dem"]).ravel()
+            S_d_a = np.asarray(d_ref_a["S_dem"]).squeeze()
+            S_d_b = np.asarray(d_ref_b["S_dem"]).squeeze()
+            n_d = min(len(t_d), len(np.asarray(d_ref_b["times_dem"]).ravel()))
+
+            tot_d = S_d_a[:n_d, cell] + S_d_b[:n_d, cell]
+            teneur_d = np.divide(S_d_a[:n_d, cell], tot_d,
+                                 out=np.zeros(n_d), where=tot_d != 0)
+
+            ax.plot(
+                t_d[:n_d], teneur_d,
+                "-", color="#AAAAAA", lw=1.5, alpha=0.4,
+                label=f"DEM — {dem_ref_label}",
+                zorder=5,
+            )
+
+        # ── Markov : une courbe par expérience ───────────────────────────
+        for name, species_data in all_species_data.items():
+            if sp_a not in species_data or sp_b not in species_data:
+                continue
+            d_a = species_data[sp_a]
+            d_b = species_data[sp_b]
+            t_m = np.asarray(d_a["times_markov"]).ravel()
+            S_m_a = np.asarray(d_a["traj_markov"]).squeeze()
+            S_m_b = np.asarray(d_b["traj_markov"]).squeeze()
+            n_m = min(len(t_m), len(np.asarray(d_b["times_markov"]).ravel()))
+
+            tot_m = S_m_a[:n_m, cell] + S_m_b[:n_m, cell]
+            teneur_m = np.divide(S_m_a[:n_m, cell], tot_m,
+                                 out=np.zeros(n_m), where=tot_m != 0)
+
+            label = _short_label(name, names)
+            ax.plot(
+                t_m[:n_m], teneur_m,
+                "-", color=exp_colors[name], lw=1.6, alpha=0.8,
+                label=label,
+                zorder=3,
+            )
+
+        ax.set_title(f"Cellule {cell}")
+        ax.set_xlabel("Temps (centièmes de seconde)")
+        ax.set_ylabel(f"Teneur en {sp_a}")
+        ax.set_ylim(0, 1)
+        ax.legend(fontsize=6, ncol=1, borderpad=0.3, labelspacing=0.3,
+                  handlelength=1.5, handletextpad=0.4)
+
+    for idx in range(n_cells, nrows * ncols):
+        axes[idx // ncols][idx % ncols].set_visible(False)
+
+    fig.tight_layout()
+    fig.savefig(out_dir / "compare_teneur.png", bbox_inches="tight", dpi=150)
+    plt.close(fig)
+    print("   💾 compare_teneur.png")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -664,14 +863,25 @@ def run_comparison(
         out_dir = tmp / "images"
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        # ── États individuels par expérience ──────────────────────────────
-        print("\n📈 États par espèce (individuels)...")
-        for short, species_data in all_species_data.items():
-            for sp, sd in species_data.items():
-                try:
-                    fig_states_by_species(sp, sd, short, out_dir)
-                except Exception as e:
-                    print(f"   ⚠️  {short}/{sp} ignoré : {e}")
+        # ── Figures individuelles par expérience ──────────────────────────
+        # print("\n📈 Figures individuelles par expérience...")
+        # for short, species_data in all_species_data.items():
+        #     # États par cellule (par espèce)
+        #     for sp, sd in species_data.items():
+        #         try:
+        #             fig_states_by_species(sp, sd, short, out_dir)
+        #         except Exception as e:
+        #             print(f"   ⚠️  {short}/{sp} ignoré : {e}")
+        #     # RSD individuel (DEM vs Markov)
+        #     try:
+        #         fig_rsd(species_data, short, out_dir)
+        #     except Exception as e:
+        #         print(f"   ⚠️  RSD {short} ignoré : {e}")
+        #     # Concentration individuelle (DEM vs Markov)
+        #     try:
+        #         fig_concentration(species_data, short, out_dir)
+        #     except Exception as e:
+        #         print(f"   ⚠️  Concentration {short} ignorée : {e}")
 
         # ── Figures de comparaison ────────────────────────────────────────
         print("\n📊 Figures de comparaison...")
@@ -685,10 +895,16 @@ def run_comparison(
             dem_ref_label=dem_ref_label, dem_ref_data=dem_ref_data,
             model_type=model_type,
         )
-        fig_compare_n_particles(
+        # fig_compare_n_particles(
+        #     all_species_data, out_dir,
+        #     dem_ref_label=dem_ref_label, dem_ref_data=dem_ref_data,
+        #     model_type=model_type,
+        # )
+        fig_compare_teneur(
             all_species_data, out_dir,
             dem_ref_label=dem_ref_label, dem_ref_data=dem_ref_data,
             model_type=model_type,
+            max_cells=top_states,
         )
 
     print(f"\n✅ Comparaison '{keyword_slug}' — terminée.\n")
@@ -801,7 +1017,7 @@ def _plot_states_grid(
 
         mean_occ = S_d[:, cell].mean()
         ax.set_title(f"Cellule {cell}  (occupation moy. DEM : {mean_occ:.1f})", pad=6)
-        ax.set_xlabel("Temps (pas)")
+        ax.set_xlabel("Temps (centièmes de seconde)")
         ax.set_ylabel("Nb particules")
         ax.legend(loc="upper right")
         ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{int(x)}"))
@@ -958,7 +1174,7 @@ def fig_rsd(species_data: dict, short_name: str, out_dir: Path):
                 lw=1.4, alpha=0.85, label=_markov_label(sp), zorder=2)
 
         ax.set_title(f"RSD — espèce '{sp}'")
-        ax.set_xlabel("Temps (pas)"); ax.set_ylabel("RSD")
+        ax.set_xlabel("Temps (centièmes de seconde)"); ax.set_ylabel("RSD")
         ax.legend(); ax.set_ylim(bottom=0)
 
     fig.tight_layout()
@@ -1011,7 +1227,7 @@ def fig_concentration(species_data: dict, short_name: str, out_dir: Path):
                 alpha=0.9, label="DEM", zorder=3)
         ax.plot(da["times_markov"][:n_m], ym, "o--", color="#E53935", markersize=4,
                 lw=1.4, alpha=0.85, label="Markov", zorder=2)
-        ax.set_title(title); ax.set_xlabel("Temps (pas)"); ax.set_ylabel(ylabel)
+        ax.set_title(title); ax.set_xlabel("Temps (centièmes de seconde)"); ax.set_ylabel(ylabel)
         ax.legend(); ax.set_ylim(bottom=0)
 
     fig.tight_layout()
@@ -1024,17 +1240,11 @@ def fig_states_by_species(
     short_name: str,
     out_dir: Path,
 ):
-    S_d       = np.asarray(sp_data["S_dem"])
-    S_m       = np.asarray(sp_data["traj_markov"])
-    t_d       = np.asarray(sp_data["times_dem"])
-    t_m       = np.asarray(sp_data["times_markov"])
+    S_d       = np.asarray(sp_data["S_dem"]).squeeze()
+    S_m       = np.asarray(sp_data["traj_markov"]).squeeze()
+    t_d       = np.asarray(sp_data["times_dem"]).ravel()
+    t_m       = np.asarray(sp_data["times_markov"]).ravel()
     activated = sp_data["activated"]
-
-    # Remplacer les 4 lignes de correction par :
-    S_d = np.asarray(sp_data["S_dem"]).squeeze()
-    S_m = np.asarray(sp_data["traj_markov"]).squeeze()
-    t_d = np.asarray(sp_data["times_dem"]).ravel()
-    t_m = np.asarray(sp_data["times_markov"]).ravel()
 
     # Debug temporaire — à supprimer une fois confirmé
     print(f"      S_d={S_d.shape}  S_m={S_m.shape}  t_d={t_d.shape}  t_m={t_m.shape}")
@@ -1057,7 +1267,7 @@ def fig_states_by_species(
                 label=f"Markov — Cellule {cell}", zorder=2)
 
     ax.set_title(f"États par cellule — espèce '{sp}'\n{short_name}", fontweight="bold")
-    ax.set_xlabel("Temps (pas DEM)")
+    ax.set_xlabel("Temps (centièmes de seconde)")
     ax.set_ylabel("Nombre de particules")
     ax.legend(fontsize=7, ncol=2, loc="upper right")
     ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{int(x)}"))
@@ -1093,7 +1303,7 @@ def fig_entropy_total(species_data: dict, short_name: str, out_dir: Path):
     ax.plot(da["times_markov"][:n_m], ent_m, "o--", color="#9C27B0", markersize=4,
             lw=1.4, alpha=0.85, label="Markov (total)", zorder=2)
     ax.set_title(f"Entropie totale ({sp_a} + {sp_b})\n{short_name}", fontweight="bold")
-    ax.set_xlabel("Temps (pas)"); ax.set_ylabel("H (nats)"); ax.legend()
+    ax.set_xlabel("Temps (centièmes de seconde)"); ax.set_ylabel("H (nats)"); ax.legend()
     fig.tight_layout()
     fig.savefig(out_dir / "entropie_totale.png", bbox_inches="tight")
     plt.close(fig)
@@ -1151,8 +1361,14 @@ def fig_teneur(
     df = pd.DataFrame(rows)
 
     # ── Style Seaborn ───────────────────────────────────────────────────
-    sns.set_theme(style="whitegrid", context="talk")
-    palette = sns.color_palette("viridis", n_colors=n_cells)
+    # sns.set_theme(style="whitegrid", context="talk")
+    # palette = sns.color_palette("viridis", n_colors=n_cells)
+
+    fig, ax = plt.subplots(figsize=(16, 8))
+
+    tab10 = plt.get_cmap("tab10").colors  # 10 couleurs, cycle si >10 cellules
+    color_map = {cell: tab10[cell % 10] for cell in active_indices}
+    palette = [color_map[cell] for cell in active_indices]
 
     fig, ax = plt.subplots(figsize=(16, 8))
 
@@ -1160,20 +1376,22 @@ def fig_teneur(
     sns.lineplot(
         data=df[df["Source"] == "DEM"], x="Temps", y="Teneur",
         hue="Cellule", palette=palette, linewidth=2.5, alpha=0.5,
+        hue_order=[f"Cellule {c}" for c in active_indices],
         ax=ax, legend=True, zorder=3,
     )
+
     # Markov : pointillés avec marqueurs, même palette, légende désactivée
-    # pour ne pas dupliquer les entrées
     sns.lineplot(
         data=df[df["Source"] == "Markov"], x="Temps", y="Teneur",
         hue="Cellule", palette=palette, linewidth=1.6, alpha=0.9,
+        hue_order=[f"Cellule {c}" for c in active_indices],
         style="Source", markers=["o"], dashes=[(2, 2)], markersize=6,
         ax=ax, legend=False, zorder=2,
     )
 
     ax.set_title(f"Teneur en {sp_a} par cellule ({sp_a} + {sp_b})\n{short_name}",
                  fontsize=18, fontweight="bold", pad=20)
-    ax.set_xlabel("Temps (pas)", fontsize=14)
+    ax.set_xlabel("Temps (centièmes de seconde)", fontsize=14)
     ax.set_ylabel(f"Teneur en {sp_a} (fraction)", fontsize=14)
     ax.set_ylim(0, 1)
     ax.tick_params(labelsize=12)
@@ -1201,6 +1419,116 @@ def fig_teneur(
     fig.savefig(out_dir / "teneur.png", bbox_inches="tight", dpi=150)
     plt.close(fig)
     print("   💾 teneur.png")
+
+
+def fig_states_totale(
+    species_data: dict,
+    short_name: str,
+    out_dir: Path,
+):
+    """
+    Trace l'évolution du nombre total de particules (big + small) dans chaque cellule.
+    - DEM : traits pleins
+    - Markov : pointillés avec marqueurs
+    """
+    sps = list(species_data.keys())
+    if len(sps) < 2:
+        print("   ⚠️ fig_states_totale annulée : Moins de 2 espèces trouvées.")
+        return
+
+    sp_a, sp_b = sps[0], sps[1]
+    da, db = species_data[sp_a], species_data[sp_b]
+
+    # squeeze() pour éviter les dims fantômes
+    S_d_a = np.asarray(da["S_dem"]).squeeze()
+    S_d_b = np.asarray(db["S_dem"]).squeeze()
+    S_m_a = np.asarray(da["traj_markov"]).squeeze()
+    S_m_b = np.asarray(db["traj_markov"]).squeeze()
+
+    t_d_a = np.asarray(da["times_dem"]).ravel()
+    t_d_b = np.asarray(db["times_dem"]).ravel()
+    t_m_a = np.asarray(da["times_markov"]).ravel()
+    t_m_b = np.asarray(db["times_markov"]).ravel()
+
+    n_d = min(len(t_d_a), len(t_d_b))
+    n_m = min(len(t_m_a), len(t_m_b))
+    t_d, t_m = t_d_a[:n_d], t_m_a[:n_m]
+
+    # activated est un masque booléen -> on récupère les vrais indices de cellules
+    active_indices = np.where(da["activated"])[0]
+    n_cells = len(active_indices)
+
+    # Total particles = S_big + S_small
+    tot_dem = S_d_a[:n_d] + S_d_b[:n_d]
+    tot_markov = S_m_a[:n_m] + S_m_b[:n_m]
+
+    # ── Construction d'un DataFrame long-format pour Seaborn ──────────────
+    rows = []
+    for cell in active_indices:
+        for t, val in zip(t_d, tot_dem[:, cell].squeeze()):
+            rows.append({"Temps": t, "Total": val,
+                         "Cellule": f"Cellule {cell}", "Source": "DEM"})
+        for t, val in zip(t_m, tot_markov[:, cell].squeeze()):
+            rows.append({"Temps": t, "Total": val,
+                         "Cellule": f"Cellule {cell}", "Source": "Markov"})
+    df = pd.DataFrame(rows)
+
+    # ── Style ──────────────────────────────────────────────────────────
+    fig, ax = plt.subplots(figsize=(16, 8))
+
+    tab10 = plt.get_cmap("tab10").colors
+    color_map = {cell: tab10[cell % 10] for cell in active_indices}
+    palette = [color_map[cell] for cell in active_indices]
+
+    # DEM : traits pleins épais
+    sns.lineplot(
+        data=df[df["Source"] == "DEM"], x="Temps", y="Total",
+        hue="Cellule", palette=palette, linewidth=2.5, alpha=0.5,
+        hue_order=[f"Cellule {c}" for c in active_indices],
+        ax=ax, legend=True, zorder=3,
+    )
+
+    # Markov : pointillés avec marqueurs
+    sns.lineplot(
+        data=df[df["Source"] == "Markov"], x="Temps", y="Total",
+        hue="Cellule", palette=palette, linewidth=1.6, alpha=0.9,
+        hue_order=[f"Cellule {c}" for c in active_indices],
+        style="Source", markers=["o"], dashes=[(2, 2)], markersize=6,
+        ax=ax, legend=False, zorder=2,
+    )
+
+    ax.set_title(
+        f"Nombre total de particules par cellule ({sp_a} + {sp_b})\n{short_name}",
+        fontsize=18, fontweight="bold", pad=20,
+    )
+    ax.set_xlabel("Temps (centièmes de seconde)", fontsize=14)
+    ax.set_ylabel("Nombre total de particules", fontsize=14)
+    ax.tick_params(labelsize=12)
+
+    # Légende
+    handles, labels = ax.get_legend_handles_labels()
+    style_handles = [
+        Line2D([0], [0], color="black", lw=2.5, linestyle="-", label="DEM"),
+        Line2D([0], [0], color="black", lw=1.6, linestyle="--", marker="o",
+               markersize=6, label="Markov"),
+    ]
+    ax.legend(
+        handles=handles + style_handles,
+        labels=labels + ["DEM", "Markov"],
+        title="Cellule / Source",
+        fontsize=11, title_fontsize=12,
+        loc="center left", bbox_to_anchor=(1.02, 0.5),
+        borderaxespad=0,
+    )
+
+    sns.despine(fig)
+    fig.tight_layout()
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_dir / "states_totale.png", bbox_inches="tight", dpi=150)
+    plt.close(fig)
+    print("   💾 states_totale.png")
+
 
 def fig_compaction_population(volumes_dict: dict, short_name: str, out_dir: Path):
     """
@@ -1279,16 +1607,6 @@ def fig_compaction_population(volumes_dict: dict, short_name: str, out_dir: Path
     plt.close(fig2)
     print(f"   💾 {fname_comp}")
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import json
-import pyvista as pv
-from scipy.spatial import ConvexHull
-from pathlib import Path
-
-import shutil  # à ajouter en haut du fichier si pas déjà présent
-
 
 def fig_mesh(
     exp: dict,
@@ -1297,7 +1615,7 @@ def fig_mesh(
     out_dir_img: Path,
     out_dir_files: Path,
     timestep_dict: dict | None = None,
-    frame_stride: int = 1,
+    frame_stride: int = 157,
     series_theta_resolution: int = 8,
     series_phi_resolution: int = 8,
 ):
@@ -1314,6 +1632,7 @@ def fig_mesh(
     """
     config = exp["config"]
     start  = config.get("start_index", 250)
+    frame_stride=config.get("tau",157)
 
     # 1. Vérifications initiales des données
     states_matrix = exp.get("matrix")  # Format attendu : (n_timesteps, n_particles)
@@ -1682,7 +2001,7 @@ def fig_population_par_cellule(
         f"Évolution du nombre de particules par cellule — espèce '{sp}'\n{short_name}",
         fontweight="bold", fontsize=13
     )
-    ax.set_xlabel("Temps (pas)", fontsize=11)
+    ax.set_xlabel("Temps (centièmes de seconde)", fontsize=11)
     ax.set_ylabel("Nombre de particules", fontsize=11)
     ax.legend(
         fontsize=7, ncol=3, loc="upper right",
@@ -1776,7 +2095,7 @@ def fig_population_par_cellule(
         f"Répartition temporelle des particules par cellule{title_suffix} — espèce '{sp}'\n{short_name}",
         fontweight="bold", fontsize=13
     )
-    ax3.set_xlabel("Temps (pas)", fontsize=11)
+    ax3.set_xlabel("Temps (centièmes de seconde)", fontsize=11)
     ax3.set_ylabel("Nombre de particules", fontsize=11)
     ax3.legend(
         fontsize=7, ncol=3, loc="upper right",
@@ -1853,7 +2172,7 @@ def fig_matrice_population_heatmap(
         f"Heatmap : Population par cellule au cours du temps — espèce '{sp}'\n{short_name}",
         fontweight="bold", fontsize=13
     )
-    ax.set_xlabel("Temps (pas)", fontsize=11)
+    ax.set_xlabel("Temps (centièmes de seconde)", fontsize=11)
     ax.set_ylabel("Cellule", fontsize=11)
     
     # Labels des cellules (seulement quelques-uns si trop nombreux)
@@ -1883,131 +2202,7 @@ def export_transition_matrices(species_data: dict, short_name: str, out_dir: Pat
         print(f"   💾 P_{sp}_{short_name}.npy / .txt")
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# PIPELINE PRINCIPAL
-# ═════════════════════════════════════════════════════════════════════════════
 
-import shutil  # à ajouter en haut du fichier si pas déjà présent
-
-
-def main():
-    parser = _build_parser()
-    args   = parser.parse_args()
-
-    bucket_prefix = getattr(args, "bucket_prefix", "_Good/Experiment")
-    top_states    = getattr(args, "top_states", 6)
-    dry_run       = getattr(args, "dry_run", False)
-    dem_ref       = getattr(args, "dem_ref", "first")
-    bucket_hf     = f"hf://buckets/{BUCKET_ID}/{bucket_prefix}"
-
-    # ── Résolution du mode et de la liste d'expériences ─────────────────────
-    mode     = None
-    keywords = None
-    experiments = []
-
-    if args.subcommand == "single":
-        mode        = "single"
-        results = find_experiment_paths(bucket_hf, folder_name=args.folder)
-        if not results:
-            print(f"❌ Aucune expérience trouvée pour folder='{args.folder}'")
-            sys.exit(1)
-        experiments = results
-
-    elif args.subcommand == "keywords":
-        mode        = "keywords"
-        keywords    = args.keywords
-        results = find_experiment_paths(bucket_hf, keywords=keywords)
-        if not results:
-            print(f"❌ Aucune expérience trouvée pour keywords={keywords}")
-            sys.exit(1)
-        experiments = results
-
-    elif args.subcommand == "category":
-        mode        = "category"
-        experiments = list_category_paths(bucket_hf, args.category)
-        if not experiments:
-            print(f"❌ Aucune expérience trouvée dans '{args.category}'")
-            sys.exit(1)
-
-    elif args.subcommand == "compare":
-        mode     = "compare"
-        keywords = args.keywords
-        experiments = find_all_experiments_by_keywords(bucket_hf, keywords)
-        if not experiments:
-            print(f"❌ Aucune expérience trouvée pour {keywords}")
-            sys.exit(1)
-
-    # ── Style classique (pas de sous-commande) ───────────────────────────────
-    elif getattr(args, "folder", None):
-        mode        = "single"
-        results = find_experiment_paths(bucket_hf, folder_name=args.folder)
-        if not results:
-            print(f"❌ Aucune expérience trouvée pour folder='{args.folder}'")
-            sys.exit(1)
-        experiments = results
-
-    elif getattr(args, "keywords", None):
-        mode        = "keywords"
-        keywords    = args.keywords
-        results = find_experiment_paths(bucket_hf, keywords=keywords)
-        if not results:
-            print(f"❌ Aucune expérience trouvée pour keywords={keywords}")
-            sys.exit(1)
-        experiments = results
-
-    elif getattr(args, "category", None):
-        mode        = "category"
-        experiments = list_category_paths(bucket_hf, args.category)
-        if not experiments:
-            print(f"❌ Aucune expérience trouvée dans '{args.category}'")
-            sys.exit(1)
-
-    else:
-        print("❌ Aucun argument fourni. Utilisez --help pour voir les options.")
-        sys.exit(1)
-
-    # ── Dry-run ──────────────────────────────────────────────────────────────
-    if dry_run:
-        print(f"[DRY] mode={mode} — {len(experiments)} expérience(s) :")
-        for _, s in experiments:
-            print(f"  - {s}")
-        return
-
-    print(f"\n📋 {len(experiments)} expérience(s) à traiter")
-    for i, (_, s) in enumerate(experiments, 1):
-        print(f"  [{i}/{len(experiments)}] {s}")
-
-    # ── Chargement unique du parquet (sauf compare qui n'en a pas besoin) ────
-    df_start      = None
-    timestep_dict = None
-    if mode != "compare":
-        print("\n🔄 Chargement du parquet (une seule fois)...")
-        first_exp = load_experiment(experiments[0][0])
-        start     = first_exp["config"].get("start_index", 250)
-        timestep_dict = load_parquet_as_timestep_dict(
-            f"hf://buckets/{BUCKET_ID}/simulation_complete.parquet", fs
-        )
-        df_start = timestep_dict[start]
-        print(f"   ✅ df_start chargé (timestep {start}, {len(df_start)} particules)")
-        print(f"   ✅ timestep_dict chargé ({len(timestep_dict)} pas de temps disponibles)\n")
-
-    # ── Exécution ────────────────────────────────────────────────────────────
-    if mode == "compare":
-        run_comparison(experiments, keywords, bucket_prefix, top_states, dem_ref=dem_ref)
-
-    else:
-        for path_hf, short in experiments:
-            try:
-                # Extraire particle_diameter depuis config si disponible
-                exp_config = load_experiment(path_hf)["config"]
-                particle_diameter = exp_config.get("particle_diameter")
-
-                run_postprocess(path_hf, short, bucket_prefix, top_states,
-                                particle_diameter=particle_diameter,
-                                df_start=df_start,
-                                timestep_dict=timestep_dict)
-            except Exception as e:
-                print(f"⚠️  {short} — erreur : {e}")
 
 
 def run_postprocess(
@@ -2077,6 +2272,12 @@ def run_postprocess(
             fig_teneur(species_data, short_name, img_etats)
         except Exception as e:
             print(f" Teneur non construite \n{e}")
+
+        print("États totaux !!!")
+        try:
+            fig_states_totale(species_data, short_name, img_etats)
+        except Exception as e:
+            print(f" États totaux non construits \n{e}")
 
         # ── 4. Maillage ──────────────────────────────────────────────────
         print("\n🗺️  Maillage...")
