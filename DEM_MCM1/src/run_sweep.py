@@ -64,11 +64,11 @@ class ExperimentConfig:
 
     method: str = "cartesian"
     method_kwargs: dict = field(default_factory=dict)
-    nlt: int = 3
+    nlt: int = 2
     tau: int = 157  # Écart entre start et end pour chaque paire
     step: int =tau  # Distance entre 2 starts principaux (quand NLT > 1)
     dt: int = None  # type: ignore # Raffinage temporel à l'intérieur de chaque step
-    start_index: int = 250
+    start_index: int = 157
     particle_diameter: Optional[float] = None  # Diamètre de particule (0.004, 0.008, ou None)
 
     def __post_init__(self):
@@ -1018,7 +1018,7 @@ def run_markov_sweep(method: str, configs: list[ExperimentConfig] = None,
                   ):
                 partitioner.use_velocity = True
                 partitioner.dem_velocities = s_velocities[permanent_start:,:]
-                partitioner.fit(sample_coords[permanent_start:,:])
+                partitioner.fit(sample_coords[permanent_start:,:]) # utilise la vitesse grâce à l'attribut use_velocities et dem_velocities
                 # diag = partitioner.diagnostics(sample_coords[250:,:])
             else:
                 # partitioner.fit(sample_coords[250:,:]) # effectue le fit sur les coordonnées sur la phase stationnaire

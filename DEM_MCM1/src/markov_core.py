@@ -204,7 +204,7 @@ class Markov:
     
     def load_dem_data(
         self,
-        particle_diameter: ParticleDiameter = None,
+        particle_diameter: Optional[ParticleDiameter] = None,
     ) -> Dict[int, pd.DataFrame]:
         """
         Charger les données DEM depuis HuggingFace en mémoire.
