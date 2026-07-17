@@ -33,6 +33,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 # Configuration
 
+from typing import Any
+
 # Run_sweep : fonctions à tester
 from src.run_sweep import (
     ExperimentConfig,
@@ -417,7 +419,7 @@ class TestExperimentConfigInhomogeneous:
         assert folder.startswith("inhomogeneous_")
 
     def test_output_folder_prefix_single_nlt(
-        self, inhomogeneous_config_single_nlt
+        self, inhomogeneous_config_single_nlt: ExperimentConfig
     ) -> None:
         """Même avec NLT=1, le préfixe inhomogeneous_ est présent."""
         folder = inhomogeneous_config_single_nlt.output_folder()
@@ -436,7 +438,7 @@ class TestExperimentConfigInhomogeneous:
         assert d["inhomogeneous"] is True
 
     def test_inhomogeneous_config_preserves_other_params(
-        self, inhomogeneous_config
+        self, inhomogeneous_config: ExperimentConfig
     ) -> None:
         """Le flag inhomogène ne doit pas altérer les autres paramètres."""
         h_config = ExperimentConfig(
@@ -990,7 +992,7 @@ class TestPrepareSpeciesInhomogeneous:
             assert "P_blocks" in result_inhomo[sp]  # clé supplémentaire
 
     def test_inhomogeneous_vs_homogeneous_different_trajs(
-        self, rng, n_states, n_timesteps
+        self, rng: np.random.RandomState, n_states: int, n_timesteps: int
     ) -> None:
         """
         Avec des matrices P_blocks très différentes les unes des autres,
@@ -1046,7 +1048,7 @@ class TestLoadExperimentInhomogeneous:
         # On va mocker HfFileSystem pour simuler la présence du fichier
         with patch("postprocess.fs") as mock_fs:
             # Simuler que inhomogeneous_metadata.json existe
-            def mock_open(path, mode="r"):
+            def mock_open(path: str, mode: str = "r") -> Any:
                 if "inhomogeneous_metadata.json" in path:
                     io.BytesIO()
                     data = json.dumps(
@@ -1109,7 +1111,7 @@ class TestLoadExperimentInhomogeneous:
         """P_blocks chargés doivent être 3D."""
         with patch("postprocess.fs") as mock_fs:
 
-            def mock_open(path, mode="r"):
+            def mock_open(path: str, mode: str = "r") -> Any:
                 if "inhomogeneous_metadata.json" in path:
                     data = json.dumps(
                         {
@@ -1179,7 +1181,7 @@ class TestLoadExperimentInhomogeneous:
         """Sans inhomogeneous_metadata.json, inhomogeneous doit être False."""
         with patch("postprocess.fs") as mock_fs:
 
-            def mock_open(path, mode="r"):
+            def mock_open(path: str, mode: str = "r") -> Any:
                 if "inhomogeneous_metadata.json" in path:
                     raise FileNotFoundError(
                         "Fichier non trouvé: inhomogeneous_metadata.json"
@@ -1330,7 +1332,7 @@ class TestSaveExperimentWithInhomogeneousMetadata:
         )
 
     @patch("src.bucket_io.get_api")
-    def test_inhomogeneous_metadata_type_check(self, mock_get_api) -> None:
+    def test_inhomogeneous_metadata_type_check(self, mock_get_api: MagicMock) -> None:
         """inhomogeneous_metadata doit être un dict."""
         mock_api = MagicMock()
         mock_get_api.return_value = mock_api
@@ -1359,7 +1361,7 @@ class TestRunInhomogeneousExperiment:
     """
 
     def test_returns_P_blocks_not_transitionmatrix(
-        self, inhomogeneous_config, mock_partitioner, synthetic_timestep_dict
+        self, inhomogeneous_config: ExperimentConfig, mock_partitioner: Any, synthetic_timestep_dict: dict[int, pd.DataFrame]
     ) -> None:
         """Les résultats doivent contenir P_blocks et non transitionmatrix."""
         results, _stats = run_inhomogeneous_experiment(
@@ -1375,7 +1377,7 @@ class TestRunInhomogeneousExperiment:
             )
 
     def test_P_blocks_3d_shape(
-        self, inhomogeneous_config, mock_partitioner, synthetic_timestep_dict
+        self, inhomogeneous_config: ExperimentConfig, mock_partitioner: Any, synthetic_timestep_dict: dict[int, pd.DataFrame]
     ) -> None:
         """P_blocks doit être 3D : (n_blocks, n_states, n_states)."""
         results, _stats = run_inhomogeneous_experiment(
@@ -1398,7 +1400,7 @@ class TestRunInhomogeneousExperiment:
             )
 
     def test_n_blocks_equals_nlt(
-        self, inhomogeneous_config, mock_partitioner, synthetic_timestep_dict_large
+        self, inhomogeneous_config: ExperimentConfig, mock_partitioner: Any, synthetic_timestep_dict_large: dict[int, pd.DataFrame]
     ) -> None:
         """Le nombre de blocs doit être égal à NLT."""
         _results, stats = run_inhomogeneous_experiment(
@@ -1410,7 +1412,7 @@ class TestRunInhomogeneousExperiment:
         )
 
     def test_stats_inhomogeneous_flag(
-        self, inhomogeneous_config, mock_partitioner, synthetic_timestep_dict_large
+        self, inhomogeneous_config: ExperimentConfig, mock_partitioner: Any, synthetic_timestep_dict_large: dict[int, pd.DataFrame]
     ) -> None:
         """Les stats doivent contenir inhomogeneous=True."""
         _results, stats = run_inhomogeneous_experiment(
@@ -1422,7 +1424,7 @@ class TestRunInhomogeneousExperiment:
         )
 
     def test_each_block_is_stochastic(
-        self, inhomogeneous_config, mock_partitioner, synthetic_timestep_dict_large
+        self, inhomogeneous_config: ExperimentConfig, mock_partitioner: Any, synthetic_timestep_dict_large: dict[int, pd.DataFrame]
     ) -> None:
         """Chaque matrice P_k doit être row-stochastic."""
         results, _stats = run_inhomogeneous_experiment(
@@ -1443,7 +1445,7 @@ class TestRunInhomogeneousExperiment:
                 )
 
     def test_species_have_separate_blocks(
-        self, inhomogeneous_config, mock_partitioner, synthetic_timestep_dict_large
+        self, inhomogeneous_config: ExperimentConfig, mock_partitioner: Any, synthetic_timestep_dict_large: dict[int, pd.DataFrame]
     ) -> None:
         """Chaque espèce doit avoir ses propres P_blocks."""
         results, stats = run_inhomogeneous_experiment(
@@ -1470,7 +1472,7 @@ class TestSaveInhomogeneousResults:
     """Vérifie que save_inhomogeneous_results prépare correctement les données."""
 
     def test_species_data_has_P_blocks_keys(
-        self, inhomogeneous_config, rng, n_states
+        self, inhomogeneous_config: ExperimentConfig, rng: np.random.RandomState, n_states: int
     ) -> None:
         """Les clés des données espèces doivent être P_blocks_{species}."""
         # Créer des résultats factices
@@ -1556,7 +1558,7 @@ class TestInhomogeneousRoundTrip:
     """
 
     def test_full_roundtrip_logical_consistency(
-        self, inhomogeneous_config_single_nlt, rng, n_states
+        self, inhomogeneous_config_single_nlt: ExperimentConfig, rng: np.random.RandomState, n_states: int
     ) -> None:
         """
         Round-trip logique : avec NLT=1, l'inhomogène doit se comporter
@@ -1639,7 +1641,7 @@ class TestInhomogeneousRoundTrip:
             )
 
     def test_inhomogeneous_stats_completeness(
-        self, inhomogeneous_config, mock_partitioner, synthetic_timestep_dict
+        self, inhomogeneous_config: ExperimentConfig, mock_partitioner: Any, synthetic_timestep_dict: dict[int, pd.DataFrame]
     ) -> None:
         """Les statistiques inhomogènes doivent contenir tous les champs requis."""
         _results, stats = run_inhomogeneous_experiment(
@@ -1765,7 +1767,7 @@ class TestInhomogeneousEdgeCases:
             )
 
     def test_n_blocks_greater_than_requested_nlt(
-        self, inhomogeneous_config, mock_partitioner, synthetic_timestep_dict
+        self, inhomogeneous_config: ExperimentConfig, mock_partitioner: Any, synthetic_timestep_dict: dict[int, pd.DataFrame]
     ) -> None:
         """
         Si le nombre de blocs réels est inférieur au NLT demandé
