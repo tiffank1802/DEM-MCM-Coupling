@@ -1,12 +1,13 @@
 """
-tests/conftest.py
+tests/conftest.py.
 =================
 Pytest configuration and shared fixtures.
 """
 
-import pytest
 import os
 import sys
+
+import pytest
 
 # Add project root to path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -23,6 +24,7 @@ def project_root_dir():
 def reset_logging():
     """Reset logging between tests."""
     import logging
+
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
     yield

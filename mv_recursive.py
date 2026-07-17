@@ -1,14 +1,14 @@
-from huggingface_hub import HfFileSystem, HfApi
+from huggingface_hub import HfApi, HfFileSystem
 
-fs  = HfFileSystem()
+fs = HfFileSystem()
 api = HfApi()
 
 BUCKET_ID = "ktongue/DEM_MCM"
-BASE_PATH  = "_Good/Experiment"
-SKIP       = {"postraitement"}
+BASE_PATH = "_Good/Experiment"
+SKIP = {"postraitement"}
 
 base_hf = f"buckets/{BUCKET_ID}/{BASE_PATH}"
-items   = [i for i in fs.ls(base_hf, detail=True) if i["type"] == "directory"]
+items = [i for i in fs.ls(base_hf, detail=True) if i["type"] == "directory"]
 print(f"📦 {len(items)} dossiers détectés\n")
 
 ok = 0

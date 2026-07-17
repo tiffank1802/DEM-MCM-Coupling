@@ -1,5 +1,5 @@
 """
-bucket_io.py — Lecture/écriture directe vers HuggingFace bucket
+bucket_io.py — Lecture/écriture directe vers HuggingFace bucket.
 
   Lors de la lecture : aucun fichier n'est téléchargé en local,
     tout est lu depuis HuggingFace et seules les variables utiles sont retournées.
@@ -24,16 +24,15 @@ bucket_io.py — Lecture/écriture directe vers HuggingFace bucket
       postraitement/           ← sorties de post-traitement (non touché)
 """
 
-import numpy as np
-import json
 import io
-import os
+import json
 import shutil
-import tempfile
 import subprocess
+import tempfile
 from pathlib import Path
-from huggingface_hub import HfApi, HfFileSystem
 
+import numpy as np
+from huggingface_hub import HfApi, HfFileSystem
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIGURATION
@@ -44,31 +43,33 @@ BUCKET_ID = "ktongue/DEM_MCM"
 # Correspondance préfixe de nom → sous-dossier de catégorie
 # L'ordre est important : les préfixes les plus longs/spécifiques en premier.
 CATEGORY_MAP = {
+    "inhomogeneous_": "Inhomogènes",  # NOUVEAU - doit être en premier
     "physics_full_vel_": "physics_simulations",
-    "voronoi_":          "voronoi_simulations",
-    "cartesian_":        "cartesian_simulations",
-    "cylindrical_":      "cylindrical_simulations",
-    "gmm_":              "gmm_simulations",
-    "spectral_":         "spectral_simulations",
-    "adaptive_":         "adaptive_simulations",
-    "physics_":          "physics_simulations",
-    "quantile_":         "quantile_simulations",
-    "octree_":           "octree_simulations",
-    "multizone_":        "multizone_simulations",
-    "single_":           "single_simulations",
-    "_summary":          "summaries",
+    "voronoi_": "voronoi_simulations",
+    "cartesian_": "cartesian_simulations",
+    "cylindrical_": "cylindrical_simulations",
+    "gmm_": "gmm_simulations",
+    "spectral_": "spectral_simulations",
+    "adaptive_": "adaptive_simulations",
+    "physics_": "physics_simulations",
+    "quantile_": "quantile_simulations",
+    "octree_": "octree_simulations",
+    "multizone_": "multizone_simulations",
+    "single_": "single_simulations",
+    "_summary": "summaries",
 }
 
 # Dossiers qui ne sont jamais déplacés / catégorisés
 _SKIP_FOLDERS = {"postraitement"}
 
 # Toutes les catégories connues (utile pour list_experiments)
-ALL_CATEGORIES = list(dict.fromkeys(CATEGORY_MAP.values())) + ["other_simulations"]
+ALL_CATEGORIES = [*list(dict.fromkeys(CATEGORY_MAP.values())), "other_simulations"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPERS INTERNES
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def get_simulation_category(folder_name: str) -> str:
     """Détermine la catégorie de simulation à partir du nom du dossier."""
@@ -78,7 +79,7 @@ def get_simulation_category(folder_name: str) -> str:
     return "other_simulations"
 
 
-def _get_bucket_prefix_from_particle_diameter(particle_diameter) -> str:
+def _get_bucket_prefix_from_particle_diameter(particle_diameter: float | None) -> str:
     if particle_diameter == 0.008:
         return "_Good/BIG"
     elif particle_diameter == 0.004:
@@ -87,7 +88,7 @@ def _get_bucket_prefix_from_particle_diameter(particle_diameter) -> str:
         return "_Good/Experiment"
 
 
-def _get_current_branch():
+def _get_current_branch() -> str:
     try:
         current_dir = Path(__file__).resolve().parent
         for _ in range(5):
@@ -97,11 +98,15 @@ def _get_current_branch():
             current_dir = current_dir.parent
         else:
             return None
-        branch = subprocess.check_output(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=str(git_root),
-            stderr=subprocess.DEVNULL,
-        ).decode().strip()
+        branch = (
+            subprocess.check_output(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                cwd=str(git_root),
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
         return branch
     except Exception:
         return None
@@ -112,17 +117,18 @@ def _get_current_branch():
 # ─────────────────────────────────────────────────────────────────────────────
 
 BUCKET_PREFIX = _get_bucket_prefix_from_particle_diameter(None)
-BUCKET_BASE   = f"hf://buckets/{BUCKET_ID}/{BUCKET_PREFIX}"
+BUCKET_BASE = f"hf://buckets/{BUCKET_ID}/{BUCKET_PREFIX}"
 
 _branch = _get_current_branch()
 if _branch:
     print(f"🔀 Branche git détectée : '{_branch}'")
 
-_fs  = None
+_fs = None
 _api = None
 
 
 def get_fs() -> HfFileSystem:
+    """Get or create the HuggingFace file system singleton."""
     global _fs
     if _fs is None:
         _fs = HfFileSystem()
@@ -130,6 +136,7 @@ def get_fs() -> HfFileSystem:
 
 
 def get_api() -> HfApi:
+    """Get or create the HuggingFace API singleton."""
     global _api
     if _api is None:
         _api = HfApi()
@@ -140,16 +147,19 @@ def get_api() -> HfApi:
 # MIGRATION (utilitaire à appeler une seule fois)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def migrate_bucket(bucket_prefix: str = "_Good/Experiment", dry_run: bool = False):
+
+def migrate_bucket(
+    bucket_prefix: str = "_Good/Experiment", dry_run: bool = False
+) -> None:
     """
     Parcourt la racine d'un bucket_prefix et déplace les dossiers de simulation
     vers leurs sous-dossiers de catégorie.
 
     Args:
-        bucket_prefix : chemin relatif au bucket (ex. "_Good/Experiment").
-        dry_run       : si True, affiche seulement les déplacements sans les faire.
+        bucket_prefix: chemin relatif au bucket (ex. "_Good/Experiment").
+        dry_run: si True, affiche seulement les déplacements sans les faire.
     """
-    fs   = get_fs()
+    fs = get_fs()
     base = f"buckets/{BUCKET_ID}/{bucket_prefix}"
 
     items = [i for i in fs.ls(base) if i["type"] == "directory"]
@@ -175,34 +185,43 @@ def migrate_bucket(bucket_prefix: str = "_Good/Experiment", dry_run: bool = Fals
             except Exception as e:
                 print(f"  ❌ Erreur : {e}")
 
-    print(f"\n✅ Migration {'simulée' if dry_run else 'terminée'} — {moved} dossiers déplacés.")
+    print(
+        f"\n✅ Migration {'simulée' if dry_run else 'terminée'} — {moved} dossiers déplacés."
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ÉCRITURE
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def save_experiment_to_bucket(
-    folder_name,
-    stats,
-    config,
-    species_data=None,
-    partitioner_data=None,
-    image_data=None,
-    particle_diameter=None,
-):
+    folder_name: str,
+    stats: dict,
+    config: dict,
+    species_data: dict | None = None,
+    partitioner_data: dict | None = None,
+    image_data: dict | None = None,
+    particle_diameter: float | None = None,
+    inhomogeneous_metadata: dict | None = None,
+) -> None:
     """
     Sauvegarde une expérience dans le bucket, dans le bon sous-dossier de catégorie.
 
     Chemin final : {bucket_prefix}/{category}/{folder_name}/
+
+    Args:
+        inhomogeneous_metadata: dict optionnel avec {n_blocks, block_indices, species_list}
+                                pour les expériences inhomogènes. Si présent, sauvegarde
+                                inhomogeneous_metadata.json.
     """
     bucket_prefix = _get_bucket_prefix_from_particle_diameter(particle_diameter)
-    category      = get_simulation_category(folder_name)
+    category = get_simulation_category(folder_name)
     bucket_base_path = f"{bucket_prefix}/{category}/{folder_name}"
     api = get_api()
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        local_folder   = Path(tmpdir)
+        local_folder = Path(tmpdir)
         files_to_upload = []
 
         # Arrays par espèce
@@ -253,18 +272,33 @@ def save_experiment_to_bucket(
                     (str(img_path), f"{bucket_base_path}/images/{img_name}")
                 )
 
+        # NOUVEAU: Metadata inhomogène
+        if inhomogeneous_metadata is not None:
+            if not isinstance(inhomogeneous_metadata, dict):
+                raise TypeError(
+                    f"inhomogeneous_metadata doit être un dict, "
+                    f"pas {type(inhomogeneous_metadata).__name__}"
+                )
+            meta_path = local_folder / "inhomogeneous_metadata.json"
+            with open(meta_path, "w") as f:
+                json.dump(inhomogeneous_metadata, f, indent=2)
+            files_to_upload.append(
+                (str(meta_path), f"{bucket_base_path}/inhomogeneous_metadata.json")
+            )
+
         api.batch_bucket_files(
             bucket_id=BUCKET_ID,
             add=[(lp, bp) for lp, bp in files_to_upload],
         )
         print(f"   ✅ {len(files_to_upload)} fichiers uploadés → {bucket_base_path}/")
 
+
 def upload_postprocessing_to_bucket(
-    local_dir="outputs",
-    bucket_subfolder="postraitement",
-    particle_diameter=None,
-    cleanup=False,
-):
+    local_dir: str = "outputs",
+    bucket_subfolder: str = "postraitement",
+    particle_diameter: float | None = None,
+    cleanup: bool = False,
+) -> None:
     """
     Envoie tous les fichiers du dossier local vers le bucket (sous postraitement/).
     Conserve l'arborescence exacte.
@@ -280,15 +314,15 @@ def upload_postprocessing_to_bucket(
 
     files_to_upload = []
     vtp_files_count = 0
-    
+
     for file_path in local_path.rglob("*"):
         if file_path.is_file():
             rel_path = file_path.relative_to(local_path)
             bucket_path = f"{bucket_prefix}/{bucket_subfolder}/{rel_path.as_posix()}"
-            
+
             # TOUS les fichiers sont ajoutés à la liste pour le batch
             files_to_upload.append((str(file_path), bucket_path))
-            
+
             # Les fichiers VTK sont ALSO uploadés immédiatement via fs.put
             if file_path.suffix in (".vtp", ".vtu", ".vtk"):
                 try:
@@ -307,7 +341,7 @@ def upload_postprocessing_to_bucket(
         bucket_id=BUCKET_ID,
         add=[(lp, bp) for lp, bp in files_to_upload],
     )
-    
+
     total_files = len(files_to_upload)
     print(
         f"✅ {total_files} fichiers de post-traitement uploadés → "
@@ -319,12 +353,15 @@ def upload_postprocessing_to_bucket(
         shutil.rmtree(local_path)
         print(f"🧹 Dossier local supprimé : {local_path}")
 
-        
+
 # ─────────────────────────────────────────────────────────────────────────────
 # LECTURE
 # ─────────────────────────────────────────────────────────────────────────────
 
-def load_experiment_from_bucket(folder_name: str, bucket_prefix: str = None) -> dict:
+
+def load_experiment_from_bucket(
+    folder_name: str, bucket_prefix: str | None = None
+) -> dict:
     """
     Charge une expérience depuis le bucket.
 
@@ -343,7 +380,7 @@ def load_experiment_from_bucket(folder_name: str, bucket_prefix: str = None) -> 
             "config": dict,
         }
     """
-    fs       = get_fs()
+    fs = get_fs()
     category = get_simulation_category(folder_name)
 
     if bucket_prefix is None:
@@ -354,16 +391,18 @@ def load_experiment_from_bucket(folder_name: str, bucket_prefix: str = None) -> 
         else:
             bucket_prefix = "_Good/Experiment"
 
-    def _candidate_prefixes(bp):
+    def _candidate_prefixes(bp: str) -> list:
         return [
             f"hf://buckets/{BUCKET_ID}/{bp}/{category}/{folder_name}",  # nouveau
-            f"hf://buckets/{BUCKET_ID}/{bp}/{folder_name}",             # ancien
+            f"hf://buckets/{BUCKET_ID}/{bp}/{folder_name}",  # ancien
         ]
 
     alt_prefix = (
-        "_Good/BIG"   if bucket_prefix == "_Good/SMALL" else
-        "_Good/SMALL" if bucket_prefix == "_Good/BIG"   else
-        None
+        "_Good/BIG"
+        if bucket_prefix == "_Good/SMALL"
+        else "_Good/SMALL"
+        if bucket_prefix == "_Good/BIG"
+        else None
     )
 
     candidates = _candidate_prefixes(bucket_prefix)
@@ -374,27 +413,50 @@ def load_experiment_from_bucket(folder_name: str, bucket_prefix: str = None) -> 
         if not fs.exists(f"{prefix}/stats.json"):
             continue
 
-        def _load_npy(name):
+        def _load_npy(name: str) -> np.ndarray:
             with fs.open(f"{prefix}/{name}", "rb") as f:
                 return np.load(io.BytesIO(f.read()))
 
-        def _load_json(name):
+        def _load_json(name: str) -> dict:
             with fs.open(f"{prefix}/{name}", "r") as f:
                 return json.load(f)
 
-        stats  = _load_json("stats.json")
+        stats = _load_json("stats.json")
         config = _load_json("config.json")
 
-        species_list = stats.get("species_list", ["small", "large"])
-        species_out  = {}
-        for species in species_list:
-            species_out[species] = {
-                "P":        _load_npy(f"transitionmatrix_{species}.npy"),
-                "S_matrix": _load_npy(f"S_matrix_{species}.npy"),
-                "times":    _load_npy(f"times_{species}.npy"),
-            }
+        # Détection automatique du format inhomogène
+        inhomogeneous = False
+        inhomogeneous_metadata = None
+        try:
+            if fs.exists(f"{prefix}/inhomogeneous_metadata.json"):
+                inhomogeneous = True
+                inhomogeneous_metadata = _load_json("inhomogeneous_metadata.json")
+        except Exception:
+            pass
 
-        return {"species": species_out, "stats": stats, "config": config}
+        species_list = stats.get("species_list", ["small", "large"])
+        species_out = {}
+        for species in species_list:
+            if inhomogeneous:
+                species_out[species] = {
+                    "P_blocks": _load_npy(f"P_blocks_{species}.npy"),
+                    "S_matrix": _load_npy(f"S_matrix_{species}.npy"),
+                    "times": _load_npy(f"times_{species}.npy"),
+                }
+            else:
+                species_out[species] = {
+                    "P": _load_npy(f"transitionmatrix_{species}.npy"),
+                    "S_matrix": _load_npy(f"S_matrix_{species}.npy"),
+                    "times": _load_npy(f"times_{species}.npy"),
+                }
+
+        return {
+            "species": species_out,
+            "stats": stats,
+            "config": config,
+            "inhomogeneous": inhomogeneous,
+            "inhomogeneous_metadata": inhomogeneous_metadata,
+        }
 
     raise FileNotFoundError(
         f"❌ Introuvable : '{folder_name}' (catégorie : {category}) "
@@ -402,7 +464,7 @@ def load_experiment_from_bucket(folder_name: str, bucket_prefix: str = None) -> 
     )
 
 
-def list_experiments(bucket_prefix: str = None) -> list[str]:
+def list_experiments(bucket_prefix: str | None = None) -> list[str]:
     """
     Liste toutes les expériences en parcourant les sous-dossiers de catégorie,
     plus un fallback sur les dossiers encore à la racine (avant migration).
@@ -413,7 +475,7 @@ def list_experiments(bucket_prefix: str = None) -> list[str]:
     Returns:
         Liste triée des noms de dossiers d'expérience.
     """
-    fs   = get_fs()
+    fs = get_fs()
     base = f"hf://buckets/{BUCKET_ID}/{bucket_prefix}" if bucket_prefix else BUCKET_BASE
 
     experiments = set()
@@ -440,12 +502,14 @@ def list_experiments(bucket_prefix: str = None) -> list[str]:
     return sorted(experiments)
 
 
-def list_experiments_by_category(bucket_prefix: str = None) -> dict[str, list[str]]:
+def list_experiments_by_category(
+    bucket_prefix: str | None = None,
+) -> dict[str, list[str]]:
     """
     Même chose que list_experiments() mais retourne un dict catégorie → [noms].
     Utile pour afficher des groupes dans l'interface Streamlit.
     """
-    fs   = get_fs()
+    fs = get_fs()
     base = f"hf://buckets/{BUCKET_ID}/{bucket_prefix}" if bucket_prefix else BUCKET_BASE
 
     result = {cat: [] for cat in ALL_CATEGORIES}
@@ -470,14 +534,10 @@ def list_experiments_by_category(bucket_prefix: str = None) -> dict[str, list[st
         pass
 
     # Trier chaque liste et supprimer les catégories vides
-    return {
-        cat: sorted(names)
-        for cat, names in result.items()
-        if names
-    }
+    return {cat: sorted(names) for cat, names in result.items() if names}
 
 
-def load_all_experiments(bucket_prefix: str = None) -> dict:
+def load_all_experiments(bucket_prefix: str | None = None) -> dict[str, dict]:
     """Charge toutes les expériences listées par list_experiments()."""
     results = {}
     for folder in list_experiments(bucket_prefix):
@@ -492,6 +552,7 @@ def load_all_experiments(bucket_prefix: str = None) -> dict:
 # CONTEXT MANAGER — post-traitement
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class PostprocessingBucketUploader:
     """
     Gestionnaire de contexte : génère les fichiers dans un dossier temporaire,
@@ -504,9 +565,13 @@ class PostprocessingBucketUploader:
         # ← upload automatique + nettoyage
     """
 
-    def __init__(self, bucket_subfolder: str = "postraitement", particle_diameter=None):
-        self.bucket_subfolder   = bucket_subfolder
-        self.particle_diameter  = particle_diameter
+    def __init__(
+        self,
+        bucket_subfolder: str = "postraitement",
+        particle_diameter: float | None = None,
+    ) -> None:
+        self.bucket_subfolder = bucket_subfolder
+        self.particle_diameter = particle_diameter
         self.local_path: Path | None = None
 
     def __enter__(self) -> Path:
@@ -514,7 +579,7 @@ class PostprocessingBucketUploader:
         print(f"📂 Répertoire temporaire créé : {self.local_path}")
         return self.local_path
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: type | None, exc_val: BaseException | None, exc_tb: types.TracebackType | None) -> None:
         if self.local_path and self.local_path.exists():
             print("\n🚀 Envoi des fichiers vers le bucket...")
             upload_postprocessing_to_bucket(

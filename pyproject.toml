@@ -1,0 +1,68 @@
+[project]
+name = "mystudio"
+version = "0.1.0"
+description = "DEM/Markov post-processing tools"
+requires-python = ">=3.12"
+
+[tool.ruff]
+target-version = "py312"
+exclude = [
+    "*.ipynb",
+    "DEM_MCM1/docs/",
+]
+
+# ── Formatage (ruff format) ─────────────────────────────────────────────────
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+# ── Linting (ruff check) ────────────────────────────────────────────────────
+[tool.ruff.lint]
+select = [
+    "F",    # Pyflakes — erreurs logiques
+    "I",    # isort — ordre des imports
+    "E",    # pycodestyle — erreurs de style (PEP 8)
+    "W",    # pycodestyle — warnings de style (PEP 8)
+    "N",    # PEP 8 naming conventions
+    "UP",   # pyupgrade — modernisation syntaxe (Python 3.12+)
+    "YTT",  # flake8-2020 — compatibilité time
+    "ANN",  # flake8-annotations — annotations de type (PEP 484)
+    "D",    # pydocstyle — docstrings (PEP 257)
+    "SIM",  # flake8-simplify — simplifications
+    "C4",   # flake8-comprehensions — comprehensions
+    "RUF",  # Ruff-specific rules
+]
+ignore = [
+    "D100",  # Docstring manquante sur module — trop verbeux
+    "D104",  # Docstring manquante sur package __init__
+    "D105",  # Docstring manquante sur méthode magique
+    "D107",  # Docstring manquante sur __init__
+    "D203",  # 1 ligne blanche avant docstring (conflit avec D211)
+    "D212",  # Docstring sur plusieurs lignes (conflit avec D213)
+    "D213",  # Docstring multi-lignes (conflit avec D212)
+    "ANN101", # Type manquant pour `self` — redondant en Python 3.12
+    "ANN102", # Type manquant pour `cls` — redondant en Python 3.12
+    "ANN401", # Type Any — trop strict
+    "N812",   # Import lower-case — trop strict
+    "SIM108", # Utilisation de ternaire — parfois moins lisible
+    "SIM117", # Fusion de with — moins clair
+    "E501",   # Ligne trop longue — on garde la liberté
+]
+
+# Rendre certaines règles plus permissives
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "D104"]
+
+# ── isort (ordre des imports) ───────────────────────────────────────────────
+[tool.ruff.lint.isort]
+known-first-party = ["DEM_MCM1"]
+known-third-party = ["huggingface_hub", "pyvista"]
+
+# ── pydocstyle convention ───────────────────────────────────────────────────
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+# ── Limites ─────────────────────────────────────────────────────────────────
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 88
