@@ -17,6 +17,9 @@ import sys
 from pathlib import Path
 
 import matplotlib
+import seaborn as sns
+import matplotlib as mpl
+
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -70,7 +73,6 @@ def fig_matrices_blocks_grid(
 ) -> None:
     """
     Grille de heatmaps : une sous-figure par P_k (un bloc NLT).
-
     Permet de visualiser l'évolution de la matrice de transition
     au fil des blocs temporels.
     """
@@ -78,70 +80,82 @@ def fig_matrices_blocks_grid(
     if P_blocks is None:
         print(f"      ⚠️  Pas de P_blocks pour '{sp}' — figure ignorée")
         return
-
     n_blocks, n_states, _ = P_blocks.shape
-
-    # Échelle de couleur commune à tous les blocs
     all_nonzero = P_blocks[P_blocks > 0]
     vmax = np.percentile(all_nonzero, 98) if len(all_nonzero) > 0 else 1.0
-
     ncols = min(3, n_blocks)
     nrows = (n_blocks + ncols - 1) // ncols
 
-    fig, axes = plt.subplots(
-        nrows, ncols, figsize=(5.5 * ncols, 5 * nrows), squeeze=False
-    )
-    fig.suptitle(
-        f"Matrices P_k par bloc NLT — espèce '{sp}'\n{short_name}",
-        fontsize=13,
-        fontweight="bold",
+    # Repart des valeurs par défaut de matplotlib (ignore tout sns.set_theme
+    # / sns.set_style / plt.style.use appelé ailleurs dans le pipeline),
+    # puis applique explicitement "pas de grille" par-dessus.
+    base_rc = dict(mpl.rcParamsDefault)
+    base_rc.update(
+        {
+            "axes.grid": False,
+            "axes.facecolor": "white",
+            "figure.facecolor": "white",
+            "grid.alpha": 0,
+            "grid.linewidth": 0,
+        }
     )
 
-    for k in range(n_blocks):
-        ax = axes[k // ncols][k % ncols]
-        P_k = P_blocks[k]
-        im = ax.imshow(
-            P_k,
-            aspect="auto",
-            cmap="viridis",
-            vmin=0,
-            vmax=vmax,
-            interpolation="nearest",
+    with mpl.rc_context(base_rc):
+        fig, axes = plt.subplots(
+            nrows, ncols, figsize=(5.5 * ncols, 5 * nrows), squeeze=False
         )
-        ax.set_title(f"Bloc {k + 1}/{n_blocks}", fontsize=10)
-        ax.set_xlabel("Source (j)")
-        ax.set_ylabel("Dest. (i)")
-        ax.tick_params(which="both", bottom=False, left=False, labelsize=7)
+        fig.suptitle(
+            f"Matrices P_k par bloc NLT — espèce '{sp}'\n{short_name}",
+            fontsize=13,
+            fontweight="bold",
+        )
+        for k in range(n_blocks):
+            ax = axes[k // ncols][k % ncols]
+            P_k = P_blocks[k]
+            im = ax.imshow(
+                P_k,
+                aspect="auto",
+                cmap="viridis",
+                vmin=0,
+                vmax=vmax,
+                interpolation="nearest",
+            )
+            ax.set_title(f"Bloc {k + 1}/{n_blocks}", fontsize=10)
+            ax.set_xlabel("Source (j)")
+            ax.set_ylabel("Dest. (i)")
+            ax.tick_params(which="both", bottom=False, left=False, labelsize=7)
+            for i in range(n_states):
+                for j in range(n_states):
+                    val = P_k[i, j]
+                    if val > 0.05:
+                        color = "white" if val > vmax * 0.5 else "black"
+                        ax.text(
+                            j,
+                            i,
+                            f"{val:.2f}",
+                            ha="center",
+                            va="center",
+                            fontsize=6,
+                            color=color,
+                        )
+            cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+            cbar.ax.tick_params(labelsize=6)
 
-        # Annotations pour les valeurs significatives
-        for i in range(n_states):
-            for j in range(n_states):
-                val = P_k[i, j]
-                if val > 0.05:
-                    color = "white" if val > vmax * 0.5 else "black"
-                    ax.text(
-                        j,
-                        i,
-                        f"{val:.2f}",
-                        ha="center",
-                        va="center",
-                        fontsize=6,
-                        color=color,
-                    )
+            # Nettoyage final, forcé, indépendant des rcParams :
+            # supprime toute ligne de grille déjà attachée à l'axe,
+            # puis désactive explicitement le grid.
+            ax.set_facecolor("white")
+            ax.grid(False, which="both")
+            for line in ax.get_xgridlines() + ax.get_ygridlines():
+                line.set_visible(False)
 
-        cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        cbar.ax.tick_params(labelsize=6)
-
-    # Cacher les axes vides
-    for k in range(n_blocks, nrows * ncols):
-        axes[k // ncols][k % ncols].axis("off")
-
-    fig.tight_layout()
-    fname = f"P_blocks_grid_{sp}.png"
-    fig.savefig(out_dir / fname, bbox_inches="tight")
-    plt.close(fig)
+        for k in range(n_blocks, nrows * ncols):
+            axes[k // ncols][k % ncols].axis("off")
+        fig.tight_layout()
+        fname = f"P_blocks_grid_{sp}.png"
+        fig.savefig(out_dir / fname, bbox_inches="tight")
+        plt.close(fig)
     print(f"   💾 {fname}")
-
 
 def fig_matrix_components_evolution(
     sp: str,

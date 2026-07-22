@@ -23,7 +23,7 @@ bucket_io.py — Lecture/écriture directe vers HuggingFace bucket.
       other_simulations/       ← tout le reste
       postraitement/           ← sorties de post-traitement (non touché)
 """
-
+import types
 import io
 import json
 import shutil
