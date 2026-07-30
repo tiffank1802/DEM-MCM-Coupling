@@ -19,6 +19,7 @@ from pathlib import Path
 import matplotlib
 import seaborn as sns
 import matplotlib as mpl
+import re
 
 
 matplotlib.use("Agg")
@@ -40,6 +41,7 @@ from postprocess import (
     # Export
     export_transition_matrices,
     fig_concentration,
+    fig_discrepancy_analysis,
     fig_entropy_total,
     fig_matrice_population_heatmap,
     fig_mesh,
@@ -58,6 +60,9 @@ from postprocess import (
     fs,
     load_experiment,
     prepare_species_inhomogeneous,
+    prepare_species,
+    calculate_abs_error_over_time,
+    fig_compare_hom_vs_inhom,
 )
 
 HF_BASE = f"hf://buckets/{BUCKET_ID}/_Good/Experiment"
@@ -474,6 +479,54 @@ def run_inhomogeneous_postprocess(
             fig_states_totale(species_data, short_name, img_etats)
         except Exception as e:
             print(f"   États totaux non construits : {e}")
+
+        # ── Analyse de l'écart Markov vs DEM ──────────────────────────────
+        print("\n📊 Analyse de l'écart Markov vs DEM (inhomogène)...")
+        for sp, sd in species_data.items():
+            try:
+                fig_discrepancy_analysis(sp, sd, short_name, img_etats)
+            except Exception as e:
+                print(f"   ⚠️  Discrepancy {sp} ignorée : {e}")
+
+        # ── Comparaison avec la version homogène si disponible ───────────
+        try:
+            # enlever préfixe 'inhomogeneous_' pour retrouver l'expérience homogène
+            if short_name.startswith("inhomogeneous_"):
+                hom_short = short_name.replace("inhomogeneous_", "", 1)
+            else:
+                hom_short = short_name
+
+            try:
+                hom_paths = find_experiment_paths(HF_BASE, folder_name=hom_short)
+            except FileNotFoundError:
+                # Heuristique de secours : chercher par mots-clés extraits
+                tokens = [t for t in re.split(r"[_\-]", hom_short) if t and not t.startswith("NLT")]
+                print(f"   ℹ️  Recherche alternative homogène par mots-clés: {tokens}")
+                hom_paths = find_all_experiments_by_keywords(HF_BASE, tokens)
+
+            if hom_paths:
+                hom_path_hf, hom_shortname = hom_paths[0]
+                print(f"   ℹ️  Chargement version homogène : {hom_shortname}")
+                exp_hom = load_experiment(hom_path_hf)
+                hom_species_data = prepare_species(exp_hom)
+                # tracer la comparaison pour chaque espèce commune
+                for sp in species_data:
+                    if sp in hom_species_data:
+                        try:
+                            fig_compare_hom_vs_inhom(
+                                sp,
+                                hom_species_data[sp],
+                                species_data[sp],
+                                short_name_hom=hom_shortname,
+                                short_name_inhom=short_name,
+                                out_dir=img_etats,
+                            )
+                        except Exception as e:
+                            print(f"   ⚠️  Comparaison {sp} ignorée : {e}")
+            else:
+                print("   ℹ️  Aucune expérience homogène correspondante trouvée pour comparaison.")
+        except Exception as e:
+            print(f"   ⚠️  Erreur lors de la tentative de comparaison homogène/inhomogène: {e}")
 
         # ── 4. Maillage ──────────────────────────────────────────────────────
         print("\n🗺️  Maillage...")

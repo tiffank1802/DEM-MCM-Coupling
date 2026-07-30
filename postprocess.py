@@ -264,13 +264,16 @@ def propagate_markov(S0: np.ndarray, P: np.ndarray, times: np.ndarray, start_idx
     return np.array(traj), times_markov
 
 
-def propagate_markov_inhomogeneous(S0: np.ndarray, P_blocks: np.ndarray, times: np.ndarray, start_idx: int, tau: int, activated: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def propagate_markov_inhomogeneous(S0: np.ndarray, P_blocks: np.ndarray, times: np.ndarray, start_idx: int, tau: int, activated: np.ndarray, step: int | None = None, nlt: int | None = None) -> tuple[np.ndarray, np.ndarray]:
     """
     Propagation markovienne avec matrices de transition variables dans le temps.
 
-    P_blocks : ndarray (n_blocks, n_states, n_states) — une matrice P_k par NLT.
-    À chaque pas de temps, la matrice utilisée dépend du bloc en cours :
-        block_idx = min(t // block_size, n_blocks - 1)
+    Les matrices P_k sont appliquées en fonction de la **plage temporelle réelle** des blocs.
+    Bloc k couvre: [start_idx + k*(step+tau), start_idx + (k+1)*(step+tau))
+
+    P_blocks : ndarray (n_blocks, n_states, n_states) — une matrice P_k par NLT
+    step, nlt : paramètres de structure temporelle (si fournis, utilisent la vraie structure)
+               Si non fournis, fallback à division uniforme
 
     Returns:
         traj_markov : ndarray (n_steps+1, n_states)
@@ -283,16 +286,30 @@ def propagate_markov_inhomogeneous(S0: np.ndarray, P_blocks: np.ndarray, times: 
     n_steps = len(markov_idx) - 1  # nombre de propagations
     n_blocks = len(P_blocks)
 
-    # Taille d'un bloc : nombre de pas de markov par bloc
-    block_size = max(1, n_steps // n_blocks) if n_blocks > 0 else 1
-
     S = S0.copy().astype(float)
     S[~activated] = 0.0
     traj = [S.copy()]
-    for t in range(1, len(markov_idx)):
-        block_idx = min((t - 1) // block_size, n_blocks - 1)
-        S = P_blocks[block_idx] @ S
-        traj.append(S.copy())
+
+    # Déterminer le bloc pour chaque pas de propagation
+    if step is not None and nlt is not None:
+        # ── Structure temporelle basée sur les paramètres réels ──
+        block_duration = step + tau
+        
+        for t in range(1, len(markov_idx)):
+            time_curr = times_markov[t - 1]  # temps avant propagation
+            # Quel bloc contient ce temps?
+            block_idx = int((time_curr - start_idx) / block_duration)
+            block_idx = min(max(block_idx, 0), n_blocks - 1)  # clamp à [0, n_blocks-1]
+            S = P_blocks[block_idx] @ S
+            traj.append(S.copy())
+    else:
+        # ── Fallback : division uniforme (si step/nlt non fournis) ──
+        block_size = max(1, n_steps // n_blocks) if n_blocks > 0 else 1
+        for t in range(1, len(markov_idx)):
+            block_idx = min((t - 1) // block_size, n_blocks - 1)
+            S = P_blocks[block_idx] @ S
+            traj.append(S.copy())
+
     return np.array(traj), times_markov
 
 
@@ -330,19 +347,24 @@ def prepare_species(exp: dict) -> dict:
 
 def prepare_species_inhomogeneous(exp: dict) -> dict:
     """
-    Version inhomogène de prepare_species.
+    Version inhomogène de prepare_species avec structure temporelle correcte.
 
     Utilise P_blocks (une matrice par NLT) pour la propagation au lieu
-    d'une matrice unique. Le format de sortie est identique à prepare_species
-    pour que les figures existantes fonctionnent sans modification.
+    d'une matrice unique. Chaque matrice P_k s'applique selon la plage temporelle réelle
+    du bloc: [start_idx + k*(step+tau), start_idx + (k+1)*(step+tau))
+
+    Le format de sortie est identique à prepare_species pour que les figures
+    existantes fonctionnent sans modification.
 
     - "P" : première matrice P_blocks[0] (proprement nettoyée)
     - "P_blocks" : toutes les matrices (spécifique inhomogène)
-    - "traj_markov" : propagation avec matrices variables
+    - "traj_markov" : propagation avec matrices variables selon leur plage temporelle réelle
     """
     config = exp["config"]
-    start = 0
+    start_index = config.get("start_index", 157)  # Le vrai début (start_base) utilisé dans les blocs
     tau = config.get("tau", 50)
+    step = config.get("step", 157)  # Paramètre structurant les blocs
+    nlt = config.get("nlt", 2)       # Nombre de blocs
     out = {}
 
     for sp, data in exp["species"].items():
@@ -356,10 +378,13 @@ def prepare_species_inhomogeneous(exp: dict) -> dict:
 
         # Nettoyer la première matrice comme référence
         P_clean, activated = clean_transition_matrix(P_blocks[0])
-        row_start = np.searchsorted(data["times"], start)
+        row_start = np.searchsorted(data["times"], start_index)
         S0 = data["S_matrix"][row_start].astype(float)
+        
+        # Passer step et nlt pour que la propagation utilise la structure temporelle réelle
+        # IMPORTANT: passer start_index (pas 0) pour que le calcul du bloc soit correct
         traj, times_markov = propagate_markov_inhomogeneous(
-            S0, P_blocks, data["times"], start, tau, activated
+            S0, P_blocks, data["times"], start_index, tau, activated, step=step, nlt=nlt
         )
         out[sp] = {
             "P": P_clean,  # 1ère matrice (compatibilité figures)
@@ -369,7 +394,7 @@ def prepare_species_inhomogeneous(exp: dict) -> dict:
             "times": data["times"],
             "S_dem": data["S_matrix"][row_start:],
             "times_dem": data["times"][row_start:],
-            "traj_markov": traj,  # propagé avec matrices variables
+            "traj_markov": traj,  # propagé avec matrices variables selon plage temporelle réelle
             "times_markov": times_markov,
             "activated": activated,
         }
@@ -2789,7 +2814,370 @@ def fig_matrice_population_heatmap(
     print(f"   💾 {fname}")
 
 
+def calculate_abs_error_over_time(
+    S_dem: np.ndarray,
+    S_markov: np.ndarray,
+    times_dem: np.ndarray,
+    times_markov: np.ndarray,
+    activated: np.ndarray,
+    normalize: bool = True,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Calcule l'erreur L1 (somme des valeurs absolues) entre DEM et Markov
+    pour chaque instant de la série DEM commune.
+
+    Retourne (times_common, error_abs) où `error_abs` est de forme (n_times,)
+    et correspond à E(t) = sum_i |p_i^{DEM}(t) - p_i^{MC}(t)|.
+    Les trajectoires Markov sont interpolées aux temps DEM si nécessaire.
+    """
+    from scipy.interpolate import interp1d
+
+    # Plage temporelle commune
+    t_min = max(times_dem[0], times_markov[0])
+    t_max = min(times_dem[-1], times_markov[-1])
+    mask_dem = (times_dem >= t_min) & (times_dem <= t_max)
+    times_common = times_dem[mask_dem]
+    S_dem_common = S_dem[mask_dem]
+
+    # Limiter aux cellules activées
+    active_indices = np.where(activated)[0]
+    S_dem_active = S_dem_common[:, active_indices]
+
+    # Interpoler la trajectoire Markov aux temps DEM
+    S_markov_active = S_markov[:, active_indices]
+    markov_interp = []
+    for j in range(S_markov_active.shape[1]):
+        f = interp1d(
+            times_markov, S_markov_active[:, j], kind="linear", bounds_error=False, fill_value="extrapolate"
+        )
+        markov_interp.append(f(times_common))
+    S_markov_interp = np.array(markov_interp).T  # (n_times, n_active)
+
+    # Normaliser en probabilités si demandé
+    if normalize:
+        # éviter division par zéro
+        dem_sums = S_dem_active.sum(axis=1, keepdims=True)
+        dem_sums[dem_sums == 0] = 1.0
+        p_dem = S_dem_active / dem_sums
+
+        markov_sums = S_markov_interp.sum(axis=1, keepdims=True)
+        markov_sums[markov_sums == 0] = 1.0
+        p_markov = S_markov_interp / markov_sums
+    else:
+        p_dem = S_dem_active
+        p_markov = S_markov_interp
+
+    # Erreur L1 temporelle
+    error_abs = np.sum(np.abs(p_dem - p_markov), axis=1)
+
+    return times_common, error_abs
+
+
+def fig_compare_hom_vs_inhom(
+    sp: str,
+    hom_sp_data: dict,
+    inhom_sp_data: dict,
+    short_name_hom: str,
+    short_name_inhom: str,
+    out_dir: Path,
+) -> None:
+    """
+    Trace la courbe comparée de l'erreur L1 (|DEM - Markov| somme) entre
+    une trajectoire Markov homogène et une trajectoire inhomogène.
+
+    Les deux courbes partagent la même base DEM (on interpole les Markov).
+    """
+    # Extraire données
+    S_dem_h = np.asarray(hom_sp_data["S_dem"]).squeeze()
+    S_markov_h = np.asarray(hom_sp_data["traj_markov"]).squeeze()
+    times_dem_h = np.asarray(hom_sp_data["times_dem"]).ravel()
+    times_markov_h = np.asarray(hom_sp_data["times_markov"]).ravel()
+    activated_h = hom_sp_data["activated"]
+
+    S_dem_i = np.asarray(inhom_sp_data["S_dem"]).squeeze()
+    S_markov_i = np.asarray(inhom_sp_data["traj_markov"]).squeeze()
+    times_dem_i = np.asarray(inhom_sp_data["times_dem"]).ravel()
+    times_markov_i = np.asarray(inhom_sp_data["times_markov"]).ravel()
+    activated_i = inhom_sp_data["activated"]
+
+    # Vérifier que DEM de base est la même (formes compatibles)
+    # On utilisera la DEM du premier (homogène) comme référence temporelle
+    times_dem = times_dem_h
+    S_dem = S_dem_h
+
+    # Calculer erreurs L1 pour chaque modèle en interpolant aux temps_dem
+    t_h, err_h = calculate_abs_error_over_time(
+        S_dem_h, S_markov_h, times_dem_h, times_markov_h, activated_h, normalize=True
+    )
+    t_i, err_i = calculate_abs_error_over_time(
+        S_dem, S_markov_i, times_dem, times_markov_i, activated_i, normalize=True
+    )
+
+    # Aligner les temps (prendre l'intersection)
+    t_min = max(t_h[0], t_i[0])
+    t_max = min(t_h[-1], t_i[-1])
+    mask_h = (t_h >= t_min) & (t_h <= t_max)
+    mask_i = (t_i >= t_min) & (t_i <= t_max)
+
+    t_h_sel = t_h[mask_h]
+    err_h_sel = err_h[mask_h]
+    t_i_sel = t_i[mask_i]
+    err_i_sel = err_i[mask_i]
+
+    # Si les vecteurs de temps diffèrent légèrement, interpoler err_i sur t_h_sel
+    if not np.allclose(t_h_sel, t_i_sel):
+        from scipy.interpolate import interp1d
+
+        f_i = interp1d(t_i_sel, err_i_sel, kind="linear", bounds_error=False, fill_value="extrapolate")
+        err_i_on_h = f_i(t_h_sel)
+        t_plot = t_h_sel
+    else:
+        t_plot = t_h_sel
+        err_i_on_h = err_i_sel
+
+    # Tracé
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.plot(t_plot, err_h_sel, label=f"Homogène: {short_name_hom}", color="#E53935", lw=2)
+    ax.plot(t_plot, err_i_on_h, label=f"Inhomogène: {short_name_inhom}", color="#1976D2", lw=2)
+    ax.set_xlabel("Temps (centièmes de seconde)")
+    ax.set_ylabel("Erreur L1 (somme des |p_dem - p_mc|)")
+    ax.set_title(f"Comparaison Erreur L1 — espèce '{sp}'")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+
+    fname = f"compare_hom_inhom_{sp}.png"
+    fig.savefig(out_dir / fname, bbox_inches="tight", dpi=150)
+    plt.close(fig)
+    print(f"   💾 {fname}")
+
+
 # ── Export matrices de transition ─────────────────────────────────────────────
+
+
+# ── Analyse de l'écart Markov vs DEM ─────────────────────────────────────
+
+
+def calculate_discrepancy_per_cell(
+    S_dem: np.ndarray,
+    S_markov: np.ndarray,
+    times_dem: np.ndarray,
+    times_markov: np.ndarray,
+    activated: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Calcule l'écart (discrepancy) entre la prédiction Markov et DEM
+    pour chaque cellule activée au cours du temps.
+
+    Gère correctement les cas où times_dem et times_markov ont des résolutions différentes
+    (par ex. inhomogène avec matrices variables) en interpolant la trajectoire Markov
+    aux temps du DEM.
+
+    Returns:
+        - discrepancy_per_cell : (n_active_cells,) écart cumulé par cellule
+        - discrepancy_over_time : (n_steps_common,) écart temporel (RMS entre Markov et DEM)
+        - times_aligned : (n_steps_common,) temps alignés
+        - rmse_per_cell : (n_active_cells,) RMSE temporel par cellule
+    """
+    from scipy.interpolate import interp1d
+
+    # Defensive checks: ensure arrays have expected orientations
+    S_dem = np.asarray(S_dem)
+    S_markov = np.asarray(S_markov)
+    times_dem = np.asarray(times_dem).ravel()
+    times_markov = np.asarray(times_markov).ravel()
+
+    # If dimensions don't align (rows vs times), try transposing matrices
+    if S_dem.ndim == 1:
+        S_dem = S_dem[:, None]
+    if S_markov.ndim == 1:
+        S_markov = S_markov[:, None]
+
+    if S_dem.shape[0] != len(times_dem):
+        # try transpose
+        if S_dem.shape[1] == len(times_dem):
+            S_dem = S_dem.T
+        else:
+            raise ValueError(f"DEM shape mismatch: S_dem.shape={S_dem.shape} but times_dem.len={len(times_dem)}")
+
+    if S_markov.shape[0] != len(times_markov):
+        # try transpose
+        if S_markov.shape[1] == len(times_markov):
+            S_markov = S_markov.T
+        else:
+            raise ValueError(f"Markov shape mismatch: S_markov.shape={S_markov.shape} but times_markov.len={len(times_markov)}")
+
+    # Trouver la plage temporelle commune
+    t_min = max(times_dem[0], times_markov[0])
+    t_max = min(times_dem[-1], times_markov[-1])
+
+    if t_min > t_max:
+        raise ValueError("No overlapping time range between DEM and Markov trajectories")
+
+    # Sélectionner DEM sur cette plage
+    mask_dem = (times_dem >= t_min) & (times_dem <= t_max)
+    S_dem_common = S_dem[mask_dem]
+    times_dem_common = times_dem[mask_dem]
+
+    # Limiter aux cellules activées
+    active_indices = np.where(activated)[0]
+
+    # Pour Markov : interpoler linéairement les états aux temps du DEM
+    S_markov_active_full = S_markov[:, active_indices]
+
+    # Interpoler chaque cellule activée
+    S_markov_interp_active = []
+    for cell_idx in range(S_markov_active_full.shape[1]):
+        # ensure times_markov is strictly increasing for interp1d
+        if not np.all(np.diff(times_markov) >= 0):
+            times_markov_sorted_idx = np.argsort(times_markov)
+            tm = times_markov[times_markov_sorted_idx]
+            vals = S_markov_active_full[times_markov_sorted_idx, cell_idx]
+        else:
+            tm = times_markov
+            vals = S_markov_active_full[:, cell_idx]
+
+        f = interp1d(
+            tm,
+            vals,
+            kind="linear",
+            bounds_error=False,
+            fill_value="extrapolate",
+        )
+        S_markov_interp_active.append(f(times_dem_common))
+    S_markov_interp_active = np.array(S_markov_interp_active).T  # (n_dem_common, n_active_cells)
+
+    # DEM sur cellules activées
+    S_dem_common_active = S_dem_common[:, active_indices]
+
+    # Écart ponctuel (valeur absolue de la différence)
+    diff_per_step = np.abs(S_markov_interp_active - S_dem_common_active)
+    
+    # Écart cumulé par cellule (somme temporelle)
+    discrepancy_per_cell = np.sum(diff_per_step, axis=0)
+    
+    # RMSE par cellule
+    rmse_per_cell = np.sqrt(np.mean(diff_per_step ** 2, axis=0))
+    
+    # Écart temporel global (RMS entre toutes les cellules)
+    discrepancy_over_time = np.sqrt(np.mean(diff_per_step ** 2, axis=1))
+    
+    times_aligned = times_dem_common
+    
+    return discrepancy_per_cell, discrepancy_over_time, times_aligned, rmse_per_cell
+
+
+def fig_discrepancy_analysis(
+    sp: str,
+    sp_data: dict,
+    short_name: str,
+    out_dir: Path,
+) -> None:
+    """
+    Génère une figure analysant l'écart Markov vs DEM :
+    1. Écart temporel moyen (RMS au fil du temps)
+    2. Heatmap de l'écart absolu pour TOUTES les cellules (temps × cellules)
+    """
+    S_dem = np.asarray(sp_data["S_dem"]).squeeze()
+    S_markov = np.asarray(sp_data["traj_markov"]).squeeze()
+    times_dem = np.asarray(sp_data["times_dem"]).ravel()
+    times_markov = np.asarray(sp_data["times_markov"]).ravel()
+    activated = sp_data["activated"]
+
+    (
+        discrepancy_per_cell,
+        discrepancy_over_time,
+        times_aligned,
+        rmse_per_cell,
+    ) = calculate_discrepancy_per_cell(S_dem, S_markov, times_dem, times_markov, activated)
+
+    active_indices = np.where(activated)[0]
+    n_active = len(active_indices)
+
+    # Figure avec 2 sous-graphiques (1 ligne, 2 colonnes)
+    fig = plt.figure(figsize=(16, 6))
+    gs = fig.add_gridspec(1, 2, hspace=0.25, wspace=0.3)
+
+    # ── 1. Écart temporel moyen (courbe) ────────────────────────────
+    ax1 = fig.add_subplot(gs[0, 0])
+    ax1.plot(
+        times_aligned,
+        discrepancy_over_time,
+        "-",
+        color="#E53935",
+        linewidth=2.5,
+        alpha=0.9,
+        label="Écart temporel (RMS)",
+    )
+    ax1.fill_between(
+        times_aligned,
+        0,
+        discrepancy_over_time,
+        color="#E53935",
+        alpha=0.2,
+    )
+    ax1.set_title(
+        "Écart temporel moyen : |Markov - DEM|",
+        fontweight="bold",
+        fontsize=12,
+    )
+    ax1.set_xlabel("Temps (centièmes de seconde)")
+    ax1.set_ylabel("RMS de l'écart")
+    ax1.legend(fontsize=10)
+    ax1.grid(True, alpha=0.3)
+    ax1.axhline(y=0, color="black", linestyle="--", linewidth=0.5)
+
+    # ── 2. Heatmap d'écart absolu pour TOUTES les cellules ──────────
+    ax2 = fig.add_subplot(gs[0, 1])
+
+    n_aligned = len(times_aligned)
+    # Récupérer l'écart ponctuel (valeur absolue de la différence)
+    S_dem_aligned = S_dem[:n_aligned]
+    S_markov_aligned = S_markov[:n_aligned]
+    S_dem_active = S_dem_aligned[:, active_indices]
+    S_markov_active = S_markov_aligned[:, active_indices]
+    diff_per_step_full = np.abs(S_markov_active - S_dem_active)
+
+    # Sous-échantillonner le temps si trop de points pour clarté
+    max_time_points = 300
+    if n_aligned > max_time_points:
+        step_time = n_aligned // max_time_points
+        diff_plot = diff_per_step_full[::step_time, :]
+        times_plot = times_aligned[::step_time]
+    else:
+        diff_plot = diff_per_step_full
+        times_plot = times_aligned
+
+    im = ax2.imshow(
+        diff_plot.T,
+        aspect="auto",
+        cmap="YlOrRd",
+        origin="lower",
+        extent=[times_plot[0], times_plot[-1], 0, n_active - 1],
+        interpolation="nearest",
+    )
+    cbar = plt.colorbar(im, ax=ax2, fraction=0.046, pad=0.04)
+    cbar.set_label("Écart absolu |Markov - DEM|", fontsize=10)
+    ax2.set_xlabel("Temps (centièmes de seconde)")
+    ax2.set_ylabel(f"Indice de cellule (total: {n_active} cellules)")
+    ax2.set_title(
+        f"Écart absolu : TOUTES les cellules au cours du temps",
+        fontweight="bold",
+        fontsize=12,
+    )
+
+    # Titre général
+    fig.suptitle(
+        f"Analyse de l'écart Markov vs DEM — espèce '{sp}'\n{short_name}",
+        fontsize=14,
+        fontweight="bold",
+        y=0.98,
+    )
+
+    fig.tight_layout()
+    fname = f"discrepancy_analysis_{sp}.png"
+    fig.savefig(out_dir / fname, bbox_inches="tight", dpi=150)
+    plt.close(fig)
+    print(f"   💾 {fname}")
 
 
 def export_transition_matrices(
@@ -2875,6 +3263,42 @@ def run_postprocess(
         except Exception as e:
             print(f" États totaux non construits \n{e}")
 
+        # ── Analyse de l'écart Markov vs DEM ─────────────────────────────
+        print("\n📊 Analyse de l'écart Markov vs DEM...")
+        for sp, sd in species_data.items():
+            try:
+                fig_discrepancy_analysis(sp, sd, short_name, img_etats)
+            except Exception as e:
+                print(f"   ⚠️  Discrepancy {sp} ignorée : {e}")
+
+        # ── Comparaison automatique avec version inhomogène si disponible ──
+        try:
+            inhom_short = f"inhomogeneous_{short_name}"
+            # Chercher le dossier inhomogène correspondant
+            inhom_paths = find_experiment_paths(f"hf://buckets/{BUCKET_ID}/_Good/Experiment", folder_name=inhom_short)
+            if inhom_paths:
+                inhom_path_hf, inhom_shortname = inhom_paths[0]
+                print(f"   ℹ️  Chargement version inhomogène : {inhom_shortname}")
+                exp_inhom = load_experiment(inhom_path_hf)
+                inhom_species_data = prepare_species_inhomogeneous(exp_inhom)
+                for sp in species_data:
+                    if sp in inhom_species_data:
+                        try:
+                            fig_compare_hom_vs_inhom(
+                                sp,
+                                species_data[sp],
+                                inhom_species_data[sp],
+                                short_name_hom=short_name,
+                                short_name_inhom=inhom_shortname,
+                                out_dir=img_etats,
+                            )
+                        except Exception as e:
+                            print(f"   ⚠️  Comparaison inhomogène {sp} ignorée : {e}")
+            else:
+                print("   ℹ️  Aucune version inhomogène trouvée pour comparaison.")
+        except Exception as e:
+            print(f"   ⚠️  Erreur lors de la tentative de comparaison inhomogène: {e}")
+
         # ── 4. Maillage ──────────────────────────────────────────────────
         print("\n🗺️  Maillage...")
         try:
@@ -2947,7 +3371,6 @@ Exemples :
         default="first",
         help="Référence DEM : 'first' (défaut), 'mean', ou nom exact d'une expérience",
     )
-    p.add_argument("--dem-ref", default="first", dest="dem_ref")
     # --- Style classique (pas de sous-commande) ---
     p.add_argument("--folder", help="Nom exact du dossier d'expérience")
     p.add_argument("--keywords", nargs="+", help="Mots-clés pour trouver le dossier")
@@ -2960,6 +3383,12 @@ Exemples :
     )
     p.add_argument("--top-states", type=int, default=6, dest="top_states")
     p.add_argument("--dry-run", action="store_true", dest="dry_run")
+    p.add_argument(
+        "--dem-ref",
+        default="first",
+        dest="dem_ref",
+        help="Référence DEM : 'first' (défaut), 'mean', ou nom exact d'une expérience",
+    )
 
     # --- Sous-commandes ---
     sub = p.add_subparsers(dest="subcommand", metavar="SOUS-COMMANDE")

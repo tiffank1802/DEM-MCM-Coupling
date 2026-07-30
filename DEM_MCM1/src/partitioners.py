@@ -796,6 +796,8 @@ class CartesianPartitioner(BasePartitioner):
         coordinates = np.asarray(coordinates)
         mins = coordinates.min(axis=0) - eps
         maxs = coordinates.max(axis=0) + eps
+        mins=[-0.04,-0.045]
+        maxs=[0.04,0.1]
         self._bounds = (mins[0], maxs[0], mins[1], maxs[1], mins[2], maxs[2])
         return self
 

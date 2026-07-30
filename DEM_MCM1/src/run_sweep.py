@@ -870,7 +870,7 @@ def run_experiment(
     config: ExperimentConfig, partitioner: part.BasePartitioner, timestep_dict: dict[int, pd.DataFrame], device: str = "cpu"
 ) -> tuple[dict, dict]:
     """Construit une matrice de transition P et des matrices d'états S par espèce."""
-    n_states = partitioner.n_cells
+    n_states = getattr(partitioner, "n_states", partitioner.n_cells)
     tau = config.tau
     step = config.step
     dt = config.dt
@@ -1152,6 +1152,8 @@ def run_markov_sweep(
                     sample_coords[permanent_start:, :]
                 )  # utilise la vitesse grâce à l'attribut use_velocities et dem_velocities
                 # diag = partitioner.diagnostics(sample_coords[250:,:])
+            elif config.method == "cartesian":
+                partitioner.fit(sample_coords)
             else:
                 # partitioner.fit(sample_coords[250:,:]) # effectue le fit sur les coordonnées sur la phase stationnaire
                 # partitioner.fit(s_velocities[permanent_start:,:]) # effectue le fit sur les coordonnées sur la phase stationnaire
