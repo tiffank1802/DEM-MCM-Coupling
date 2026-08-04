@@ -1525,30 +1525,30 @@ def fig_concentration(species_data: dict, short_name: str, out_dir: Path) -> Non
         da["activated"],
         db["activated"],
     )
-    ent_c_d = entropy_concentration(
-        da["S_dem"][:n_d],
-        db["S_dem"][:n_d],
-        da["activated"],
-        db["activated"],
-    )
-    ent_c_m = entropy_concentration(
-        da["traj_markov"][:n_m],
-        db["traj_markov"][:n_m],
-        da["activated"],
-        db["activated"],
-    )
+    # ent_c_d = entropy_concentration(
+    #     da["S_dem"][:n_d],
+    #     db["S_dem"][:n_d],
+    #     da["activated"],
+    #     db["activated"],
+    # )
+    # ent_c_m = entropy_concentration(
+    #     da["traj_markov"][:n_m],
+    #     db["traj_markov"][:n_m],
+    #     da["activated"],
+    #     db["activated"],
+    # )
 
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    fig, axes = plt.subplots(1, 1, figsize=(14, 5))
     fig.suptitle(
-        f"Concentration C({sp_a}) — RSD & Entropie\n{short_name}",
+        f"Concentration C({sp_a}) — RSD ",
         fontweight="bold",
     )
 
     for ax, (yd, ym, ylabel, title) in zip(
-        axes,
+        [axes],
         [
             (rsd_c_d, rsd_c_m, "RSD de C", f"RSD de concentration C({sp_a})"),
-            (ent_c_d, ent_c_m, "Entropie de C", f"Entropie de concentration C({sp_a})"),
+            
         ],
     ):
         ax.plot(
@@ -2968,18 +2968,16 @@ def calculate_discrepancy_per_cell(
     Calcule l'écart (discrepancy) entre la prédiction Markov et DEM
     pour chaque cellule activée au cours du temps.
 
-    Gère correctement les cas où times_dem et times_markov ont des résolutions différentes
-    (par ex. inhomogène avec matrices variables) en interpolant la trajectoire Markov
-    aux temps du DEM.
+    La comparaison est faite **aux pas de temps de Markov** (times_markov) :
+    pour chaque instant t_m de Markov, on trouve l'indice DEM le plus proche
+    (sans interpolation) et on compare directement |S_markov - S_dem|.
 
     Returns:
         - discrepancy_per_cell : (n_active_cells,) écart cumulé par cellule
-        - discrepancy_over_time : (n_steps_common,) écart temporel (RMS entre Markov et DEM)
-        - times_aligned : (n_steps_common,) temps alignés
+        - discrepancy_over_time : (n_times_markov_common,) écart temporel (RMS entre Markov et DEM)
+        - times_aligned : (n_times_markov_common,) temps de Markov utilisés pour la comparaison
         - rmse_per_cell : (n_active_cells,) RMSE temporel par cellule
     """
-    from scipy.interpolate import interp1d
-
     # Defensive checks: ensure arrays have expected orientations
     S_dem = np.asarray(S_dem)
     S_markov = np.asarray(S_markov)
@@ -2993,76 +2991,75 @@ def calculate_discrepancy_per_cell(
         S_markov = S_markov[:, None]
 
     if S_dem.shape[0] != len(times_dem):
-        # try transpose
         if S_dem.shape[1] == len(times_dem):
             S_dem = S_dem.T
         else:
-            raise ValueError(f"DEM shape mismatch: S_dem.shape={S_dem.shape} but times_dem.len={len(times_dem)}")
+            raise ValueError(
+                f"DEM shape mismatch: S_dem.shape={S_dem.shape} "
+                f"but times_dem.len={len(times_dem)}"
+            )
 
     if S_markov.shape[0] != len(times_markov):
-        # try transpose
         if S_markov.shape[1] == len(times_markov):
             S_markov = S_markov.T
         else:
-            raise ValueError(f"Markov shape mismatch: S_markov.shape={S_markov.shape} but times_markov.len={len(times_markov)}")
+            raise ValueError(
+                f"Markov shape mismatch: S_markov.shape={S_markov.shape} "
+                f"but times_markov.len={len(times_markov)}"
+            )
 
     # Trouver la plage temporelle commune
     t_min = max(times_dem[0], times_markov[0])
     t_max = min(times_dem[-1], times_markov[-1])
 
     if t_min > t_max:
-        raise ValueError("No overlapping time range between DEM and Markov trajectories")
+        raise ValueError(
+            "No overlapping time range between DEM and Markov trajectories"
+        )
 
-    # Sélectionner DEM sur cette plage
+    # Masque DEM dans la plage commune
     mask_dem = (times_dem >= t_min) & (times_dem <= t_max)
     S_dem_common = S_dem[mask_dem]
     times_dem_common = times_dem[mask_dem]
 
+    # Masque Markov dans la plage commune
+    mask_markov = (times_markov >= t_min) & (times_markov <= t_max)
+    S_markov_common = S_markov[mask_markov]
+    times_markov_common = times_markov[mask_markov]
+
+    # Pour chaque temps Markov, trouver l'indice DEM le plus proche
+    dem_indices = np.searchsorted(times_dem_common, times_markov_common, side="left")
+    dem_indices = np.clip(dem_indices, 0, len(times_dem_common) - 1)
+    # Ajuster : préférer l'indice DEM le plus proche en temps
+    left = np.clip(dem_indices - 1, 0, len(times_dem_common) - 1)
+    closer = np.abs(times_dem_common[dem_indices] - times_markov_common) > np.abs(
+        times_dem_common[left] - times_markov_common
+    )
+    dem_indices[closer] = left[closer]
+
+    # Sélectionner DEM à ces indices
+    S_dem_at_markov = S_dem_common[dem_indices]
+
     # Limiter aux cellules activées
     active_indices = np.where(activated)[0]
-
-    # Pour Markov : interpoler linéairement les états aux temps du DEM
-    S_markov_active_full = S_markov[:, active_indices]
-
-    # Interpoler chaque cellule activée
-    S_markov_interp_active = []
-    for cell_idx in range(S_markov_active_full.shape[1]):
-        # ensure times_markov is strictly increasing for interp1d
-        if not np.all(np.diff(times_markov) >= 0):
-            times_markov_sorted_idx = np.argsort(times_markov)
-            tm = times_markov[times_markov_sorted_idx]
-            vals = S_markov_active_full[times_markov_sorted_idx, cell_idx]
-        else:
-            tm = times_markov
-            vals = S_markov_active_full[:, cell_idx]
-
-        f = interp1d(
-            tm,
-            vals,
-            kind="linear",
-            bounds_error=False,
-            fill_value="extrapolate",
-        )
-        S_markov_interp_active.append(f(times_dem_common))
-    S_markov_interp_active = np.array(S_markov_interp_active).T  # (n_dem_common, n_active_cells)
-
-    # DEM sur cellules activées
-    S_dem_common_active = S_dem_common[:, active_indices]
+    S_dem_active = S_dem_at_markov[:, active_indices]
+    S_markov_active = S_markov_common[:, active_indices]
 
     # Écart ponctuel (valeur absolue de la différence)
-    diff_per_step = np.abs(S_markov_interp_active - S_dem_common_active)
-    
+    diff_per_step = np.abs(S_markov_active - S_dem_active)
+
     # Écart cumulé par cellule (somme temporelle)
     discrepancy_per_cell = np.sum(diff_per_step, axis=0)
-    
+
     # RMSE par cellule
     rmse_per_cell = np.sqrt(np.mean(diff_per_step ** 2, axis=0))
-    
+
     # Écart temporel global (RMS entre toutes les cellules)
     discrepancy_over_time = np.sqrt(np.mean(diff_per_step ** 2, axis=1))
-    
-    times_aligned = times_dem_common
-    
+
+    # Temps alignés = temps Markov (référence de la comparaison)
+    times_aligned = times_markov_common
+
     return discrepancy_per_cell, discrepancy_over_time, times_aligned, rmse_per_cell
 
 
@@ -3179,7 +3176,142 @@ def fig_discrepancy_analysis(
     plt.close(fig)
     print(f"   💾 {fname}")
 
+def fig_global_discrepancy(
+    species_data: dict,
+    short_name: str,
+    out_dir: Path,
+) -> None:
+    """
+    Génère une figure analysant l'écart Markov vs DEM **toutes espèces confondues**
+    (somme small + large = nombre total de particules par cellule).
 
+    1. Écart temporel moyen (RMS au fil du temps) — total particles
+    2. Heatmap de l'écart absolu pour toutes les cellules (temps × cellules)
+    """
+    sps = list(species_data.keys())
+    if len(sps) < 2:
+        print("   ⚠️  Moins de 2 espèces — figure discrepancy globale ignorée.")
+        return
+
+    sp_a, sp_b = sps[0], sps[1]
+    da, db = species_data[sp_a], species_data[sp_b]
+
+    # ── Somme des deux espèces = nombre total de particules par cellule ──
+    S_dem_total = np.asarray(da["S_dem"]).squeeze() + np.asarray(db["S_dem"]).squeeze()
+    S_markov_total = np.asarray(da["traj_markov"]).squeeze() + np.asarray(db["traj_markov"]).squeeze()
+    times_dem = np.asarray(da["times_dem"]).ravel()
+    times_markov = np.asarray(da["times_markov"]).ravel()
+    # Cellule active si l'une ou l'autre espèce y est active
+    activated_total = np.asarray(da["activated"]) | np.asarray(db["activated"])
+
+    (
+        discrepancy_per_cell,
+        discrepancy_over_time,
+        times_aligned,
+        rmse_per_cell,
+    ) = calculate_discrepancy_per_cell(
+        S_dem_total, S_markov_total, times_dem, times_markov, activated_total
+    )
+
+    active_indices = np.where(activated_total)[0]
+    n_active = len(active_indices)
+    n_aligned = len(times_aligned)
+
+    # Figure avec 2 sous-graphiques
+    fig = plt.figure(figsize=(16, 6))
+    gs = fig.add_gridspec(1, 2, hspace=0.25, wspace=0.3)
+
+    # ── 1. Écart temporel moyen (courbe) ────────────────────────────────
+    ax1 = fig.add_subplot(gs[0, 0])
+    ax1.plot(
+        times_aligned,
+        discrepancy_over_time,
+        "-",
+        color="#E53935",
+        linewidth=2.5,
+        alpha=0.9,
+        label="Écart temporel (RMS)",
+    )
+    ax1.fill_between(
+        times_aligned,
+        0,
+        discrepancy_over_time,
+        color="#E53935",
+        alpha=0.2,
+    )
+    ax1.set_title(
+        "Écart temporel moyen (toutes espèces) : |Markov - DEM|",
+        fontweight="bold",
+        fontsize=12,
+    )
+    ax1.set_xlabel("Temps (centièmes de seconde)")
+    ax1.set_ylabel("RMS de l'écart (total particules)")
+    ax1.legend(fontsize=10)
+    ax1.grid(True, alpha=0.3)
+    ax1.axhline(y=0, color="black", linestyle="--", linewidth=0.5)
+
+    # ── 2. Heatmap d'écart absolu pour toutes les cellules ──────────────
+    ax2 = fig.add_subplot(gs[0, 1])
+
+    # Reconstruire diff_per_step aux indices Markov (comme dans calculate_discrepancy_per_cell)
+    # pour la heatmap — matching avec searchsorted
+    mask_dem = (times_dem >= times_aligned[0]) & (times_dem <= times_aligned[-1])
+    S_dem_common = S_dem_total[mask_dem]
+    times_dem_common = times_dem[mask_dem]
+
+    dem_indices = np.searchsorted(times_dem_common, times_aligned, side="left")
+    dem_indices = np.clip(dem_indices, 0, len(times_dem_common) - 1)
+    left = np.clip(dem_indices - 1, 0, len(times_dem_common) - 1)
+    closer = np.abs(times_dem_common[dem_indices] - times_aligned) > np.abs(
+        times_dem_common[left] - times_aligned
+    )
+    dem_indices[closer] = left[closer]
+
+    S_dem_at_markov = S_dem_common[dem_indices][:, active_indices]
+    S_markov_active = S_markov_total[:n_aligned][:, active_indices]
+    diff_per_step_full = np.abs(S_markov_active - S_dem_at_markov)
+
+    # Sous-échantillonner le temps si trop de points
+    max_time_points = 300
+    if n_aligned > max_time_points:
+        step_time = max(1, n_aligned // max_time_points)
+        diff_plot = diff_per_step_full[::step_time, :]
+        times_plot = times_aligned[::step_time]
+    else:
+        diff_plot = diff_per_step_full
+        times_plot = times_aligned
+
+    im = ax2.imshow(
+        diff_plot.T,
+        aspect="auto",
+        cmap="YlOrRd",
+        origin="lower",
+        extent=[times_plot[0], times_plot[-1], 0, n_active - 1],
+        interpolation="nearest",
+    )
+    cbar = plt.colorbar(im, ax=ax2, fraction=0.046, pad=0.04)
+    cbar.set_label("Écart absolu |Markov - DEM|", fontsize=10)
+    ax2.set_xlabel("Temps (centièmes de seconde)")
+    ax2.set_ylabel(f"Indice de cellule (total: {n_active} cellules)")
+    ax2.set_title(
+        "Écart absolu : toutes les cellules — toutes espèces",
+        fontweight="bold",
+        fontsize=12,
+    )
+
+    # Titre général
+    fig.suptitle(
+        f"Analyse de l'écart global Markov vs DEM — toutes espèces\n{short_name}",
+        fontsize=14,
+        fontweight="bold",
+        y=0.98,
+    )
+
+    fig.tight_layout()
+    fname = "discrepancy_global.png"
+    fig.savefig(out_dir / fname, bbox_inches="tight", dpi=150)
+    plt.close(fig)
+    print(f"   💾 {fname}")
 def export_transition_matrices(
     species_data: dict, short_name: str, out_dir: Path
 ) -> None:
