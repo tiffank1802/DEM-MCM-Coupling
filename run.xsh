@@ -1,6 +1,6 @@
 
 import os
-dir= !(cd $HOME/MyStudio/DEM_MCM1/src)  and python
+dir= !(cd $HOME/DEM-MCM-Coupling/dem_mcm_coupling)  and python
 
 
 

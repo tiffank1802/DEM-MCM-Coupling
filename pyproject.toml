@@ -1,5 +1,5 @@
 [project]
-name = "mystudio"
+name = "dem-mcm-coupling"
 version = "0.1.0"
 description = "DEM/Markov post-processing tools"
 requires-python = ">=3.12"
@@ -8,7 +8,7 @@ requires-python = ">=3.12"
 target-version = "py312"
 exclude = [
     "*.ipynb",
-    "DEM_MCM1/docs/",
+    "docs/",
 ]
 
 # ── Formatage (ruff format) ─────────────────────────────────────────────────
@@ -56,7 +56,7 @@ ignore = [
 
 # ── isort (ordre des imports) ───────────────────────────────────────────────
 [tool.ruff.lint.isort]
-known-first-party = ["DEM_MCM1"]
+known-first-party = ["dem_mcm_coupling"]
 known-third-party = ["huggingface_hub", "pyvista"]
 
 # ── pydocstyle convention ───────────────────────────────────────────────────
@@ -66,3 +66,12 @@ convention = "google"
 # ── Limites ─────────────────────────────────────────────────────────────────
 [tool.ruff.lint.pycodestyle]
 max-doc-length = 88
+
+# ── Build / packaging ───────────────────────────────────────────────────────
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["dem_mcm_coupling*"]
+exclude = ["docs*", "tests*", "postprocessing*"]
