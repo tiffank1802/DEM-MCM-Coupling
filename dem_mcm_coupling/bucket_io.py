@@ -1,12 +1,12 @@
-"""
-bucket_io.py — Lecture/écriture directe vers HuggingFace bucket.
+"""Reading/writing helpers for the Hugging Face bucket.
 
-  Lors de la lecture : aucun fichier n'est téléchargé en local,
-    tout est lu depuis HuggingFace et seules les variables utiles sont retournées.
-  Lors de l'écriture : chaque fichier transite par un répertoire temporaire,
-    puis est transféré vers le bucket et détruit localement.
+When reading, no file is downloaded locally: everything is streamed from the
+Hub and only the requested variables are returned. When writing, files first
+transit through a temporary directory, are uploaded to the bucket, then
+destroyed locally.
 
-  Organisation du bucket :
+Bucket layout::
+
     _Good/Experiment/
       voronoi_simulations/     ← voronoi_*
       cartesian_simulations/   ← cartesian_*
@@ -19,31 +19,36 @@ bucket_io.py — Lecture/écriture directe vers HuggingFace bucket.
       octree_simulations/      ← octree_*
       multizone_simulations/   ← multizone_*
       single_simulations/      ← single_*
+      Inhomogènes/             ← inhomogeneous_*
       summaries/               ← _summary*
-      other_simulations/       ← tout le reste
-      postraitement/           ← sorties de post-traitement (non touché)
+      other_simulations/       ← everything else
+      postraitement/           ← post-processing outputs (untouched)
 """
+
+from __future__ import annotations
+
+import contextlib
 import io
 import json
 import shutil
-import subprocess
 import tempfile
 import types
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from huggingface_hub import HfApi, HfFileSystem
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CONFIGURATION
-# ─────────────────────────────────────────────────────────────────────────────
+from dem_mcm_coupling._config import BUCKET_ID, get_bucket_prefix
 
-BUCKET_ID = "ktongue/DEM_MCM"
+# =============================================================================
+# CONSTANTS
+# =============================================================================
 
-# Correspondance préfixe de nom → sous-dossier de catégorie
-# L'ordre est important : les préfixes les plus longs/spécifiques en premier.
-CATEGORY_MAP = {
-    "inhomogeneous_": "Inhomogènes",  # NOUVEAU - doit être en premier
+#: Name-prefix → category sub-folder correspondence.
+#: The order matters: the longest/most specific prefixes must come first.
+CATEGORY_MAP: dict[str, str] = {
+    "inhomogeneous_": "Inhomogènes",
     "physics_full_vel_": "physics_simulations",
     "voronoi_": "voronoi_simulations",
     "cartesian_": "cartesian_simulations",
@@ -59,76 +64,67 @@ CATEGORY_MAP = {
     "_summary": "summaries",
 }
 
-# Dossiers qui ne sont jamais déplacés / catégorisés
-_SKIP_FOLDERS = {"postraitement"}
+#: Folders that are never categorised/moved.
+_SKIP_FOLDERS: frozenset[str] = frozenset({"postraitement"})
 
-# Toutes les catégories connues (utile pour list_experiments)
-ALL_CATEGORIES = [*list(dict.fromkeys(CATEGORY_MAP.values())), "other_simulations"]
+#: All known categories (used when listing experiments).
+ALL_CATEGORIES: list[str] = [
+    *list(dict.fromkeys(CATEGORY_MAP.values())),
+    "other_simulations",
+]
+
+#: Default bucket prefix (experiments with both particle diameters).
+BUCKET_PREFIX: str = get_bucket_prefix(None)
+
+#: Base ``hf://`` path of the default bucket prefix.
+BUCKET_BASE: str = f"hf://buckets/{BUCKET_ID}/{BUCKET_PREFIX}"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# HELPERS INTERNES
-# ─────────────────────────────────────────────────────────────────────────────
+def _list_directory_names(fs: HfFileSystem, path: str) -> list[str]:
+    """Return the names of the directories under a bucket path.
+
+    :meth:`HfFileSystem.ls` returns ``list[str | dict]`` depending on the
+    Hub version; both shapes are accepted here.
+    """
+    names: list[str] = []
+    for item in fs.ls(path):
+        if isinstance(item, dict):
+            if item.get("type") == "directory":
+                names.append(str(item["name"]).split("/")[-1])
+        else:
+            # Plain-path form: directory entries end with "/".
+            stripped = item.rstrip("/")
+            if stripped:
+                names.append(stripped.split("/")[-1])
+    return names
 
 
 def get_simulation_category(folder_name: str) -> str:
-    """Détermine la catégorie de simulation à partir du nom du dossier."""
+    """Return the category of a simulation from its folder name.
+
+    Args:
+        folder_name: Name of the simulation folder.
+
+    Returns:
+        The category name (one of :data:`ALL_CATEGORIES`);
+        ``"other_simulations"`` when no prefix matches.
+    """
     for prefix, category in CATEGORY_MAP.items():
         if folder_name.startswith(prefix):
             return category
     return "other_simulations"
 
 
-def _get_bucket_prefix_from_particle_diameter(particle_diameter: float | None) -> str:
-    if particle_diameter == 0.008:
-        return "_Good/BIG"
-    elif particle_diameter == 0.004:
-        return "_Good/SMALL"
-    else:
-        return "_Good/Experiment"
+# =============================================================================
+# SINGLETONS (lightweight)
+# =============================================================================
 
-
-def _get_current_branch() -> str:
-    try:
-        current_dir = Path(__file__).resolve().parent
-        for _ in range(5):
-            if (current_dir / ".git").exists():
-                git_root = current_dir
-                break
-            current_dir = current_dir.parent
-        else:
-            return None
-        branch = (
-            subprocess.check_output(
-                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                cwd=str(git_root),
-                stderr=subprocess.DEVNULL,
-            )
-            .decode()
-            .strip()
-        )
-        return branch
-    except Exception:
-        return None
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# GLOBALS (singletons légers)
-# ─────────────────────────────────────────────────────────────────────────────
-
-BUCKET_PREFIX = _get_bucket_prefix_from_particle_diameter(None)
-BUCKET_BASE = f"hf://buckets/{BUCKET_ID}/{BUCKET_PREFIX}"
-
-_branch = _get_current_branch()
-if _branch:
-    print(f"🔀 Branche git détectée : '{_branch}'")
-
-_fs = None
-_api = None
+_fs: HfFileSystem | None = None
+_api: HfApi | None = None
 
 
 def get_fs() -> HfFileSystem:
-    """Get or create the HuggingFace file system singleton."""
+    """Return the shared :class:`~huggingface_hub.HfFileSystem` instance."""
     global _fs
     if _fs is None:
         _fs = HfFileSystem()
@@ -136,161 +132,125 @@ def get_fs() -> HfFileSystem:
 
 
 def get_api() -> HfApi:
-    """Get or create the HuggingFace API singleton."""
+    """Return the shared :class:`~huggingface_hub.HfApi` instance."""
     global _api
     if _api is None:
         _api = HfApi()
     return _api
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# MIGRATION (utilitaire à appeler une seule fois)
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def migrate_bucket(
-    bucket_prefix: str = "_Good/Experiment", dry_run: bool = False
-) -> None:
-    """
-    Parcourt la racine d'un bucket_prefix et déplace les dossiers de simulation
-    vers leurs sous-dossiers de catégorie.
-
-    Args:
-        bucket_prefix: chemin relatif au bucket (ex. "_Good/Experiment").
-        dry_run: si True, affiche seulement les déplacements sans les faire.
-    """
-    fs = get_fs()
-    base = f"buckets/{BUCKET_ID}/{bucket_prefix}"
-
-    items = [i for i in fs.ls(base) if i["type"] == "directory"]
-    print(f"📦 {len(items)} dossiers détectés dans {base}\n")
-
-    moved = 0
-    for item in items:
-        name = item["name"].split("/")[-1]
-
-        if name in _SKIP_FOLDERS or name in ALL_CATEGORIES:
-            print(f"⏭️  Skip '{name}'")
-            continue
-
-        cat = get_simulation_category(name)
-        src = f"{base}/{name}"
-        dst = f"{base}/{cat}/{name}"
-        print(f"{'[DRY] ' if dry_run else ''}➡️  {name}  →  {cat}/")
-
-        if not dry_run:
-            try:
-                fs.mv(src, dst, recursive=True)
-                moved += 1
-            except Exception as e:
-                print(f"  ❌ Erreur : {e}")
-
-    print(
-        f"\n✅ Migration {'simulée' if dry_run else 'terminée'} — {moved} dossiers déplacés."
-    )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# ÉCRITURE
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
+# WRITING
+# =============================================================================
 
 
 def save_experiment_to_bucket(
     folder_name: str,
-    stats: dict,
-    config: dict,
-    species_data: dict | None = None,
-    partitioner_data: dict | None = None,
-    image_data: dict | None = None,
+    stats: dict[str, Any],
+    config: dict[str, Any],
+    species_data: dict[str, np.ndarray] | None = None,
+    partitioner_data: dict[str, Any] | None = None,
+    image_data: dict[str, bytes] | None = None,
     particle_diameter: float | None = None,
-    inhomogeneous_metadata: dict | None = None,
+    inhomogeneous_metadata: dict[str, Any] | None = None,
 ) -> None:
-    """
-    Sauvegarde une expérience dans le bucket, dans le bon sous-dossier de catégorie.
+    """Save an experiment into the right category sub-folder of the bucket.
 
-    Chemin final : {bucket_prefix}/{category}/{folder_name}/
+    Final path: ``{bucket_prefix}/{category}/{folder_name}/``.
 
     Args:
-        inhomogeneous_metadata: dict optionnel avec {n_blocks, block_indices, species_list}
-                                pour les expériences inhomogènes. Si présent, sauvegarde
-                                inhomogeneous_metadata.json.
+        folder_name: Name of the experiment folder.
+        stats: Statistics dictionary, saved as ``stats.json``.
+        config: Configuration dictionary, saved as ``config.json``.
+        species_data: Mapping ``array_name -> ndarray`` saved as ``.npy``.
+        partitioner_data: Partitioner data; numpy arrays go to
+            ``partitioner/*.npy``, other values to ``partitioner/*.json``.
+        image_data: Mapping ``image_name -> bytes`` saved under ``images/``.
+        particle_diameter: Optional diameter filter selecting the bucket
+            prefix (``0.004`` → ``_Good/SMALL``, ``0.008`` → ``_Good/BIG``).
+        inhomogeneous_metadata: Optional metadata of an inhomogeneous
+            experiment, saved as ``inhomogeneous_metadata.json``.
+
+    Raises:
+        TypeError: If ``inhomogeneous_metadata`` is not a dictionary.
     """
-    bucket_prefix = _get_bucket_prefix_from_particle_diameter(particle_diameter)
+    bucket_prefix = get_bucket_prefix(particle_diameter)
     category = get_simulation_category(folder_name)
     bucket_base_path = f"{bucket_prefix}/{category}/{folder_name}"
     api = get_api()
 
     with tempfile.TemporaryDirectory() as tmpdir:
         local_folder = Path(tmpdir)
-        files_to_upload = []
+        files_to_upload: list[tuple[str, str]] = []
 
-        # Arrays par espèce
+        # Per-species numpy arrays.
         if species_data:
             for array_name, array in species_data.items():
-                p = local_folder / f"{array_name}.npy"
-                np.save(p, array)
-                files_to_upload.append((str(p), f"{bucket_base_path}/{array_name}.npy"))
+                path = local_folder / f"{array_name}.npy"
+                np.save(path, array)
+                files_to_upload.append(
+                    (str(path), f"{bucket_base_path}/{array_name}.npy")
+                )
 
         # stats.json
         stats_path = local_folder / "stats.json"
-        with open(stats_path, "w") as f:
-            json.dump(stats, f, indent=2)
+        with stats_path.open("w") as fh:
+            json.dump(stats, fh, indent=2)
         files_to_upload.append((str(stats_path), f"{bucket_base_path}/stats.json"))
 
         # config.json
         config_path = local_folder / "config.json"
-        with open(config_path, "w") as f:
-            json.dump(config, f, indent=2)
+        with config_path.open("w") as fh:
+            json.dump(config, fh, indent=2)
         files_to_upload.append((str(config_path), f"{bucket_base_path}/config.json"))
 
-        # Données du partitionneur
+        # Partitioner data.
         if partitioner_data:
             part_dir = local_folder / "partitioner"
             part_dir.mkdir()
             for key, value in partitioner_data.items():
                 if isinstance(value, np.ndarray):
-                    p = part_dir / f"{key}.npy"
-                    np.save(p, value)
+                    path = part_dir / f"{key}.npy"
+                    np.save(path, value)
                     files_to_upload.append(
-                        (str(p), f"{bucket_base_path}/partitioner/{key}.npy")
+                        (str(path), f"{bucket_base_path}/partitioner/{key}.npy")
                     )
                 else:
-                    p = part_dir / f"{key}.json"
-                    with open(p, "w") as f:
-                        json.dump(value, f, indent=2)
+                    path = part_dir / f"{key}.json"
+                    with path.open("w") as fh:
+                        json.dump(value, fh, indent=2)
                     files_to_upload.append(
-                        (str(p), f"{bucket_base_path}/partitioner/{key}.json")
+                        (str(path), f"{bucket_base_path}/partitioner/{key}.json")
                     )
 
-        # Images
+        # Images.
         if image_data:
             for img_name, img_bytes in image_data.items():
                 img_path = local_folder / img_name
-                with open(img_path, "wb") as f:
-                    f.write(img_bytes)
+                img_path.write_bytes(img_bytes)
                 files_to_upload.append(
                     (str(img_path), f"{bucket_base_path}/images/{img_name}")
                 )
 
-        # NOUVEAU: Metadata inhomogène
+        # Inhomogeneous metadata.
         if inhomogeneous_metadata is not None:
             if not isinstance(inhomogeneous_metadata, dict):
                 raise TypeError(
-                    f"inhomogeneous_metadata doit être un dict, "
-                    f"pas {type(inhomogeneous_metadata).__name__}"
+                    "inhomogeneous_metadata must be a dict, "
+                    f"not {type(inhomogeneous_metadata).__name__}"
                 )
             meta_path = local_folder / "inhomogeneous_metadata.json"
-            with open(meta_path, "w") as f:
-                json.dump(inhomogeneous_metadata, f, indent=2)
+            with meta_path.open("w") as fh:
+                json.dump(inhomogeneous_metadata, fh, indent=2)
             files_to_upload.append(
                 (str(meta_path), f"{bucket_base_path}/inhomogeneous_metadata.json")
             )
 
         api.batch_bucket_files(
             bucket_id=BUCKET_ID,
-            add=[(lp, bp) for lp, bp in files_to_upload],
+            add=[(local, remote) for local, remote in files_to_upload],
         )
-        print(f"   ✅ {len(files_to_upload)} fichiers uploadés → {bucket_base_path}/")
+        print(f"   ✅ {len(files_to_upload)} files uploaded → {bucket_base_path}/")
 
 
 def upload_postprocessing_to_bucket(
@@ -299,109 +259,119 @@ def upload_postprocessing_to_bucket(
     particle_diameter: float | None = None,
     cleanup: bool = False,
 ) -> None:
+    """Upload every file of a local directory under ``postraitement/``.
+
+    The directory tree is preserved exactly. VTK files (``.vtp``, ``.vtu``,
+    ``.vtk``) are additionally pushed immediately through ``fs.put``.
+
+    Args:
+        local_dir: Local directory to upload.
+        bucket_subfolder: Destination sub-folder in the bucket.
+        particle_diameter: Optional diameter filter selecting the bucket
+            prefix.
+        cleanup: When ``True``, delete ``local_dir`` after a successful
+            upload.
     """
-    Envoie tous les fichiers du dossier local vers le bucket (sous postraitement/).
-    Conserve l'arborescence exacte.
-    """
-    bucket_prefix = _get_bucket_prefix_from_particle_diameter(particle_diameter)
+    bucket_prefix = get_bucket_prefix(particle_diameter)
     api = get_api()
     fs = get_fs()
 
     local_path = Path(local_dir).resolve()
     if not local_path.exists():
-        print(f"❌ Dossier local introuvable : {local_path}")
+        print(f"❌ Local directory not found: {local_path}")
         return
 
-    files_to_upload = []
-    vtp_files_count = 0
+    files_to_upload: list[tuple[str, str]] = []
+    vtk_files_count = 0
 
     for file_path in local_path.rglob("*"):
-        if file_path.is_file():
-            rel_path = file_path.relative_to(local_path)
-            bucket_path = f"{bucket_prefix}/{bucket_subfolder}/{rel_path.as_posix()}"
+        if not file_path.is_file():
+            continue
+        rel_path = file_path.relative_to(local_path)
+        bucket_path = f"{bucket_prefix}/{bucket_subfolder}/{rel_path.as_posix()}"
+        files_to_upload.append((str(file_path), bucket_path))
 
-            # TOUS les fichiers sont ajoutés à la liste pour le batch
-            files_to_upload.append((str(file_path), bucket_path))
-
-            # Les fichiers VTK sont ALSO uploadés immédiatement via fs.put
-            if file_path.suffix in (".vtp", ".vtu", ".vtk"):
-                try:
-                    fs.put(str(file_path), f"hf://buckets/{BUCKET_ID}/{bucket_path}")
-                    print(f"   📤 {rel_path} (VTK upload immédiat)")
-                    vtp_files_count += 1
-                except Exception as e:
-                    print(f"   ⚠️  Échec upload VTK {rel_path}: {e}")
+        # VTK files are also uploaded immediately via fs.put.
+        if file_path.suffix in (".vtp", ".vtu", ".vtk"):
+            try:
+                fs.put(str(file_path), f"hf://buckets/{BUCKET_ID}/{bucket_path}")
+                print(f"   📤 {rel_path} (immediate VTK upload)")
+                vtk_files_count += 1
+            except Exception as exc:
+                print(f"   ⚠️  VTK upload failed for {rel_path}: {exc}")
 
     if not files_to_upload:
-        print(f"⚠️  Aucun fichier trouvé dans {local_path}")
+        print(f"⚠️  No file found in {local_path}")
         return
 
-    # Batch upload pour TOUS les fichiers (y compris VTK déjà uploadés)
     api.batch_bucket_files(
         bucket_id=BUCKET_ID,
-        add=[(lp, bp) for lp, bp in files_to_upload],
+        add=[(local, remote) for local, remote in files_to_upload],
     )
 
-    total_files = len(files_to_upload)
     print(
-        f"✅ {total_files} fichiers de post-traitement uploadés → "
-        f"{bucket_prefix}/{bucket_subfolder}/"
-        f" (dont {vtp_files_count} fichiers VTK)"
+        f"✅ {len(files_to_upload)} post-processing files uploaded → "
+        f"{bucket_prefix}/{bucket_subfolder}/ "
+        f"({vtk_files_count} VTK files)"
     )
 
     if cleanup:
         shutil.rmtree(local_path)
-        print(f"🧹 Dossier local supprimé : {local_path}")
+        print(f"🧹 Local directory removed: {local_path}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# LECTURE
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
+# READING
+# =============================================================================
 
 
 def load_experiment_from_bucket(
     folder_name: str, bucket_prefix: str | None = None
-) -> dict:
-    """
-    Charge une expérience depuis le bucket.
+) -> dict[str, Any]:
+    """Load an experiment from the bucket.
 
-    Stratégie de recherche (par ordre) :
-      1. {bucket_prefix}/{category}/{folder_name}/   ← nouveau format
-      2. {bucket_prefix}/{folder_name}/              ← ancien format (avant migration)
-      3. Idem dans le bucket opposé (BIG ↔ SMALL)
+    Search strategy (in order):
+      1. ``{bucket_prefix}/{category}/{folder_name}/`` — current layout;
+      2. ``{bucket_prefix}/{folder_name}/`` — legacy layout (before migration);
+      3. The same paths in the opposite bucket (BIG ↔ SMALL) when the folder
+         name encodes a diameter (``_d0004``/``_d0008``).
+
+    Args:
+        folder_name: Name of the experiment folder.
+        bucket_prefix: Optional bucket prefix; when ``None`` it is inferred
+            from the folder name (``_d0004`` → ``_Good/SMALL``,
+            ``_d0008`` → ``_Good/BIG``).
 
     Returns:
-        {
-            "species": {
-                "small": {"P": ndarray, "S_matrix": ndarray, "times": ndarray},
-                "large": {"P": ndarray, "S_matrix": ndarray, "times": ndarray},
-            },
-            "stats":  dict,
-            "config": dict,
-        }
+        Dictionary with ``"species"`` (per-species ``P``/``P_blocks``,
+        ``S_matrix``, ``times`` arrays), ``"stats"``, ``"config"`` and the
+        inhomogeneous flags.
+
+    Raises:
+        FileNotFoundError: If the experiment cannot be found anywhere.
     """
     fs = get_fs()
     category = get_simulation_category(folder_name)
 
     if bucket_prefix is None:
         if "_d0004" in folder_name:
-            bucket_prefix = "_Good/SMALL"
+            bucket_prefix = get_bucket_prefix(0.004)
         elif "_d0008" in folder_name:
-            bucket_prefix = "_Good/BIG"
+            bucket_prefix = get_bucket_prefix(0.008)
         else:
-            bucket_prefix = "_Good/Experiment"
+            bucket_prefix = get_bucket_prefix(None)
 
-    def _candidate_prefixes(bp: str) -> list:
+    def _candidate_prefixes(bp: str) -> list[str]:
         return [
-            f"hf://buckets/{BUCKET_ID}/{bp}/{category}/{folder_name}",  # nouveau
-            f"hf://buckets/{BUCKET_ID}/{bp}/{folder_name}",  # ancien
+            f"hf://buckets/{BUCKET_ID}/{bp}/{category}/{folder_name}",  # current
+            f"hf://buckets/{BUCKET_ID}/{bp}/{folder_name}",  # legacy
         ]
 
     alt_prefix = (
-        "_Good/BIG"
-        if bucket_prefix == "_Good/SMALL"
-        else "_Good/SMALL"
-        if bucket_prefix == "_Good/BIG"
+        get_bucket_prefix(0.008)
+        if bucket_prefix == get_bucket_prefix(0.004)
+        else get_bucket_prefix(0.004)
+        if bucket_prefix == get_bucket_prefix(0.008)
         else None
     )
 
@@ -414,28 +384,24 @@ def load_experiment_from_bucket(
             continue
 
         def _load_npy(name: str) -> np.ndarray:
-            with fs.open(f"{prefix}/{name}", "rb") as f:
-                return np.load(io.BytesIO(f.read()))
+            with fs.open(f"{prefix}/{name}", "rb") as fh:
+                return np.load(io.BytesIO(fh.read()))
 
-        def _load_json(name: str) -> dict:
-            with fs.open(f"{prefix}/{name}", "r") as f:
-                return json.load(f)
+        def _load_json(name: str) -> dict[str, Any]:
+            with fs.open(f"{prefix}/{name}", "r") as fh:
+                return json.load(fh)
 
         stats = _load_json("stats.json")
         config = _load_json("config.json")
 
-        # Détection automatique du format inhomogène
-        inhomogeneous = False
-        inhomogeneous_metadata = None
-        try:
-            if fs.exists(f"{prefix}/inhomogeneous_metadata.json"):
-                inhomogeneous = True
-                inhomogeneous_metadata = _load_json("inhomogeneous_metadata.json")
-        except Exception:
-            pass
+        # Automatic detection of the inhomogeneous format.
+        inhomogeneous = fs.exists(f"{prefix}/inhomogeneous_metadata.json")
+        inhomogeneous_metadata = (
+            _load_json("inhomogeneous_metadata.json") if inhomogeneous else None
+        )
 
         species_list = stats.get("species_list", ["small", "large"])
-        species_out = {}
+        species_out: dict[str, dict[str, np.ndarray]] = {}
         for species in species_list:
             if inhomogeneous:
                 species_out[species] = {
@@ -459,110 +425,60 @@ def load_experiment_from_bucket(
         }
 
     raise FileNotFoundError(
-        f"❌ Introuvable : '{folder_name}' (catégorie : {category}) "
-        f"dans {bucket_prefix}" + (f" ni {alt_prefix}" if alt_prefix else "")
+        f"❌ Not found: '{folder_name}' (category: {category}) "
+        f"in {bucket_prefix}" + (f" nor {alt_prefix}" if alt_prefix else "")
     )
 
 
 def list_experiments(bucket_prefix: str | None = None) -> list[str]:
-    """
-    Liste toutes les expériences en parcourant les sous-dossiers de catégorie,
-    plus un fallback sur les dossiers encore à la racine (avant migration).
+    """List every experiment by walking the category sub-folders.
+
+    Also falls back on folders still at the root of the prefix (pre-migration
+    layout).
 
     Args:
-        bucket_prefix : force un bucket précis ; sinon utilise BUCKET_BASE.
+        bucket_prefix: Optional bucket prefix; defaults to
+            :data:`BUCKET_BASE`.
 
     Returns:
-        Liste triée des noms de dossiers d'expérience.
+        Sorted list of experiment folder names.
     """
     fs = get_fs()
     base = f"hf://buckets/{BUCKET_ID}/{bucket_prefix}" if bucket_prefix else BUCKET_BASE
 
-    experiments = set()
+    experiments: set[str] = set()
 
-    # 1. Sous-dossiers de catégorie (nouveau format)
-    for cat in ALL_CATEGORIES:
-        try:
-            for item in fs.ls(f"{base}/{cat}"):
-                if item["type"] == "directory":
-                    experiments.add(item["name"].split("/")[-1])
-        except FileNotFoundError:
-            pass
+    # 1. Category sub-folders (current layout).
+    for category in ALL_CATEGORIES:
+        with contextlib.suppress(FileNotFoundError):
+            experiments.update(_list_directory_names(fs, f"{base}/{category}"))
 
-    # 2. Fallback : dossiers encore à la racine (avant migration)
-    try:
-        for item in fs.ls(base):
-            if item["type"] == "directory":
-                name = item["name"].split("/")[-1]
-                if name not in set(ALL_CATEGORIES) | _SKIP_FOLDERS:
-                    experiments.add(name)
-    except FileNotFoundError:
-        pass
+    # 2. Folders still at the root (pre-migration layout).
+    with contextlib.suppress(FileNotFoundError):
+        for name in _list_directory_names(fs, base):
+            if name not in set(ALL_CATEGORIES) | _SKIP_FOLDERS:
+                experiments.add(name)
 
     return sorted(experiments)
 
 
-def list_experiments_by_category(
-    bucket_prefix: str | None = None,
-) -> dict[str, list[str]]:
-    """
-    Même chose que list_experiments() mais retourne un dict catégorie → [noms].
-    Utile pour afficher des groupes dans l'interface Streamlit.
-    """
-    fs = get_fs()
-    base = f"hf://buckets/{BUCKET_ID}/{bucket_prefix}" if bucket_prefix else BUCKET_BASE
-
-    result = {cat: [] for cat in ALL_CATEGORIES}
-    result["(racine)"] = []  # fallback
-
-    for cat in ALL_CATEGORIES:
-        try:
-            for item in fs.ls(f"{base}/{cat}"):
-                if item["type"] == "directory":
-                    result[cat].append(item["name"].split("/")[-1])
-        except FileNotFoundError:
-            pass
-
-    # Fallback racine
-    try:
-        for item in fs.ls(base):
-            if item["type"] == "directory":
-                name = item["name"].split("/")[-1]
-                if name not in set(ALL_CATEGORIES) | _SKIP_FOLDERS:
-                    result["(racine)"].append(name)
-    except FileNotFoundError:
-        pass
-
-    # Trier chaque liste et supprimer les catégories vides
-    return {cat: sorted(names) for cat, names in result.items() if names}
-
-
-def load_all_experiments(bucket_prefix: str | None = None) -> dict[str, dict]:
-    """Charge toutes les expériences listées par list_experiments()."""
-    results = {}
-    for folder in list_experiments(bucket_prefix):
-        try:
-            results[folder] = load_experiment_from_bucket(folder)
-        except Exception as e:
-            print(f"⚠️  {folder} : {e}")
-    return results
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# CONTEXT MANAGER — post-traitement
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
+# CONTEXT MANAGER — post-processing
+# =============================================================================
 
 
 class PostprocessingBucketUploader:
-    """
-    Gestionnaire de contexte : génère les fichiers dans un dossier temporaire,
-    les envoie vers le bucket, puis supprime le dossier temporaire.
+    """Context manager for bucket uploads of post-processing outputs.
 
-    Usage :
+    Generates files in a temporary directory, uploads them to the bucket,
+    then deletes the temporary directory.
+
+    Usage::
+
         with PostprocessingBucketUploader(bucket_subfolder="postraitement") as tmp:
             (tmp / "images").mkdir(parents=True, exist_ok=True)
             fig.savefig(tmp / "images" / "plot.png")
-        # ← upload automatique + nettoyage
+        # ← automatic upload + cleanup
     """
 
     def __init__(
@@ -576,12 +492,17 @@ class PostprocessingBucketUploader:
 
     def __enter__(self) -> Path:
         self.local_path = Path(tempfile.mkdtemp(prefix="dem_mcm_postproc_"))
-        print(f"📂 Répertoire temporaire créé : {self.local_path}")
+        print(f"📂 Temporary directory created: {self.local_path}")
         return self.local_path
 
-    def __exit__(self, exc_type: type | None, exc_val: BaseException | None, exc_tb: types.TracebackType | None) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: types.TracebackType | None,
+    ) -> None:
         if self.local_path and self.local_path.exists():
-            print("\n🚀 Envoi des fichiers vers le bucket...")
+            print("\n🚀 Uploading files to the bucket...")
             upload_postprocessing_to_bucket(
                 local_dir=str(self.local_path),
                 bucket_subfolder=self.bucket_subfolder,

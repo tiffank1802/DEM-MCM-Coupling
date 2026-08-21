@@ -239,18 +239,60 @@ def load_experiment(path_hf: str) -> dict:
 # ═════════════════════════════════════════════════════════════════════════════
 
 
-def clean_transition_matrix(P: np.ndarray, threshold: float = 0.5) -> tuple[np.ndarray, np.ndarray]:
+def clean_transition_matrix(
+    P: np.ndarray, threshold: float = 0.5
+) -> tuple[np.ndarray, np.ndarray]:
+    """Clean a transition matrix: drop unvisited states and renormalise rows.
+
+    Convention (row-stochastic): ``P[i, j]`` is the probability to jump from
+    state ``i`` to state ``j``; a state vector evolves as ``S_next = S @ P``.
+
+    Args:
+        P: Raw transition matrix of shape ``(n_states, n_states)``.
+        threshold: Rows with a total outgoing mass below this threshold are
+            considered unvisited and deactivated.
+
+    Returns:
+        Tuple ``(P_clean, activated)`` where ``P_clean`` has zero rows for
+        the deactivated states and renormalised rows elsewhere, and
+        ``activated`` is the boolean mask of kept states.
+    """
     P_clean = P.copy()
-    col_sums = P_clean.sum(axis=0)
-    activated = col_sums >= threshold
-    P_clean[:, ~activated] = 0.0
-    safe = col_sums.copy()
+    row_sums = P_clean.sum(axis=1)
+    activated = row_sums >= threshold
+    P_clean[~activated, :] = 0.0
+    safe = row_sums.copy()
     safe[~activated] = 1.0
-    P_clean = P_clean / safe
+    P_clean = P_clean / safe[:, np.newaxis]
     return P_clean, activated
 
 
-def propagate_markov(S0: np.ndarray, P: np.ndarray, times: np.ndarray, start_idx: int, tau: int, activated: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def propagate_markov(
+    S0: np.ndarray,
+    P: np.ndarray,
+    times: np.ndarray,
+    start_idx: int,
+    tau: int,
+    activated: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Propagate a state vector with a row-stochastic transition matrix.
+
+    ``S_next = S @ P``; the total particle count is conserved when ``P`` is
+    row-stochastic.
+
+    Args:
+        S0: Initial state vector, shape ``(n_states,)``.
+        P: Row-stochastic transition matrix, shape ``(n_states, n_states)``.
+        times: Timestep indices of the DEM data.
+        start_idx: First timestep used.
+        tau: Markov step (in timesteps).
+        activated: Boolean mask of the activated states; deactivated states
+            are zeroed in the initial vector.
+
+    Returns:
+        Tuple ``(trajectory, times_markov)`` with trajectory shape
+        ``(n_steps + 1, n_states)``.
+    """
     row_start = np.searchsorted(times, start_idx)
     times_full = times[row_start:]
     markov_idx = np.arange(0, len(times_full), tau)
@@ -259,55 +301,74 @@ def propagate_markov(S0: np.ndarray, P: np.ndarray, times: np.ndarray, start_idx
     S[~activated] = 0.0
     traj = [S.copy()]
     for _ in range(1, len(markov_idx)):
-        S = P @ S
+        S = S @ P
         traj.append(S.copy())
     return np.array(traj), times_markov
 
 
-def propagate_markov_inhomogeneous(S0: np.ndarray, P_blocks: np.ndarray, times: np.ndarray, start_idx: int, tau: int, activated: np.ndarray, step: int | None = None, nlt: int | None = None) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Propagation markovienne avec matrices de transition variables dans le temps.
+def propagate_markov_inhomogeneous(
+    S0: np.ndarray,
+    P_blocks: np.ndarray,
+    times: np.ndarray,
+    start_idx: int,
+    tau: int,
+    activated: np.ndarray,
+    step: int | None = None,
+    nlt: int | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Propagate a state vector with time-varying transition matrices.
 
-    Les matrices P_k sont appliquées en fonction de la **plage temporelle réelle** des blocs.
-    Bloc k couvre: [start_idx + k*(step+tau), start_idx + (k+1)*(step+tau))
+    The matrices ``P_k`` are applied according to the real temporal span of
+    their blocks: block ``k`` covers
+    ``[start_idx + k*(step+tau), start_idx + (k+1)*(step+tau))``.
 
-    P_blocks : ndarray (n_blocks, n_states, n_states) — une matrice P_k par NLT
-    step, nlt : paramètres de structure temporelle (si fournis, utilisent la vraie structure)
-               Si non fournis, fallback à division uniforme
+    Convention (row-stochastic): ``S_next = S @ P_k``.
+
+    Args:
+        S0: Initial state vector, shape ``(n_states,)``.
+        P_blocks: Transition matrices, shape ``(n_blocks, n_states,
+            n_states)``.
+        times: Timestep indices of the DEM data.
+        start_idx: First timestep used.
+        tau: Markov step (in timesteps).
+        activated: Boolean mask of the activated states; deactivated states
+            are zeroed in the initial vector.
+        step: Optional temporal-structure parameter (distance between
+            consecutive block starts); falls back to a uniform division when
+            ``None``.
+        nlt: Optional number of learning timesteps (blocks).
 
     Returns:
-        traj_markov : ndarray (n_steps+1, n_states)
-        times_markov : ndarray (n_steps+1,)
+        Tuple ``(trajectory, times_markov)`` with trajectory shape
+        ``(n_steps + 1, n_states)``.
     """
     row_start = np.searchsorted(times, start_idx)
     times_full = times[row_start:]
     markov_idx = np.arange(0, len(times_full), tau)
     times_markov = times_full[markov_idx]
-    n_steps = len(markov_idx) - 1  # nombre de propagations
+    n_steps = len(markov_idx) - 1  # number of propagations
     n_blocks = len(P_blocks)
 
     S = S0.copy().astype(float)
     S[~activated] = 0.0
     traj = [S.copy()]
 
-    # Déterminer le bloc pour chaque pas de propagation
+    # Determine the block used at each propagation step.
     if step is not None and nlt is not None:
-        # ── Structure temporelle basée sur les paramètres réels ──
+        # Real temporal structure of the blocks.
         block_duration = step + tau
-        
         for t in range(1, len(markov_idx)):
-            time_curr = times_markov[t - 1]  # temps avant propagation
-            # Quel bloc contient ce temps?
+            time_curr = times_markov[t - 1]  # time before the propagation
             block_idx = int((time_curr - start_idx) / block_duration)
-            block_idx = min(max(block_idx, 0), n_blocks - 1)  # clamp à [0, n_blocks-1]
-            S = P_blocks[block_idx] @ S
+            block_idx = min(max(block_idx, 0), n_blocks - 1)
+            S = S @ P_blocks[block_idx]
             traj.append(S.copy())
     else:
-        # ── Fallback : division uniforme (si step/nlt non fournis) ──
+        # Fallback: uniform division of the trajectory over the blocks.
         block_size = max(1, n_steps // n_blocks) if n_blocks > 0 else 1
         for t in range(1, len(markov_idx)):
             block_idx = min((t - 1) // block_size, n_blocks - 1)
-            S = P_blocks[block_idx] @ S
+            S = S @ P_blocks[block_idx]
             traj.append(S.copy())
 
     return np.array(traj), times_markov
