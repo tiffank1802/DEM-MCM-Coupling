@@ -8,7 +8,7 @@ Every figure produced here follows the global colour code defined in
 * the ``small`` species is blue and the ``large`` species is orange, with a
   solid line for the DEM reference and a dashed line with markers for the
   Markov prediction;
-* time axes are expressed in **seconds** (one DEM timestep = 0.01 s);
+* time axes keep the **raw DEM timesteps** (no unit conversion);
 * mixing times ``t50``/``t90`` are annotated directly on the RSD curves.
 
 All functions return ``(fig, axes)`` so that they can be introspected and
@@ -81,8 +81,8 @@ def fig_rsd_scientific(
 
         rsd_dem = metrics.rsd_from_S(d["S_dem"], d["activated"])
         rsd_markov = metrics.rsd_from_S(d["traj_markov"], d["activated"])
-        t_dem = style.timesteps_to_seconds(d["times_dem"])
-        t_markov = style.timesteps_to_seconds(d["times_markov"])
+        t_dem = d["times_dem"]
+        t_markov = d["times_markov"]
 
         ax.plot(t_dem, rsd_dem, color=colors["dem"], label=f"DEM — {sp}", **DEM_STYLE)
         ax.plot(
@@ -96,7 +96,7 @@ def fig_rsd_scientific(
         style.annotate_mixing_times(ax, t_dem, rsd_dem)
 
         ax.set_title(f"Species '{sp}'")
-        ax.set_xlabel("Time (s)")
+        ax.set_xlabel("Time (timestep)")
         ax.set_ylabel("RSD (-)")
         ax.set_ylim(bottom=0)
         ax.legend()
@@ -297,8 +297,8 @@ def fig_concentration_scientific(
         db["activated"],
     )
 
-    t_d = style.timesteps_to_seconds(da["times_dem"][:n_d])
-    t_m = style.timesteps_to_seconds(da["times_markov"][:n_m])
+    t_d = da["times_dem"][:n_d]
+    t_m = da["times_markov"][:n_m]
 
     fig, axes = plt.subplots(1, 3, figsize=(18, 5.2))
     fig.suptitle(
@@ -334,7 +334,7 @@ def fig_concentration_scientific(
         if annotator is not None:
             annotator(ax, t_d, series_d)
         ax.set_title(title)
-        ax.set_xlabel("Time (s)")
+        ax.set_xlabel("Time (timestep)")
         ax.set_ylabel(ylabel)
         ax.set_ylim(bottom=0)
         ax.legend()
@@ -376,7 +376,7 @@ def fig_compare_methods_rsd(
         first_sp = first_sp or sp
         d = species_data[sp]
         rsd = metrics.rsd_from_S(d["traj_markov"], d["activated"])
-        t = style.timesteps_to_seconds(d["times_markov"])
+        t = d["times_markov"]
         ax.plot(
             t,
             rsd,
@@ -389,7 +389,7 @@ def fig_compare_methods_rsd(
         f"Concentration RSD across partitioning methods — species '{first_sp}'",
         fontweight="bold",
     )
-    ax.set_xlabel("Time (s)")
+    ax.set_xlabel("Time (timestep)")
     ax.set_ylabel("RSD (-)")
     ax.set_ylim(bottom=0)
     ax.legend(title="Method")

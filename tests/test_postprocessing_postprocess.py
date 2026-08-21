@@ -4,7 +4,7 @@ Validates:
 
 * :func:`fig_mesh` — the VTK time series carries an **evolving** particle
   state (like the positions) and the ``.pvd`` collection stores physical
-  times in seconds;
+  raw timesteps;
 * the DEM/Markov error functions are **homogenised by the particle count**
   (scale-invariant relative errors);
 * :func:`fig_matrix_components_evolution` plots every ``p_ij`` component on
@@ -129,9 +129,7 @@ class TestFigMeshVtkTimeSeries:
         pos1 = np.asarray(frame1.points)
         assert not np.allclose(pos0, pos1)
 
-    def test_pvd_contains_physical_seconds(
-        self, mesh_experiment: dict, tmp_path
-    ) -> None:
+    def test_pvd_contains_raw_timesteps(self, mesh_experiment: dict, tmp_path) -> None:
         out_img = tmp_path / "img"
         out_files = tmp_path / "files"
         out_img.mkdir()
@@ -159,9 +157,9 @@ class TestFigMeshVtkTimeSeries:
 
         pvd_path = out_files / "_tmp_vtp_series_test_mesh" / "series_test_mesh.pvd"
         pvd_text = pvd_path.read_text()
-        # 1 timestep = 0.01 s → physical times in the collection file.
-        assert 'timestep="2.50"' in pvd_text
-        assert 'timestep="2.51"' in pvd_text
+        # Les axes sont laissés tels quels : pas de temps bruts dans le .pvd.
+        assert 'timestep="250.0"' in pvd_text
+        assert 'timestep="251.0"' in pvd_text
         assert pvd_text.count("<DataSet") == 2
 
 
@@ -289,7 +287,7 @@ class TestMatrixComponentsEvolution:
 
         # Le titre de chaque sous-figure explicite le degré du fit.
         assert "fit degré" in axes[0].get_title()
-        assert axes[0].get_xlabel() == "Temps (s)"
+        assert axes[0].get_xlabel() == "Temps (centièmes de seconde)"
 
     def test_single_significant_component(self, tmp_path) -> None:
         P_blocks = np.zeros((3, 4, 4))

@@ -182,8 +182,9 @@ def fig_matrix_components_evolution(
         sp_data: Prepared species data (``"P_blocks"`` key required).
         short_name: Experiment folder name.
         out_dir: Destination directory.
-        block_times: Optional simulation times (seconds) of each block; when
-            ``None``, the block indices ``0, 1, ..., n_blocks-1`` are used.
+        block_times: Optional simulation times (raw timesteps) of each
+            block; when ``None``, the block indices ``0, 1, ...,
+            n_blocks-1`` are used.
         max_fit_degree: Maximum degree of the polynomial law fitted on each
             component (default 2: linear/quadratic).
     """
@@ -200,7 +201,7 @@ def fig_matrix_components_evolution(
         xlabel = "Bloc NLT"
     else:
         x_values = np.asarray(block_times, dtype=float)
-        xlabel = "Temps (s)"
+        xlabel = "Temps (centièmes de seconde)"
 
     # Seuil de significativité (on ignore les transitions quasi-nulles)
     threshold = 0.01
@@ -467,10 +468,9 @@ def run_inhomogeneous_postprocess(
     start_base = c.get("start_index", 157)
     step = c.get("step", 157)
     tau = c.get("tau", 157)
-    # Each block k starts at start_base + k * (step + tau) timesteps;
-    # converted to physical seconds with the 0.01 s timestep.
-    block_times = [(start_base + k * (step + tau)) * 0.01 for k in range(n_blocks)]
-    print(f"   ⏱️  Block start times (s): {block_times}")
+    # Each block k starts at start_base + k * (step + tau) timesteps.
+    block_times = [start_base + k * (step + tau) for k in range(n_blocks)]
+    print(f"   ⏱️  Temps (centièmes de seconde) : {block_times}")
 
     bucket_subfolder = f"postraitement/{category}/{short_name}"
 
