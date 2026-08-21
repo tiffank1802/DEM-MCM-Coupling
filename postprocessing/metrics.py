@@ -483,6 +483,144 @@ def stationary_distribution(P: np.ndarray) -> np.ndarray:
     return pi
 
 
+def normalize_by_particle_count(S: np.ndarray) -> np.ndarray:
+    """Normalise a state matrix by the particle count of each timestep.
+
+    Each row is divided by its own total number of particles, so the result
+    holds **fractions of particles** per cell (values in ``[0, 1]``). This is
+    the homogenisation required before comparing DEM and Markov predictions
+    coming from simulations with different particle populations.
+
+    Args:
+        S: State matrix of shape ``(n_timesteps, n_states)``.
+
+    Returns:
+        The normalised matrix of the same shape; empty rows stay zero.
+    """
+    S = np.asarray(S, dtype=float)
+    totals = S.sum(axis=1, keepdims=True)
+    return np.divide(S, totals, out=np.zeros_like(S), where=totals > 0)
+
+
+@dataclass
+class ProbabilityLawFit:
+    """Interpolation law fitted on a transition probability ``p_ij(t)``.
+
+    Attributes:
+        degree: Degree of the selected polynomial law (0 = constant,
+            1 = linear, 2 = quadratic, ...).
+        coefficients: Polynomial coefficients ordered from the highest power
+            to the constant term (``numpy.polyfit`` convention).
+        rmse: Root-mean-square error of the fit on the data points.
+        r2: Coefficient of determination of the fit.
+        law_label: Human-readable equation of the fitted law.
+    """
+
+    degree: int
+    coefficients: np.ndarray
+    rmse: float
+    r2: float
+    law_label: str
+
+    def predict(self, x: np.ndarray | float) -> np.ndarray:
+        """Evaluate the fitted polynomial at the given abscissae.
+
+        Args:
+            x: Abscissae (times) at which to evaluate the law.
+
+        Returns:
+            The interpolated values, same shape as ``x``.
+        """
+        return np.polyval(self.coefficients, np.asarray(x, dtype=float))
+
+
+def _polynomial_law_label(coefficients: np.ndarray, degree: int) -> str:
+    """Format a polynomial law as a readable ``p = a t^k + ... + b`` string.
+
+    Args:
+        coefficients: Polynomial coefficients, highest power first.
+        degree: Polynomial degree.
+
+    Returns:
+        The equation string, e.g. ``"p = -0.0012 t + 0.052"``.
+    """
+    terms = []
+    for k, coef in zip(range(degree, -1, -1), coefficients):
+        if abs(coef) < 1e-12:
+            continue
+        sign = "+" if (coef > 0 and terms) else ""
+        if k == 0:
+            terms.append(f"{sign}{coef:.4g}")
+        elif k == 1:
+            terms.append(f"{sign}{coef:.4g} t")
+        else:
+            terms.append(f"{sign}{coef:.4g} t^{k}")
+    return "p = " + (" ".join(terms) if terms else "0")
+
+
+def fit_probability_evolution(
+    x: np.ndarray,
+    y: np.ndarray,
+    max_degree: int = 2,
+) -> ProbabilityLawFit:
+    """Fit the best polynomial law on a transition probability ``p_ij(t)``.
+
+    Candidates are tested from degree 0 (constant) up to ``max_degree``
+    (linear, quadratic, cubic, ...). The selection is parsimonious: among the
+    candidates, the **lowest degree whose RMSE stays within 5% of the best
+    RMSE** is kept, so a linear law is preferred whenever it is essentially
+    as good as a quadratic one.
+
+    Args:
+        x: Abscissae (times in seconds), shape ``(n,)``.
+        y: Transition probabilities, shape ``(n,)``.
+        max_degree: Maximum polynomial degree to consider (default 2).
+
+    Returns:
+        The fitted :class:`ProbabilityLawFit`.
+
+    Raises:
+        ValueError: If ``max_degree`` is negative or there are not enough
+            data points to fit a single candidate.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    if max_degree < 0:
+        raise ValueError(f"max_degree must be >= 0, got {max_degree}")
+
+    degrees = [d for d in range(max_degree + 1) if d <= len(x) - 1]
+    if not degrees:
+        raise ValueError(
+            f"Not enough points ({len(x)}) to fit a polynomial of degree 0"
+        )
+
+    fits: dict[int, tuple[np.ndarray, float]] = {}
+    best_rmse = float("inf")
+    for degree in degrees:
+        coefficients = np.polyfit(x, y, degree)
+        y_hat = np.polyval(coefficients, x)
+        rmse = float(np.sqrt(np.mean((y - y_hat) ** 2)))
+        fits[degree] = (coefficients, rmse)
+        best_rmse = min(best_rmse, rmse)
+
+    # Parsimonious selection: lowest degree within 5% of the best RMSE.
+    chosen_degree = next(d for d in degrees if fits[d][1] <= best_rmse * 1.05 + 1e-12)
+
+    coefficients = fits[chosen_degree][0]
+    y_hat = np.polyval(coefficients, x)
+    ss_res = float(np.sum((y - y_hat) ** 2))
+    ss_tot = float(np.sum((y - y.mean()) ** 2))
+    r2 = 1.0 - ss_res / ss_tot if ss_tot > 1e-12 else (1.0 if ss_res <= 1e-12 else 0.0)
+
+    return ProbabilityLawFit(
+        degree=chosen_degree,
+        coefficients=coefficients,
+        rmse=fits[chosen_degree][1],
+        r2=r2,
+        law_label=_polynomial_law_label(coefficients, chosen_degree),
+    )
+
+
 # =============================================================================
 # PHYSICAL VALIDATION
 # =============================================================================

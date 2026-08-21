@@ -165,19 +165,30 @@ def fig_matrix_components_evolution(
     short_name: str,
     out_dir: Path,
     block_times: np.ndarray | None = None,
+    max_fit_degree: int = 2,
 ) -> None:
-    """
-    Évolution temporelle des composantes p_ij des matrices P_k.
+    """Time evolution of the transition probabilities ``p_ij(t)``.
 
-    Pour chaque paire (i, j) où p_ij est significative (> seuil),
-    on trace la valeur de p_ij en fonction du temps de simulation.
+    One subplot per significant transition ``p_ij`` (source ``i`` →
+    destination ``j``). **All the subplots share the same vertical scale**
+    (the maximum over every significant component and its fitted law), so
+    the probabilities can be compared directly. An interpolation law
+    (constant, linear, quadratic, ...) is fitted on each component with
+    :func:`postprocessing.metrics.fit_probability_evolution` and overlaid as
+    a dashed line.
 
-    Paramètres
-    ----------
-    block_times : array, optionnel
-        Temps de simulation (centièmes de seconde) pour chaque bloc.
-        Si None, utilise les indices de blocs 0, 1, …, n_blocks-1.
+    Args:
+        sp: Species name.
+        sp_data: Prepared species data (``"P_blocks"`` key required).
+        short_name: Experiment folder name.
+        out_dir: Destination directory.
+        block_times: Optional simulation times (seconds) of each block; when
+            ``None``, the block indices ``0, 1, ..., n_blocks-1`` are used.
+        max_fit_degree: Maximum degree of the polynomial law fitted on each
+            component (default 2: linear/quadratic).
     """
+    from postprocessing.metrics import fit_probability_evolution
+
     P_blocks = sp_data.get("P_blocks")
     if P_blocks is None:
         print(f"      ⚠️  Pas de P_blocks pour '{sp}' — figure ignorée")
@@ -185,7 +196,7 @@ def fig_matrix_components_evolution(
 
     n_blocks, _n_states, _ = P_blocks.shape
     if block_times is None:
-        x_values = np.arange(n_blocks)
+        x_values = np.arange(n_blocks, dtype=float)
         xlabel = "Bloc NLT"
     else:
         x_values = np.asarray(block_times, dtype=float)
@@ -204,9 +215,25 @@ def fig_matrix_components_evolution(
 
     print(f"      📈 {n_sig} transitions significatives à tracer pour '{sp}'")
 
+    # ── ÉCHELLE COMMUNE : maximum global des composantes ET de leurs lois
+    #    d'interpolation, appliqué à tous les sous-graphiques.
+    global_vmax = float(np.max(P_blocks[:, significant])) if n_sig > 0 else 0.0
+    fits: dict[tuple[int, int], object] = {}
+    for idx_global in range(n_sig):
+        i = int(sig_pairs[0][idx_global])  # source state (row index)
+        j = int(sig_pairs[1][idx_global])  # destination state (column index)
+        values = P_blocks[:, i, j]
+        fit = fit_probability_evolution(x_values, values, max_degree=max_fit_degree)
+        fits[(i, j)] = fit
+        global_vmax = max(global_vmax, float(np.max(fit.predict(x_values))))
+    ylim_top = global_vmax * 1.15  # marge pour les annotations
+
     # Limiter le nombre de sous-figures par page
     max_cells_per_fig = 16
     n_figs = (n_sig + max_cells_per_fig - 1) // max_cells_per_fig
+
+    # Abscisses fines pour tracer les lois d'interpolation.
+    x_fine = np.linspace(x_values.min(), x_values.max(), 200)
 
     for fig_idx in range(n_figs):
         start_idx = fig_idx * max_cells_per_fig
@@ -217,20 +244,22 @@ def fig_matrix_components_evolution(
         nrows = (pairs_in_fig + ncols - 1) // ncols
 
         fig, axes = plt.subplots(
-            nrows, ncols, figsize=(4 * ncols, 3.5 * nrows), squeeze=False
+            nrows, ncols, figsize=(4 * ncols, 3.6 * nrows), squeeze=False
         )
         fig.suptitle(
-            f"Évolution p_ij au cours du temps — '{sp}' (page {fig_idx + 1}/{n_figs})\n"
-            f"{short_name}",
+            f"Évolution des probabilités de transition $p_{{ij}}(t)$ — échelle "
+            f"commune — espèce '{sp}'\n{short_name} "
+            f"(page {fig_idx + 1}/{n_figs})",
             fontsize=11,
             fontweight="bold",
         )
 
         for idx_in_fig in range(pairs_in_fig):
             global_idx = start_idx + idx_in_fig
-            i = sig_pairs[0][global_idx]  # source state (row index)
-            j = sig_pairs[1][global_idx]  # destination state (column index)
+            i = int(sig_pairs[0][global_idx])  # source state (row index)
+            j = int(sig_pairs[1][global_idx])  # destination state (column index)
             values = P_blocks[:, i, j]
+            fit = fits[(i, j)]
 
             ax = axes[idx_in_fig // ncols][idx_in_fig % ncols]
             ax.plot(
@@ -242,13 +271,44 @@ def fig_matrix_components_evolution(
                 linewidth=1.8,
                 alpha=0.85,
                 zorder=3,
+                label="$p_{ij}$ mesuré",
+            )
+            ax.plot(
+                x_fine,
+                fit.predict(x_fine),
+                "--",
+                color="#E53935",
+                linewidth=1.6,
+                alpha=0.9,
+                zorder=2,
+                label=f"Ajustement degré {fit.degree}",
             )
             ax.axhline(0, color="grey", lw=0.5, ls="--", alpha=0.5)
-            ax.set_title(f"$p_{{{i}{j}}}$", fontsize=9)
+
+            # ÉCHELLE COMMUNE à toutes les composantes.
+            ax.set_ylim(0, ylim_top)
+
+            ax.set_title(
+                rf"$p_{{{i} \to {j}}}$ — fit degré {fit.degree} "
+                rf"(RMSE = {fit.rmse:.2e})",
+                fontsize=9,
+            )
             ax.set_xlabel(xlabel, fontsize=8)
-            ax.set_ylabel("P", fontsize=8)
-            ax.set_ylim(bottom=0)
+            ax.set_ylabel("Probabilité de transition $p_{ij}$", fontsize=8)
+            ax.legend(fontsize=7, loc="upper right")
             ax.tick_params(labelsize=7)
+
+            # Rappel de la loi d'interpolation choisie.
+            ax.text(
+                0.02,
+                0.98,
+                fit.law_label,
+                transform=ax.transAxes,
+                fontsize=6,
+                va="top",
+                ha="left",
+                bbox={"facecolor": "white", "alpha": 0.7, "edgecolor": "grey"},
+            )
 
             # Annoter les valeurs
             for k_idx, val in enumerate(values):

@@ -110,12 +110,19 @@ dem_mcm_coupling/
 └── utils.py             # utilitaires généraux
 postprocessing/          # outils de post-traitement (non packagés dans PyPI)
 ├── metrics.py           # ← physique du mélange : convention des matrices,
-│                        #   propagation, RSD/entropie/ségrégation, validation
+│                        #   propagation, RSD/entropie/ségrégation, validation,
+│                        #   homogénéisation par N, interpolation de p_ij(t)
 ├── style.py             # ← code couleur global (méthode & espèce) + style figures
 ├── figures.py           # ← figures scientifiques annotées (t50/t90, unités SI)
 ├── validate_bucket.py   # ← validation physique des expériences du bucket
 ├── postprocess.py       # pipeline homogène + CLI
+│                        #   · fig_mesh → série VTK temporelle : positions mobiles
+│                        #     ET vecteur d'état évolutif + .pvd (temps en s)
+│                        #   · erreurs DEM/Markov normalisées par le nombre de
+│                        #     particules (écarts relatifs en fractions)
 ├── postprocess_inhomogeneous.py  # pipeline inhomogène (P_blocks) + CLI
+│                        #   · p_ij(t) sur une échelle commune + loi
+│                        #     d'interpolation ajustée (linéaire, quadratique…)
 ├── tools/               # scripts de maintenance ponctuels
 └── run_parallel.sh
 tests/                   # tests pytest (124 tests)
