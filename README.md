@@ -151,9 +151,34 @@ expériences gardent donc leur sens physique avec le nouveau code.
 
 ```bash
 dem-mcm-sweep --method voronoi --list            # liste les configurations
-dem-mcm-sweep --method voronoi                   # lance le sweep homogène
+dem-mcm-sweep --method voronoi                   # lance le sweep homogène (masqué par espèce)
 dem-mcm-sweep --method cartesian --inhomogeneous # sweep inhomogène (P par bloc NLT)
+dem-mcm-sweep --method voronoi --no-species      # sweep SANS masque d'espèce :
+                                                 # une seule matrice P pour toutes
+                                                 # les particules (grosses + petites)
 ```
+
+## 🧬 Pipeline « sans distinction d'espèce » (hypothèse initiale)
+
+À l'origine, le modèle supposait que les grosses et les petites particules
+partageaient la **même cinétique** : aucune distinction de taille n'était
+appliquée. Le pipeline `--no-species` reproduit cette hypothèse :
+
+* `run_no_species_experiment` construit **un seul** vecteur d'état et **une
+  seule** matrice de transition à partir de **toutes** les particules (aucun
+  masque de diamètre) — espèce unique `"all"` ;
+* `run_no_species_sweep` orchestre les configurations et les sauvegarde avec
+  le préfixe `nospecies_`, qui les route vers le nouveau dossier du bucket
+  **`nospecies_simulations/`** (dans `_Good/…`) ;
+* `stats["species_masks_applied"]` enregistre si des masques ont été
+  appliqués (comparaison aisée entre les deux hypothèses).
+
+L'**influence de la distinction** sur la prédiction se lit avec la figure
+générée automatiquement par le post-traitement (si le jumeau `nospecies_*`
+existe dans le bucket) : `fig_compare_species_distinction` compare, contre
+le DEM, le modèle masqué (une matrice par espèce) et le modèle sans masque
+(une matrice unique) — RSD totale + erreur L1 normalisée, avec
+l'influence moyenne de la distinction annotée.
 
 ## 📌 Notes
 

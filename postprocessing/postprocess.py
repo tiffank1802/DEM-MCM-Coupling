@@ -24,6 +24,7 @@ import re
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
 
 import matplotlib
 from scipy.spatial import ConvexHull
@@ -3051,6 +3052,208 @@ def fig_compare_hom_vs_inhom(
     print(f"   💾 {fname}")
 
 
+# ── Influence de la distinction par espèce ────────────────────────────────────
+
+
+def fig_compare_species_distinction(
+    species_data: dict,
+    nospecies_data: dict,
+    short_name: str,
+    nospecies_name: str,
+    out_dir: Path,
+) -> tuple[Any, Any]:
+    """Compare the masked vs unmasked predictions against the DEM.
+
+    The goal is to quantify the **influence of the species distinction** on
+    the model prediction:
+
+    * ``avec distinction`` — the usual pipeline: one transition matrix per
+      particle species (small, large), each species propagated with its own
+      matrix, then summed;
+    * ``sans distinction`` — the initial model assumption: large and small
+      particles share the same kinetics, one single transition matrix built
+      from every particle (``nospecies_`` experiments);
+    * the DEM reference — the total particle distribution.
+
+    Panels:
+        1. total RSD over the activated cells (DEM, masked, unmasked);
+        2. normalised L1 error of each prediction against the DEM
+           (homogenised by the particle count) — the gap between the two
+           curves measures the influence of the distinction.
+
+    Args:
+        species_data: Prepared data of the masked experiment (small/large
+            species).
+        nospecies_data: Prepared data of the no-species experiment (single
+            ``"all"`` species).
+        short_name: Masked experiment folder name.
+        nospecies_name: No-species experiment folder name.
+        out_dir: Destination directory.
+
+    Returns:
+        Tuple ``(fig, axes)`` of the generated figure.
+    """
+    sps = list(species_data)
+    if len(sps) < 2:
+        print(
+            "   ⚠️  Moins de 2 espèces dans l'expérience masquée — "
+            "comparaison sans distinction ignorée."
+        )
+        return
+    if "all" not in nospecies_data:
+        print(
+            f"   ⚠️  Pas d'espèce 'all' dans {nospecies_name} — "
+            "comparaison sans distinction ignorée."
+        )
+        return
+
+    sp_a, sp_b = sps[0], sps[1]
+    da, db = species_data[sp_a], species_data[sp_b]
+    d_all = nospecies_data["all"]
+
+    # Fenêtre temporelle commune.
+    n_d = min(len(da["times_dem"]), len(db["times_dem"]), len(d_all["times_dem"]))
+    n_m = min(
+        len(da["times_markov"]),
+        len(db["times_markov"]),
+        len(d_all["times_markov"]),
+    )
+
+    # Totaux par cellule : DEM, modèle avec distinction, modèle sans.
+    S_dem_total = (
+        np.asarray(da["S_dem"]).squeeze()[:n_d]
+        + np.asarray(db["S_dem"]).squeeze()[:n_d]
+    )
+    S_masked_total = (
+        np.asarray(da["traj_markov"]).squeeze()[:n_m]
+        + np.asarray(db["traj_markov"]).squeeze()[:n_m]
+    )
+    S_unmasked_total = np.asarray(d_all["traj_markov"]).squeeze()[:n_m]
+
+    times_dem = np.asarray(da["times_dem"]).ravel()[:n_d]
+    times_markov = np.asarray(da["times_markov"]).ravel()[:n_m]
+
+    # Cellules actives : union des deux espèces.
+    activated = np.asarray(da["activated"]) | np.asarray(db["activated"])
+
+    # ── RSD du total ────────────────────────────────────────────────────────
+    rsd_dem = rsd_from_S(S_dem_total, activated)
+    rsd_masked = rsd_from_S(S_masked_total, activated)
+    rsd_unmasked = rsd_from_S(S_unmasked_total, activated)
+
+    # ── Erreur L1 normalisée (fraction de particules) vs DEM ─────────────────
+    _, err_masked = calculate_abs_error_over_time(
+        S_dem_total, S_masked_total, times_dem, times_markov, activated, normalize=True
+    )
+    _, err_unmasked = calculate_abs_error_over_time(
+        S_dem_total,
+        S_unmasked_total,
+        times_dem,
+        times_markov,
+        activated,
+        normalize=True,
+    )
+    t_err = times_dem[: len(err_masked)]
+    influence = float(np.mean(np.abs(err_masked - err_unmasked)))
+
+    color_masked = "#E53935"  # with distinction (per-species matrices)
+    color_unmasked = "#1976D2"  # without distinction (single matrix)
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    fig.suptitle(
+        "Influence de la distinction par espèce sur la prédiction\n"
+        f"masqué : {short_name}  |  sans masque : {nospecies_name}",
+        fontweight="bold",
+    )
+
+    # ── Panneau 1 : RSD total ───────────────────────────────────────────────
+    ax = axes[0]
+    ax.plot(
+        times_dem,
+        rsd_dem,
+        "-",
+        color="#555555",
+        lw=2.0,
+        alpha=0.9,
+        label="DEM (total)",
+        zorder=3,
+    )
+    ax.plot(
+        times_markov,
+        rsd_masked,
+        "o--",
+        color=color_masked,
+        markersize=4,
+        lw=1.6,
+        alpha=0.9,
+        label="Markov avec distinction (small + large)",
+        zorder=2,
+    )
+    ax.plot(
+        times_markov,
+        rsd_unmasked,
+        "s--",
+        color=color_unmasked,
+        markersize=4,
+        lw=1.6,
+        alpha=0.9,
+        label="Markov sans distinction (toutes particules)",
+        zorder=2,
+    )
+    ax.set_title("RSD de la distribution totale (pas de temps bruts)")
+    ax.set_xlabel("Temps (centièmes de seconde)")
+    ax.set_ylabel("RSD (-)")
+    ax.set_ylim(bottom=0)
+    ax.legend(fontsize=8)
+
+    # ── Panneau 2 : erreur L1 normalisée vs DEM ─────────────────────────────
+    ax = axes[1]
+    ax.plot(
+        t_err,
+        err_masked,
+        "-",
+        color=color_masked,
+        lw=2.0,
+        alpha=0.9,
+        label="Erreur L1 — avec distinction",
+        zorder=3,
+    )
+    ax.plot(
+        t_err,
+        err_unmasked,
+        "-",
+        color=color_unmasked,
+        lw=2.0,
+        alpha=0.9,
+        label="Erreur L1 — sans distinction",
+        zorder=3,
+    )
+    ax.fill_between(
+        t_err,
+        np.minimum(err_masked, err_unmasked),
+        np.maximum(err_masked, err_unmasked),
+        color="#BDBDBD",
+        alpha=0.4,
+        label="Influence de la distinction",
+        zorder=1,
+    )
+    ax.set_title(
+        "Erreur L1 normalisée |modèle - DEM|\n"
+        f"(influence moyenne de la distinction = {influence:.4f})"
+    )
+    ax.set_xlabel("Temps (centièmes de seconde)")
+    ax.set_ylabel("Erreur L1 normalisée (fraction de particules)")
+    ax.set_ylim(bottom=0)
+    ax.legend(fontsize=8)
+
+    fig.tight_layout()
+    fname = f"compare_species_distinction_{short_name}.png"
+    fig.savefig(out_dir / fname, bbox_inches="tight", dpi=150)
+    plt.close(fig)
+    print(f"   💾 {fname}  (influence moyenne = {influence:.4f})")
+    return fig, axes
+
+
 # ── Export matrices de transition ─────────────────────────────────────────────
 
 
@@ -3568,6 +3771,44 @@ def run_postprocess(
                 print("   i️  Aucune version inhomogène trouvée pour comparaison.")
         except Exception as e:
             print(f"   ⚠️  Erreur lors de la tentative de comparaison inhomogène: {e}")
+
+        # ── Comparaison avec la version SANS masque d'espèce si disponible ──
+        try:
+            nospecies_short = f"nospecies_{short_name}"
+            # Les expériences sans masque sont stockées dans
+            # nospecies_simulations/ sous _Good/Experiment (toutes particules).
+            nospecies_paths = find_experiment_paths(
+                f"hf://buckets/{BUCKET_ID}/_Good/Experiment",
+                folder_name=nospecies_short,
+            )
+            if nospecies_paths:
+                nospecies_path_hf, nospecies_shortname = nospecies_paths[0]
+                print(
+                    f"   i️  Chargement version sans distinction d'espèce : "
+                    f"{nospecies_shortname}"
+                )
+                exp_nospecies = load_experiment(nospecies_path_hf)
+                nospecies_species_data = prepare_species(exp_nospecies)
+                try:
+                    fig_compare_species_distinction(
+                        species_data,
+                        nospecies_species_data,
+                        short_name,
+                        nospecies_shortname,
+                        img_etats,
+                    )
+                except Exception as e:
+                    print(f"   ⚠️  Comparaison sans distinction ignorée : {e}")
+            else:
+                print(
+                    "   i️  Aucune version 'nospecies_' trouvée — lancez le "
+                    "sweep avec --no-species pour comparer l'influence de la "
+                    "distinction par espèce."
+                )
+        except Exception as e:
+            print(
+                f"   ⚠️  Erreur lors de la tentative de comparaison sans distinction: {e}"
+            )
 
         # ── 4. Maillage ──────────────────────────────────────────────────
         print("\n🗺️  Maillage...")

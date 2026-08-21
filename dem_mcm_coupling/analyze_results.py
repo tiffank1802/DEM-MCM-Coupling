@@ -129,6 +129,13 @@ class MarkovAnalyzer:
             if "nx" in params:
                 return "cartesian"
 
+        # Experiment variants carry a leading prefix that is not part of the
+        # method name (inhomogeneous chains, no-species pipeline).
+        for variant_prefix in ("inhomogeneous_", "nospecies_"):
+            if folder_name.startswith(variant_prefix):
+                folder_name = folder_name[len(variant_prefix) :]
+                break
+
         for method, prefixes in METHOD_PREFIXES.items():
             for prefix in prefixes:
                 if folder_name.startswith(prefix):

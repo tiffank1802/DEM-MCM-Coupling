@@ -20,6 +20,7 @@ Bucket layout::
       multizone_simulations/   ← multizone_*
       single_simulations/      ← single_*
       Inhomogènes/             ← inhomogeneous_*
+      nospecies_simulations/   ← nospecies_*  (no particle-size mask)
       summaries/               ← _summary*
       other_simulations/       ← everything else
       postraitement/           ← post-processing outputs (untouched)
@@ -49,6 +50,7 @@ from dem_mcm_coupling._config import BUCKET_ID, get_bucket_prefix
 #: The order matters: the longest/most specific prefixes must come first.
 CATEGORY_MAP: dict[str, str] = {
     "inhomogeneous_": "Inhomogènes",
+    "nospecies_": "nospecies_simulations",
     "physics_full_vel_": "physics_simulations",
     "voronoi_": "voronoi_simulations",
     "cartesian_": "cartesian_simulations",
