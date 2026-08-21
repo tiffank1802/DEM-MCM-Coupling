@@ -1138,7 +1138,11 @@ def run_experiment(
     timestep_dict: dict[int, pd.DataFrame],
     device: str = "cpu",
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Build the transition matrix and state matrices of an experiment.
+    """Build the transition matrices of an experiment, one per species.
+
+    The species are auto-detected from the particle diameters: each species
+    gets its own state matrix and its own transition matrix (a particle
+    species mask is applied).
 
     Args:
         config: Experiment configuration.
@@ -1155,6 +1159,103 @@ def run_experiment(
         KeyError: If ``config.start_index`` is absent from the data.
         ValueError: If no transition pair can be built.
     """
+    try:
+        df_init = timestep_dict[config.start_index]
+    except KeyError:
+        raise KeyError(
+            f"Timestep start_base={config.start_index} absent from the data"
+        ) from None
+
+    # Auto-detect the species from the diameters and apply one mask per
+    # species.
+    species_masks = _detect_species(df_init)
+    return _run_experiment_with_masks(
+        config,
+        partitioner,
+        timestep_dict,
+        device,
+        species_masks,
+        species_masks_applied=True,
+    )
+
+
+def run_no_species_experiment(
+    config: ExperimentConfig,
+    partitioner: part.BasePartitioner,
+    timestep_dict: dict[int, pd.DataFrame],
+    device: str = "cpu",
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Build ONE transition matrix from every particle (no species mask).
+
+    Sibling of :func:`run_experiment` for the **initial assumption** of the
+    model: large and small particles share the same kinetics. No diameter
+    mask is applied — the state vector and the transition matrix are built
+    from the whole particle population, stored under the single ``"all"``
+    species.
+
+    Args:
+        config: Experiment configuration.
+        partitioner: The fitted partitioner.
+        timestep_dict: Mapping ``timestep_index -> DataFrame``.
+        device: Torch device.
+
+    Returns:
+        Tuple ``(results, stats)`` — ``results`` holds ``"matrix"`` and the
+        single ``"all"`` species entry (``"P"``, ``"S_matrix"``,
+        ``"times"``).
+
+    Raises:
+        KeyError: If ``config.start_index`` is absent from the data.
+        ValueError: If no transition pair can be built.
+    """
+    try:
+        df_init = timestep_dict[config.start_index]
+    except KeyError:
+        raise KeyError(
+            f"Timestep start_base={config.start_index} absent from the data"
+        ) from None
+
+    # No species distinction: every particle belongs to the "all" species.
+    species_masks = {"all": np.ones(len(df_init), dtype=bool)}
+    return _run_experiment_with_masks(
+        config,
+        partitioner,
+        timestep_dict,
+        device,
+        species_masks,
+        species_masks_applied=False,
+    )
+
+
+def _run_experiment_with_masks(
+    config: ExperimentConfig,
+    partitioner: part.BasePartitioner,
+    timestep_dict: dict[int, pd.DataFrame],
+    device: str,
+    species_masks: dict[str, np.ndarray],
+    species_masks_applied: bool,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Shared core of the masked and no-species pipelines.
+
+    Builds the state matrices and the transition matrices from the provided
+    species masks.
+
+    Args:
+        config: Experiment configuration.
+        partitioner: The fitted partitioner.
+        timestep_dict: Mapping ``timestep_index -> DataFrame``.
+        device: Torch device.
+        species_masks: Mapping ``species name -> boolean mask`` aligned with
+            the particle rows.
+        species_masks_applied: Whether the masks distinguish particle
+            species (recorded in the statistics for later analysis).
+
+    Returns:
+        Tuple ``(results, stats)`` (see :func:`run_experiment`).
+
+    Raises:
+        ValueError: If no transition pair can be built.
+    """
     n_states = partitioner.n_cells
     tau = config.tau
     start_base = config.start_index
@@ -1166,15 +1267,11 @@ def run_experiment(
         f"   📦 {len(timestep_dict)} timesteps available "
         f"(index {min(timestep_dict)} → {max(timestep_dict)})"
     )
-
-    try:
-        df_init = timestep_dict[start_base]
-    except KeyError:
-        raise KeyError(
-            f"Timestep start_base={start_base} absent from the data"
-        ) from None
-
-    species_masks = _detect_species(df_init)
+    if not species_masks_applied:
+        print(
+            "   🧬 Aucun masque d'espèce : les grosses et petites particules "
+            "partagent la même cinétique (une seule matrice de transition)."
+        )
 
     sorted_indices = sorted(timestep_dict)
     n_timesteps = len(sorted_indices)
@@ -1264,6 +1361,7 @@ def run_experiment(
         "diagonal_std": float(np.diag(P_ref).std()),
         "method": config.method,
         "species": list(species_masks),
+        "species_masks_applied": species_masks_applied,
         "n_timesteps": n_timesteps,
         "tau": tau,
         "step": config.step,
@@ -1472,6 +1570,168 @@ def run_markov_sweep(
                 config={"type": "summary", "method": method},
             )
         print(f"\n💾 Summary saved: _summary_{method}/")
+    except Exception as exc:
+        print(f"\n⚠️  Could not save the summary: {exc}")
+
+    print("✨ Done!")
+    return results_summary
+
+
+# =============================================================================
+# NO-SPECIES PIPELINE (no particle-size mask, single transition matrix)
+# =============================================================================
+
+
+def run_no_species_sweep(
+    method: str,
+    configs: list[ExperimentConfig] | None = None,
+    base_dir: str = BASE_OUTPUT_DIR,
+    data_source: DataSource | None = None,
+) -> list[dict[str, Any]]:
+    """Run the no-species sweep: one transition matrix for every particle.
+
+    Sibling of :func:`run_markov_sweep` for the **initial assumption** of
+    the model: the particle size is ignored, so large and small particles
+    share the same kinetics. The state vector and the transition matrix are
+    built without any species mask and saved under the ``nospecies_``
+    prefix, which routes them to the ``nospecies_simulations/`` folder of
+    the bucket.
+
+    Args:
+        method: Partitioning method, or ``"all"`` for every method.
+        configs: Optional explicit list of configurations.
+        base_dir: Local output directory (legacy parameter, kept for CLI
+            compatibility).
+        data_source: Optional data source; the Hugging Face bucket is used
+            by default.
+
+    Returns:
+        List of ``{"config", "stats", "success"[, "error"]}`` dictionaries.
+    """
+    del base_dir  # kept for API compatibility
+
+    print("=" * 70)
+    print(f"  NO-SPECIES SWEEP (no mask) — method: {method.upper()}")
+    print("=" * 70)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"🖥️  Device: {device}")
+
+    print("\n📦 Loading the parquet file...")
+    timestep_dict = _load_timestep_dict(data_source)
+
+    print("\n🔍 Sampling the coordinates for the fit...")
+    sample_coords, s_velocities, _all_diameters = sample_coordinates(timestep_dict)
+    print(f"   {len(sample_coords)} points sampled")
+
+    methods = list(REGISTRY) if method == "all" else [method]
+
+    if configs is None:
+        # The no-species pipeline uses the WHOLE particle population: no
+        # diameter filter is applied.
+        all_configs = [
+            c for m in methods for c in get_configs(m, particle_diameter=None)
+        ]
+    else:
+        all_configs = configs
+
+    print(f"\n📋 {len(all_configs)} no-species experiments to run:")
+    print("-" * 70)
+
+    results_summary: list[dict[str, Any]] = []
+    permanent_start = PERMANENT_START * N_PARTICLES_PER_TIMESTEP
+
+    for i, config in enumerate(all_configs):
+        try:
+            partitioner = create_partitioner(config.method, **config.method_kwargs)
+            print("   🔧 Fitting the partitioner...")
+
+            _fit_partitioner_for_sweep(
+                partitioner, config, sample_coords, s_velocities, permanent_start
+            )
+
+            if config.method in [
+                "adaptive",
+                "multizone",
+                *sorted(_METHODS_FITTED_WITH_VELOCITY),
+            ]:
+                base_folder = config.output_folder(sample_coords=sample_coords)
+            else:
+                base_folder = config.output_folder()
+            # The `nospecies_` prefix routes the folder to the
+            # `nospecies_simulations/` bucket category.
+            folder_name = f"nospecies_{base_folder}"
+            print(f"\n[{i + 1}/{len(all_configs)}] {folder_name}")
+
+            results, stats = run_no_species_experiment(
+                config, partitioner, timestep_dict, str(device)
+            )
+
+            save_results(
+                config=config,
+                partitioner=partitioner,
+                results=results,
+                stats=stats,
+                image_data=None,
+                folder_name=folder_name,
+                data_source=data_source,
+            )
+
+            results_summary.append(
+                {"config": asdict(config), "stats": stats, "success": True}
+            )
+            print(
+                f"   ✅ {stats['n_states_visited']}/{stats['n_states']} states | "
+                f"P(stay)={stats['diagonal_mean']:.4f} | "
+                f"species={stats['species']} | "
+                f"pairs={stats['n_pairs_used']}"
+            )
+        except Exception as exc:
+            print(f"   ❌ Error: {exc}")
+            traceback.print_exc()
+            results_summary.append(
+                {
+                    "config": asdict(config),
+                    "stats": None,
+                    "success": False,
+                    "error": str(exc),
+                }
+            )
+
+    print("\n" + "=" * 70)
+    print("SUMMARY (no species)")
+    print("=" * 70)
+    ok = [r for r in results_summary if r["success"]]
+    ko = [r for r in results_summary if not r["success"]]
+    print(f"\n✅ Success: {len(ok)}/{len(results_summary)}")
+    if ko:
+        print(f"❌ Failed: {len(ko)}")
+        for r in ko:
+            print(f"   - {r['config']['method']}: {r.get('error', '?')}")
+
+    summary_data = {
+        "method": method,
+        "total": len(results_summary),
+        "success": len(ok),
+        "failed": len(ko),
+        "results": results_summary,
+        "nospecies": True,
+    }
+    try:
+        if data_source is not None:
+            data_source.write_experiment(
+                folder_name=f"_summary_nospecies_{method}",
+                stats=summary_data,
+                config={"type": "summary", "method": method, "nospecies": True},
+            )
+        else:
+            save_experiment_to_bucket(
+                folder_name=f"_summary_nospecies_{method}",
+                species_data={},
+                stats=summary_data,
+                config={"type": "summary", "method": method, "nospecies": True},
+            )
+        print(f"\n💾 Summary saved: _summary_nospecies_{method}/")
     except Exception as exc:
         print(f"\n⚠️  Could not save the summary: {exc}")
 
@@ -1970,31 +2230,41 @@ def main() -> None:
         action="store_true",
         help="Enable the inhomogeneous mode (one P matrix per NLT block)",
     )
+    parser.add_argument(
+        "--no-species",
+        action="store_true",
+        help="Disable the species masks: one P matrix for every particle "
+        "(saved under the nospecies_simulations/ bucket folder)",
+    )
     args = parser.parse_args()
 
     if args.list:
+        diameter = None if args.no_species else args.diameter
+        prefix = "nospecies_" if args.no_species else ""
         if args.method == "all":
             for m in REGISTRY:
-                configs = get_configs(m, particle_diameter=args.diameter)
+                configs = get_configs(m, particle_diameter=diameter)
                 print(f"\n{m.upper()} ({len(configs)} configs):")
                 for c in configs:
                     p = create_partitioner(c.method, **c.method_kwargs)
                     print(
-                        f"  {p.label} NLT={c.nlt} step={c.step} dt={c.dt} "
+                        f"  {prefix}{p.label} NLT={c.nlt} step={c.step} dt={c.dt} "
                         f"diameter={c.particle_diameter}"
                     )
         else:
-            configs = get_configs(args.method, particle_diameter=args.diameter)
+            configs = get_configs(args.method, particle_diameter=diameter)
             print(f"{args.method.upper()} ({len(configs)} configs):")
             for c in configs:
                 p = create_partitioner(c.method, **c.method_kwargs)
                 print(
-                    f"  {p.label} NLT={c.nlt} step={c.step} dt={c.dt} "
+                    f"  {prefix}{p.label} NLT={c.nlt} step={c.step} dt={c.dt} "
                     f"diameter={c.particle_diameter}"
                 )
         return
 
-    if args.inhomogeneous:
+    if args.no_species:
+        run_no_species_sweep(args.method, base_dir=args.output)
+    elif args.inhomogeneous:
         run_inhomogeneous_markov_sweep(
             args.method, particle_diameter=args.diameter, base_dir=args.output
         )

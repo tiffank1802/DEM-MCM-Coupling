@@ -308,3 +308,101 @@ class TestMatrixComponentsEvolution:
                 "small", {"P_blocks": P_blocks}, "inhomogeneous_test_NLT3", tmp_path
             )
         assert result is None
+
+
+# ============================================================================
+# SPECIES-DISTINCTION COMPARISON (masked vs unmasked prediction)
+# ============================================================================
+
+
+class TestSpeciesDistinctionFigure:
+    @staticmethod
+    def _prepared_experiments() -> tuple[dict, dict]:
+        """Build masked (small+large) and unmasked ("all") prepared data."""
+        from postprocessing.metrics import propagate_markov
+
+        rng = np.random.RandomState(11)
+        n_states, n_dem = 8, 20
+        times = np.arange(250, 250 + n_dem)
+        activated = np.ones(n_states, dtype=bool)
+
+        def stochastic(diag: float) -> np.ndarray:
+            P = rng.rand(n_states, n_states) * 0.02
+            P[np.arange(n_states), np.arange(n_states)] += diag
+            P /= P.sum(axis=1, keepdims=True)
+            return P
+
+        P_small = stochastic(0.9)
+        P_large = stochastic(1.1)
+        P_all = stochastic(1.0)
+
+        # DEM reference: each species observed in its own dynamics.
+        S_small_dem = np.zeros((n_dem, n_states))
+        S_large_dem = np.zeros((n_dem, n_states))
+        S_small_dem[0, :4] = 20.0
+        S_large_dem[0, 4:] = 20.0
+        for t in range(1, n_dem):
+            S_small_dem[t] = S_small_dem[t - 1] @ P_small
+            S_large_dem[t] = S_large_dem[t - 1] @ P_large
+
+        def prep(S_dem: np.ndarray, P: np.ndarray) -> dict:
+            traj, times_markov = propagate_markov(S_dem[0], P, times, 250, 2, activated)
+            return {
+                "P": P,
+                "P_raw": P,
+                "S_matrix": S_dem,
+                "times": times,
+                "S_dem": S_dem,
+                "times_dem": times,
+                "traj_markov": traj,
+                "times_markov": times_markov,
+                "activated": activated,
+            }
+
+        masked = {
+            "small": prep(S_small_dem, P_small),
+            "large": prep(S_large_dem, P_large),
+        }
+        unmasked = {"all": prep(S_small_dem + S_large_dem, P_all)}
+        return masked, unmasked
+
+    def test_comparison_figure(self, tmp_path) -> None:
+        masked, unmasked = self._prepared_experiments()
+        fig, axes = pp.fig_compare_species_distinction(
+            masked,
+            unmasked,
+            "voronoi_8cells_NLT2_step20_dt1_tau2_start250",
+            "nospecies_voronoi_8cells_NLT2_step20_dt1_tau2_start250",
+            tmp_path,
+        )
+        fname = (
+            tmp_path
+            / "compare_species_distinction_voronoi_8cells_NLT2_step20_dt1_tau2_start250.png"
+        )
+        assert fname.exists()
+
+        assert len(fig.get_axes()) == 2
+
+        # Panneau RSD : 3 courbes (DEM, avec distinction, sans distinction).
+        ax0 = axes[0]
+        labels0 = [line.get_label() for line in ax0.get_lines()]
+        assert "DEM (total)" in labels0
+        assert "avec distinction" in labels0[1]
+        assert "sans distinction" in labels0[2]
+
+        # Panneau erreur : influence de la distinction quantifiée.
+        ax1 = axes[1]
+        assert "influence moyenne de la distinction" in ax1.get_title()
+        assert "Erreur L1 normalisée" in ax1.get_ylabel()
+
+    def test_missing_all_species_skipped(self, tmp_path, capsys) -> None:
+        masked, _ = self._prepared_experiments()
+        result = pp.fig_compare_species_distinction(
+            masked,
+            {"small": masked["small"]},  # pas d'espèce "all"
+            "voronoi_8cells",
+            "nospecies_voronoi_8cells",
+            tmp_path,
+        )
+        assert result is None
+        assert "sans distinction ignorée" in capsys.readouterr().out
