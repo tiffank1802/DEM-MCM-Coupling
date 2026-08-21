@@ -5,7 +5,7 @@ Validates that:
 * every figure function returns a matplotlib figure and saves its PNG;
 * the colour code is respected: a partitioning method always maps to the
   same colour, species keep their DEM/Markov tones;
-* time axes are expressed in seconds.
+* time axes keep the raw timesteps.
 """
 
 from __future__ import annotations
@@ -97,10 +97,6 @@ class TestColorCode:
             style.species_colors("large")["markov"]
             == style.SPECIES_COLORS["large"]["markov"]
         )
-
-    def test_seconds_conversion(self) -> None:
-        times = np.array([250, 300, 350])
-        np.testing.assert_allclose(style.timesteps_to_seconds(times), [2.5, 3.0, 3.5])
 
 
 # ============================================================================

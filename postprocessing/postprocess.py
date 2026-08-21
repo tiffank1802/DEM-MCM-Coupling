@@ -642,7 +642,7 @@ def fig_compare_rsd(
                 label += f"  (RMSE={rmse:.4f})"
 
         ax.plot(
-            style.timesteps_to_seconds(d_a["times_markov"][:n_m]),
+            d_a["times_markov"][:n_m],
             rsd_m,
             "-P",
             color=colors[name],
@@ -656,7 +656,7 @@ def fig_compare_rsd(
         f"RSD de concentration C({sp_a}) — DEM vs Markov par expérience",
         fontweight="bold",
     )
-    ax.set_xlabel("Temps (s)")
+    ax.set_xlabel("Temps (centièmes de seconde)")
     ax.set_ylabel(f"RSD de la concentration C({sp_a}) (-)")
     ax.legend(
         fontsize=7,
@@ -747,7 +747,7 @@ def fig_compare_states(
                 d_ref = dem_ref_data[sp]
                 if cell < d_ref["S_dem"].shape[1]:
                     ax.plot(
-                        style.timesteps_to_seconds(d_ref["times_dem"]),
+                        d_ref["times_dem"],
                         d_ref["S_dem"][:, cell],
                         "-",
                         color="#AAAAAA",
@@ -764,7 +764,7 @@ def fig_compare_states(
                 d = sd[sp]
                 if cell < d["traj_markov"].shape[1]:
                     ax.plot(
-                        style.timesteps_to_seconds(d["times_markov"]),
+                        d["times_markov"],
                         d["traj_markov"][:, cell],
                         "-",
                         color=colors[name],
@@ -775,7 +775,7 @@ def fig_compare_states(
                     )
 
             ax.set_title(f"Cellule {cell}")
-            ax.set_xlabel("Temps (s)")
+            ax.set_xlabel("Temps (centièmes de seconde)")
             ax.set_ylabel("Nombre de particules")
             ax.legend(
                 fontsize=6,
@@ -831,7 +831,7 @@ def fig_compare_n_particles(
             d_ref = dem_ref_data[sp]
             n_ref = d_ref["S_dem"][:, d_ref["activated"]].sum(axis=1)
             ax.plot(
-                style.timesteps_to_seconds(d_ref["times_dem"]),
+                d_ref["times_dem"],
                 n_ref,
                 "-",
                 color="#AAAAAA",
@@ -848,7 +848,7 @@ def fig_compare_n_particles(
             d = sd[sp]
             n_markov = d["traj_markov"][:, d["activated"]].sum(axis=1)
             ax.plot(
-                style.timesteps_to_seconds(d["times_markov"]),
+                d["times_markov"],
                 n_markov,
                 "-",
                 color=colors[name],
@@ -859,7 +859,7 @@ def fig_compare_n_particles(
             )
 
         ax.set_title(f"Nombre total de particules — espèce '{sp}'")
-        ax.set_xlabel("Temps (s)")
+        ax.set_xlabel("Temps (centièmes de seconde)")
         ax.set_ylabel("Nombre de particules")
         ax.legend(
             fontsize=6,
@@ -958,7 +958,7 @@ def fig_compare_teneur(
             )
 
             ax.plot(
-                style.timesteps_to_seconds(t_d[:n_d]),
+                t_d[:n_d],
                 teneur_d,
                 "-",
                 color="#AAAAAA",
@@ -986,7 +986,7 @@ def fig_compare_teneur(
 
             label = _short_label(name, names)
             ax.plot(
-                style.timesteps_to_seconds(t_m[:n_m]),
+                t_m[:n_m],
                 teneur_m,
                 "-",
                 color=exp_colors[name],
@@ -997,7 +997,7 @@ def fig_compare_teneur(
             )
 
         ax.set_title(f"Cellule {cell}")
-        ax.set_xlabel("Temps (s)")
+        ax.set_xlabel("Temps (centièmes de seconde)")
         ax.set_ylabel(f"Teneur en {sp_a} (fraction)")
         ax.set_ylim(0, 1)
         ax.legend(
@@ -1187,9 +1187,9 @@ def _plot_states_grid(
 
     for idx, cell in enumerate(cell_indices):
         ax = axes[idx // ncols][idx % ncols]
-        t_d = style.timesteps_to_seconds(sp_data["times_dem"])
+        t_d = sp_data["times_dem"]
         S_d = sp_data["S_dem"]
-        t_m = style.timesteps_to_seconds(sp_data["times_markov"])
+        t_m = sp_data["times_markov"]
         S_m = sp_data["traj_markov"]
 
         # ── [FIX] DEM tracé en premier — au premier plan (zorder=3) ──
@@ -1218,7 +1218,7 @@ def _plot_states_grid(
 
         mean_occ = S_d[:, cell].mean()
         ax.set_title(f"Cellule {cell}  (occupation moy. DEM : {mean_occ:.1f})", pad=6)
-        ax.set_xlabel("Temps (s)")
+        ax.set_xlabel("Temps (centièmes de seconde)")
         ax.set_ylabel("Nb particules")
         ax.legend(loc="upper right")
         ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{int(x)}"))
@@ -1427,7 +1427,7 @@ def fig_spectral_diagnostic(
 def fig_rsd(species_data: dict, short_name: str, out_dir: Path) -> None:
     """RSD per species, DEM reference against the Markov prediction.
 
-    Time axes are expressed in seconds (1 timestep = 0.01 s).
+    Time axes are expressed in raw timesteps (as stored in the experiment).
 
     Args:
         species_data: Prepared per-species data.
@@ -1448,7 +1448,7 @@ def fig_rsd(species_data: dict, short_name: str, out_dir: Path) -> None:
         rsd_m = rsd_from_S(d["traj_markov"], d["activated"])
 
         ax.plot(
-            style.timesteps_to_seconds(d["times_dem"]),
+            d["times_dem"],
             rsd_d,
             "-",
             color=colors["dem"],
@@ -1458,7 +1458,7 @@ def fig_rsd(species_data: dict, short_name: str, out_dir: Path) -> None:
             zorder=3,
         )
         ax.plot(
-            style.timesteps_to_seconds(d["times_markov"]),
+            d["times_markov"],
             rsd_m,
             "o--",
             color=colors["markov"],
@@ -1470,7 +1470,7 @@ def fig_rsd(species_data: dict, short_name: str, out_dir: Path) -> None:
         )
 
         ax.set_title(f"RSD — espèce '{sp}'")
-        ax.set_xlabel("Temps (s)")
+        ax.set_xlabel("Temps (centièmes de seconde)")
         ax.set_ylabel("RSD")
         ax.legend()
         ax.set_ylim(bottom=0)
@@ -1487,7 +1487,7 @@ def fig_rsd(species_data: dict, short_name: str, out_dir: Path) -> None:
 def fig_concentration(species_data: dict, short_name: str, out_dir: Path) -> None:
     """Concentration RSD of the small species, DEM vs Markov.
 
-    Requires at least two species. Time axes are expressed in seconds.
+    Requires at least two species. Time axes keep the raw timesteps.
 
     Args:
         species_data: Prepared per-species data.
@@ -1542,7 +1542,7 @@ def fig_concentration(species_data: dict, short_name: str, out_dir: Path) -> Non
         ],
     ):
         ax.plot(
-            style.timesteps_to_seconds(da["times_dem"][:n_d]),
+            da["times_dem"][:n_d],
             yd,
             "-",
             color="#2196F3",
@@ -1563,7 +1563,7 @@ def fig_concentration(species_data: dict, short_name: str, out_dir: Path) -> Non
             zorder=2,
         )
         ax.set_title(title)
-        ax.set_xlabel("Temps (s)")
+        ax.set_xlabel("Temps (centièmes de seconde)")
         ax.set_ylabel(ylabel)
         ax.legend()
         ax.set_ylim(bottom=0)
@@ -1582,7 +1582,7 @@ def fig_states_by_species(
 ) -> None:
     """Particle count per cell over time, DEM vs Markov (per species).
 
-    Time axes are expressed in seconds (1 timestep = 0.01 s).
+    Time axes are expressed in raw timesteps (as stored in the experiment).
 
     Args:
         sp: Species name.
@@ -1592,8 +1592,8 @@ def fig_states_by_species(
     """
     S_d = np.asarray(sp_data["S_dem"]).squeeze()
     S_m = np.asarray(sp_data["traj_markov"]).squeeze()
-    t_d = style.timesteps_to_seconds(np.asarray(sp_data["times_dem"]).ravel())
-    t_m = style.timesteps_to_seconds(np.asarray(sp_data["times_markov"]).ravel())
+    t_d = np.asarray(sp_data["times_dem"]).ravel()
+    t_m = np.asarray(sp_data["times_markov"]).ravel()
     activated = sp_data["activated"]
 
     # Debug temporaire — à supprimer une fois confirmé
@@ -1632,7 +1632,7 @@ def fig_states_by_species(
         )
 
     ax.set_title(f"États par cellule — espèce '{sp}'\n{short_name}", fontweight="bold")
-    ax.set_xlabel("Temps (s)")
+    ax.set_xlabel("Temps (centièmes de seconde)")
     ax.set_ylabel("Nombre de particules")
     ax.legend(fontsize=7, ncol=2, loc="upper right")
     ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{int(x)}"))
@@ -1650,7 +1650,7 @@ def fig_states_by_species(
 def fig_entropy_total(species_data: dict, short_name: str, out_dir: Path) -> None:
     """Shannon entropy of the particle distribution, DEM vs Markov.
 
-    Requires at least two species. Time axes are expressed in seconds.
+    Requires at least two species. Time axes keep the raw timesteps.
 
     Args:
         species_data: Prepared per-species data.
@@ -1674,7 +1674,7 @@ def fig_entropy_total(species_data: dict, short_name: str, out_dir: Path) -> Non
 
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.plot(
-        style.timesteps_to_seconds(da["times_dem"][:n_d]),
+        da["times_dem"][:n_d],
         ent_d,
         "-",
         color="#607D8B",
@@ -1695,7 +1695,7 @@ def fig_entropy_total(species_data: dict, short_name: str, out_dir: Path) -> Non
         zorder=2,
     )
     ax.set_title(f"Entropie totale ({sp_a} + {sp_b})\n{short_name}", fontweight="bold")
-    ax.set_xlabel("Temps (s)")
+    ax.set_xlabel("Temps (centièmes de seconde)")
     ax.set_ylabel("H (nats)")
     ax.legend()
     fig.tight_layout()
@@ -1711,7 +1711,7 @@ def fig_teneur(
 ) -> None:
     """Small-species content (teneur) per cell, DEM vs Markov.
 
-    Requires at least two species. Time axes are expressed in seconds.
+    Requires at least two species. Time axes keep the raw timesteps.
 
     Args:
         species_data: Prepared per-species data.
@@ -1732,10 +1732,10 @@ def fig_teneur(
     S_m_a = np.asarray(da["traj_markov"]).squeeze()
     S_m_b = np.asarray(db["traj_markov"]).squeeze()
 
-    t_d_a = style.timesteps_to_seconds(np.asarray(da["times_dem"]).ravel())
-    t_d_b = style.timesteps_to_seconds(np.asarray(db["times_dem"]).ravel())
-    t_m_a = style.timesteps_to_seconds(np.asarray(da["times_markov"]).ravel())
-    t_m_b = style.timesteps_to_seconds(np.asarray(db["times_markov"]).ravel())
+    t_d_a = np.asarray(da["times_dem"]).ravel()
+    t_d_b = np.asarray(db["times_dem"]).ravel()
+    t_m_a = np.asarray(da["times_markov"]).ravel()
+    t_m_b = np.asarray(db["times_markov"]).ravel()
 
     n_d = min(len(t_d_a), len(t_d_b))
     n_m = min(len(t_m_a), len(t_m_b))
@@ -1828,7 +1828,7 @@ def fig_teneur(
         fontweight="bold",
         pad=20,
     )
-    ax.set_xlabel("Temps (s)", fontsize=14)
+    ax.set_xlabel("Temps (centièmes de seconde)", fontsize=14)
     ax.set_ylabel(f"Teneur en {sp_a} (fraction)", fontsize=14)
     ax.set_ylim(0, 1)
     ax.tick_params(labelsize=12)
@@ -1893,10 +1893,10 @@ def fig_states_totale(
     S_m_a = np.asarray(da["traj_markov"]).squeeze()
     S_m_b = np.asarray(db["traj_markov"]).squeeze()
 
-    t_d_a = style.timesteps_to_seconds(np.asarray(da["times_dem"]).ravel())
-    t_d_b = style.timesteps_to_seconds(np.asarray(db["times_dem"]).ravel())
-    t_m_a = style.timesteps_to_seconds(np.asarray(da["times_markov"]).ravel())
-    t_m_b = style.timesteps_to_seconds(np.asarray(db["times_markov"]).ravel())
+    t_d_a = np.asarray(da["times_dem"]).ravel()
+    t_d_b = np.asarray(db["times_dem"]).ravel()
+    t_m_a = np.asarray(da["times_markov"]).ravel()
+    t_m_b = np.asarray(db["times_markov"]).ravel()
 
     n_d = min(len(t_d_a), len(t_d_b))
     n_m = min(len(t_m_a), len(t_m_b))
@@ -1980,7 +1980,7 @@ def fig_states_totale(
         fontweight="bold",
         pad=20,
     )
-    ax.set_xlabel("Temps (s)", fontsize=14)
+    ax.set_xlabel("Temps (centièmes de seconde)", fontsize=14)
     ax.set_ylabel("Nombre total de particules", fontsize=14)
     ax.tick_params(labelsize=12)
 
@@ -2182,7 +2182,7 @@ def fig_mesh(
       state of that exact timestep, not a frozen snapshot.
 
     The collection file ``series_<name>.pvd`` (ParaView time series) lists
-    every frame with its physical time in seconds; the whole series is
+    every frame with its raw timestep value; the whole series is
     zipped into ``vtp_series_<name>.zip``. The reference label at the start
     timestep is kept as an extra scalar ``partition_label_start`` for
     comparison with the evolving ``partition_state`` scalar.
@@ -2394,9 +2394,8 @@ def fig_mesh(
 
         frame_name = f"frame_{t_idx:04d}.vtp"
         frame_glyph.save(str(tmp_series_dir / frame_name))
-        # Le temps physique (secondes) est écrit dans le .pvd :
-        # 1 pas de temps DEM = 0.01 s.
-        pvd_entries.append((t_value, t_value * 0.01, frame_name))
+        # Le pas de temps brut est écrit dans le .pvd.
+        pvd_entries.append((t_value, frame_name))
         n_frames_written += 1
 
         if count % log_every == 0:
@@ -2412,23 +2411,21 @@ def fig_mesh(
         )
 
     # Génération du fichier .pvd (collection ParaView).
-    # L'attribut `timestep` porte le TEMPS PHYSIQUE EN SECONDES de chaque
-    # frame (t * 0.01 s), pour animer la série avec la bonne cadence.
+    # Les axes sont laissés tels quels : le pas de temps brut est écrit.
     pvd_lines = [
         '<?xml version="1.0"?>',
         '<VTKFile type="Collection" version="0.1">',
         "  <Collection>",
     ]
-    for _t_idx, t_seconds, fname in pvd_entries:
-        pvd_lines.append(f'    <DataSet timestep="{t_seconds:.2f}" file="{fname}"/>')
+    for t_val, fname in pvd_entries:
+        pvd_lines.append(f'    <DataSet timestep="{t_val}" file="{fname}"/>')
     pvd_lines.append("  </Collection>")
     pvd_lines.append("</VTKFile>")
 
     pvd_path = tmp_series_dir / f"series_{short_name}.pvd"
     pvd_path.write_text("\n".join(pvd_lines), encoding="utf-8")
     print(
-        f"      💾 {pvd_path.name} généré ({n_frames_written} frames référencées, "
-        f"stride={frame_stride}, temps en secondes)"
+        f"      💾 {pvd_path.name} généré ({n_frames_written} frames référencées, stride={frame_stride})"
     )
 
     # Compression en .zip puis suppression du dossier non compressé
@@ -2603,7 +2600,7 @@ def fig_mesh(
         aspect="auto",
         cmap="hsv",
         origin="lower",
-        extent=[0, n_particles, times[0] * 0.01, times[n_timesteps - 1] * 0.01],
+        extent=[0, n_particles, times[0], times[n_timesteps - 1]],
     )
     cbar = fig.colorbar(im, ax=ax)
     cbar.set_label("État de partition assigné (cell ID)")
@@ -2612,7 +2609,7 @@ def fig_mesh(
         fontweight="bold",
     )
     ax.set_xlabel("Index de la particule")
-    ax.set_ylabel("Temps (s)")
+    ax.set_ylabel("Temps (pas)")
     fname_heatmap = f"mesh_evolution_heatmap_{short_name}.png"
     fig.tight_layout()
     fig.savefig(out_dir_img / fname_heatmap, bbox_inches="tight")
@@ -2638,7 +2635,7 @@ def fig_population_par_cellule(
     2. Une heatmap de la distribution moyenne.
     """
     S_dem = np.asarray(sp_data["S_dem"]).squeeze()
-    times_dem = style.timesteps_to_seconds(np.asarray(sp_data["times_dem"]).ravel())
+    times_dem = np.asarray(sp_data["times_dem"]).ravel()
     activated = sp_data["activated"]
 
     # Filtrer uniquement les cellules activées
@@ -2673,7 +2670,7 @@ def fig_population_par_cellule(
         fontweight="bold",
         fontsize=13,
     )
-    ax.set_xlabel("Temps (s)", fontsize=11)
+    ax.set_xlabel("Temps (centièmes de seconde)", fontsize=11)
     ax.set_ylabel("Nombre de particules", fontsize=11)
     ax.legend(
         fontsize=7,
@@ -2776,7 +2773,7 @@ def fig_population_par_cellule(
         fontweight="bold",
         fontsize=13,
     )
-    ax3.set_xlabel("Temps (s)", fontsize=11)
+    ax3.set_xlabel("Temps (centièmes de seconde)", fontsize=11)
     ax3.set_ylabel("Nombre de particules", fontsize=11)
     ax3.legend(
         fontsize=7,
@@ -2818,7 +2815,7 @@ def fig_matrice_population_heatmap(
 ) -> None:
     """Crée une heatmap 2D (temps x cellules) montrant l'évolution de la population."""
     S_dem = np.asarray(sp_data["S_dem"]).squeeze()
-    times_dem = style.timesteps_to_seconds(np.asarray(sp_data["times_dem"]).ravel())
+    times_dem = np.asarray(sp_data["times_dem"]).ravel()
     activated = sp_data["activated"]
 
     # Filtrer les cellules activées
@@ -2854,7 +2851,7 @@ def fig_matrice_population_heatmap(
         fontweight="bold",
         fontsize=13,
     )
-    ax.set_xlabel("Temps (s)", fontsize=11)
+    ax.set_xlabel("Temps (centièmes de seconde)", fontsize=11)
     ax.set_ylabel("Cellule", fontsize=11)
 
     # Labels des cellules (seulement quelques-uns si trop nombreux)
@@ -3020,24 +3017,23 @@ def fig_compare_hom_vs_inhom(
         t_plot = t_h_sel
         err_i_on_h = err_i_sel
 
-    # Tracé — le temps est converti en secondes (1 pas = 0.01 s).
-    t_plot_s = style.timesteps_to_seconds(t_plot)
+    # Tracé — les axes gardent les pas de temps bruts.
     fig, ax = plt.subplots(figsize=(9, 4.6))
     ax.plot(
-        t_plot_s,
+        t_plot,
         err_h_sel,
         label=f"Chaîne homogène — {short_name_hom}",
         color="#E53935",
         lw=2,
     )
     ax.plot(
-        t_plot_s,
+        t_plot,
         err_i_on_h,
         label=f"Chaîne inhomogène — {short_name_inhom}",
         color="#1976D2",
         lw=2,
     )
-    ax.set_xlabel("Temps (s)")
+    ax.set_xlabel("Temps (centièmes de seconde)")
     ax.set_ylabel(
         "Erreur L1 normalisée : Σᵢ |p_DEM,ᵢ - p_MC,ᵢ| (fraction de particules)"
     )
@@ -3237,9 +3233,6 @@ def fig_discrepancy_analysis(
     active_indices = np.where(activated)[0]
     n_active = len(active_indices)
 
-    # Temps physique en secondes (1 pas = 0.01 s).
-    times_s = style.timesteps_to_seconds(times_aligned)
-
     # Figure avec 2 sous-graphiques (1 ligne, 2 colonnes)
     fig = plt.figure(figsize=(16, 6))
     gs = fig.add_gridspec(1, 2, hspace=0.25, wspace=0.3)
@@ -3247,7 +3240,7 @@ def fig_discrepancy_analysis(
     # ── 1. Écart temporel moyen (courbe) ────────────────────────────
     ax1 = fig.add_subplot(gs[0, 0])
     ax1.plot(
-        times_s,
+        times_aligned,
         discrepancy_over_time,
         "-",
         color="#E53935",
@@ -3256,7 +3249,7 @@ def fig_discrepancy_analysis(
         label="Écart RMS (fraction de particules)",
     )
     ax1.fill_between(
-        times_s,
+        times_aligned,
         0,
         discrepancy_over_time,
         color="#E53935",
@@ -3267,7 +3260,7 @@ def fig_discrepancy_analysis(
         fontweight="bold",
         fontsize=12,
     )
-    ax1.set_xlabel("Temps (s)")
+    ax1.set_xlabel("Temps (centièmes de seconde)")
     ax1.set_ylabel("RMS de l'écart relatif (fraction de particules)")
     ax1.legend(fontsize=10)
     ax1.grid(True, alpha=0.3)
@@ -3283,10 +3276,10 @@ def fig_discrepancy_analysis(
     if n_aligned > max_time_points:
         step_time = max(1, n_aligned // max_time_points)
         diff_plot = diff_per_step_full[::step_time, :]
-        times_plot = times_s[::step_time]
+        times_plot = times_aligned[::step_time]
     else:
         diff_plot = diff_per_step_full
-        times_plot = times_s
+        times_plot = times_aligned
 
     im = ax2.imshow(
         diff_plot.T,
@@ -3298,7 +3291,7 @@ def fig_discrepancy_analysis(
     )
     cbar = plt.colorbar(im, ax=ax2, fraction=0.046, pad=0.04)
     cbar.set_label("Écart relatif |Markov - DEM| (fraction de particules)", fontsize=10)
-    ax2.set_xlabel("Temps (s)")
+    ax2.set_xlabel("Temps (centièmes de seconde)")
     ax2.set_ylabel(f"Indice de cellule (total: {n_active} cellules)")
     ax2.set_title(
         "Écart relatif : TOUTES les cellules au cours du temps",
@@ -3368,9 +3361,6 @@ def fig_global_discrepancy(
     n_active = len(active_indices)
     n_aligned = len(times_aligned)
 
-    # Temps physique en secondes (1 pas = 0.01 s).
-    times_s = style.timesteps_to_seconds(times_aligned)
-
     # Figure avec 2 sous-graphiques
     fig = plt.figure(figsize=(16, 6))
     gs = fig.add_gridspec(1, 2, hspace=0.25, wspace=0.3)
@@ -3378,7 +3368,7 @@ def fig_global_discrepancy(
     # ── 1. Écart temporel moyen (courbe) ────────────────────────────────
     ax1 = fig.add_subplot(gs[0, 0])
     ax1.plot(
-        times_s,
+        times_aligned,
         discrepancy_over_time,
         "-",
         color="#E53935",
@@ -3387,7 +3377,7 @@ def fig_global_discrepancy(
         label="Écart RMS (fraction de particules)",
     )
     ax1.fill_between(
-        times_s,
+        times_aligned,
         0,
         discrepancy_over_time,
         color="#E53935",
@@ -3398,7 +3388,7 @@ def fig_global_discrepancy(
         fontweight="bold",
         fontsize=12,
     )
-    ax1.set_xlabel("Temps (s)")
+    ax1.set_xlabel("Temps (centièmes de seconde)")
     ax1.set_ylabel("RMS de l'écart relatif (fraction de particules)")
     ax1.legend(fontsize=10)
     ax1.grid(True, alpha=0.3)
@@ -3412,10 +3402,10 @@ def fig_global_discrepancy(
     if n_aligned > max_time_points:
         step_time = max(1, n_aligned // max_time_points)
         diff_plot = diff_per_step_full[::step_time, :]
-        times_plot = times_s[::step_time]
+        times_plot = times_aligned[::step_time]
     else:
         diff_plot = diff_per_step_full
-        times_plot = times_s
+        times_plot = times_aligned
 
     im = ax2.imshow(
         diff_plot.T,
@@ -3427,7 +3417,7 @@ def fig_global_discrepancy(
     )
     cbar = plt.colorbar(im, ax=ax2, fraction=0.046, pad=0.04)
     cbar.set_label("Écart relatif |Markov - DEM| (fraction de particules)", fontsize=10)
-    ax2.set_xlabel("Temps (s)")
+    ax2.set_xlabel("Temps (centièmes de seconde)")
     ax2.set_ylabel(f"Indice de cellule (total: {n_active} cellules)")
     ax2.set_title(
         "Écart relatif : toutes les cellules — toutes espèces",

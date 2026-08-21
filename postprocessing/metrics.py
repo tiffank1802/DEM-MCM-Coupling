@@ -434,7 +434,7 @@ def intensity_of_segregation(
 
 def mixing_times(
     rsd: np.ndarray,
-    times_seconds: np.ndarray,
+    times: np.ndarray,
     fractions: tuple[float, ...] = (0.5, 0.1),
 ) -> dict[float, float | None]:
     """Mixing times of an RSD decay curve.
@@ -445,15 +445,15 @@ def mixing_times(
 
     Args:
         rsd: RSD curve, shape ``(n_timesteps,)``.
-        times_seconds: Time axis in seconds.
+        times: Time axis (raw timesteps, no unit conversion).
         fractions: Fractions of the initial RSD.
 
     Returns:
-        Mapping ``fraction -> time in seconds`` (``None`` when never
-        reached).
+        Mapping ``fraction -> time in the same unit as ``times``` (``None``
+        when never reached).
     """
     rsd = np.asarray(rsd, dtype=float)
-    times = np.asarray(times_seconds, dtype=float)
+    times = np.asarray(times, dtype=float)
     rsd_0 = rsd[0] if rsd[0] > 0 else 1.0
 
     out: dict[float, float | None] = {}
@@ -572,7 +572,7 @@ def fit_probability_evolution(
     as good as a quadratic one.
 
     Args:
-        x: Abscissae (times in seconds), shape ``(n,)``.
+        x: Abscissae (e.g. block times or timestep indices), shape ``(n,)``.
         y: Transition probabilities, shape ``(n,)``.
         max_degree: Maximum polynomial degree to consider (default 2).
 

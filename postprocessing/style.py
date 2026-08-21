@@ -29,7 +29,6 @@ from typing import Any
 import matplotlib
 import matplotlib.pyplot as plt
 
-from dem_mcm_coupling._config import TIMESTEP_TO_SECONDS
 from dem_mcm_coupling.analyze_results import METHOD_COLORS
 
 matplotlib.use("Agg")
@@ -115,26 +114,9 @@ def apply_scientific_style() -> None:
     )
 
 
-def timesteps_to_seconds(times: Any) -> Any:
-    """Convert raw DEM timestep indices into physical seconds.
-
-    One timestep corresponds to :data:`TIMESTEP_TO_SECONDS` (0.01 s) of
-    simulated time, so ``t_seconds = timestep_index * 0.01``.
-
-    Args:
-        times: Array-like of timestep indices (or centiseconds).
-
-    Returns:
-        The same shape expressed in seconds.
-    """
-    import numpy as np
-
-    return np.asarray(times, dtype=float) * TIMESTEP_TO_SECONDS
-
-
 def annotate_mixing_times(
     ax: Any,
-    times_seconds: Any,
+    times: Any,
     rsd: Any,
     fractions: tuple[float, float] = (0.5, 0.1),
 ) -> None:
@@ -142,18 +124,20 @@ def annotate_mixing_times(
 
     The mixing time at fraction ``f`` is the first time where the RSD falls
     below ``f`` times its initial value (``t50``: RSD ÷ 2, ``t90``: RSD ÷
-    10). Vertical dashed lines and text labels are added to the axis.
+    10). Vertical dashed lines and text labels are added to the axis. The
+    annotated values are the **raw timesteps** of the time axis (no unit
+    conversion).
 
     Args:
         ax: Matplotlib axis.
-        times_seconds: Time axis in seconds.
+        times: Time axis (raw timesteps).
         rsd: RSD curve.
         fractions: Fractions of the initial RSD to annotate.
     """
     import numpy as np
 
     rsd = np.asarray(rsd, dtype=float)
-    times = np.asarray(times_seconds, dtype=float)
+    times = np.asarray(times, dtype=float)
     rsd_0 = rsd[0] if rsd[0] > 0 else 1.0
     label = {0.5: r"$t_{50}$", 0.1: r"$t_{90}$"}
 
@@ -164,7 +148,7 @@ def annotate_mixing_times(
         t_star = times[hit[0]]
         ax.axvline(t_star, color=DEM_REFERENCE_COLOR, lw=1.0, ls="--", alpha=0.7)
         ax.annotate(
-            f"{label.get(fraction, str(fraction))} = {t_star:.1f} s",
+            f"{label.get(fraction, str(fraction))} = {t_star:.0f}",
             xy=(t_star, fraction * rsd_0),
             xytext=(6, 6),
             textcoords="offset points",

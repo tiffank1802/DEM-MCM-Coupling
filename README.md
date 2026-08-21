@@ -113,11 +113,11 @@ postprocessing/          # outils de post-traitement (non packagés dans PyPI)
 │                        #   propagation, RSD/entropie/ségrégation, validation,
 │                        #   homogénéisation par N, interpolation de p_ij(t)
 ├── style.py             # ← code couleur global (méthode & espèce) + style figures
-├── figures.py           # ← figures scientifiques annotées (t50/t90, unités SI)
+├── figures.py           # ← figures scientifiques annotées (t50/t90, axes en pas bruts)
 ├── validate_bucket.py   # ← validation physique des expériences du bucket
 ├── postprocess.py       # pipeline homogène + CLI
 │                        #   · fig_mesh → série VTK temporelle : positions mobiles
-│                        #     ET vecteur d'état évolutif + .pvd (temps en s)
+│                        #     ET vecteur d'état évolutif + .pvd (pas de temps bruts)
 │                        #   · erreurs DEM/Markov normalisées par le nombre de
 │                        #     particules (écarts relatifs en fractions)
 ├── postprocess_inhomogeneous.py  # pipeline inhomogène (P_blocks) + CLI
