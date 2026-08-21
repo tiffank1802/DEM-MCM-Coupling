@@ -642,7 +642,7 @@ def fig_compare_rsd(
                 label += f"  (RMSE={rmse:.4f})"
 
         ax.plot(
-            d_a["times_markov"][:n_m],
+            style.timesteps_to_seconds(d_a["times_markov"][:n_m]),
             rsd_m,
             "-P",
             color=colors[name],
@@ -652,9 +652,12 @@ def fig_compare_rsd(
             zorder=3,
         )
 
-    ax.set_title(f"RSD de concentration C({sp_a})")
-    ax.set_xlabel("Temps (centièmes de seconde)")
-    ax.set_ylabel("RSD de concentration")
+    ax.set_title(
+        f"RSD de concentration C({sp_a}) — DEM vs Markov par expérience",
+        fontweight="bold",
+    )
+    ax.set_xlabel("Temps (s)")
+    ax.set_ylabel(f"RSD de la concentration C({sp_a}) (-)")
     ax.legend(
         fontsize=7,
         ncol=1,
@@ -772,8 +775,8 @@ def fig_compare_states(
                     )
 
             ax.set_title(f"Cellule {cell}")
-            ax.set_xlabel("Temps (centièmes de seconde)")
-            ax.set_ylabel("Nb particules")
+            ax.set_xlabel("Temps (s)")
+            ax.set_ylabel("Nombre de particules")
             ax.legend(
                 fontsize=6,
                 ncol=1,
@@ -855,9 +858,9 @@ def fig_compare_n_particles(
                 zorder=3,
             )
 
-        ax.set_title(f"N particules — espèce '{sp}'")
-        ax.set_xlabel("Temps (centièmes de seconde)")
-        ax.set_ylabel("N particules")
+        ax.set_title(f"Nombre total de particules — espèce '{sp}'")
+        ax.set_xlabel("Temps (s)")
+        ax.set_ylabel("Nombre de particules")
         ax.legend(
             fontsize=6,
             ncol=1,
@@ -955,7 +958,7 @@ def fig_compare_teneur(
             )
 
             ax.plot(
-                t_d[:n_d],
+                style.timesteps_to_seconds(t_d[:n_d]),
                 teneur_d,
                 "-",
                 color="#AAAAAA",
@@ -983,7 +986,7 @@ def fig_compare_teneur(
 
             label = _short_label(name, names)
             ax.plot(
-                t_m[:n_m],
+                style.timesteps_to_seconds(t_m[:n_m]),
                 teneur_m,
                 "-",
                 color=exp_colors[name],
@@ -994,8 +997,8 @@ def fig_compare_teneur(
             )
 
         ax.set_title(f"Cellule {cell}")
-        ax.set_xlabel("Temps (centièmes de seconde)")
-        ax.set_ylabel(f"Teneur en {sp_a}")
+        ax.set_xlabel("Temps (s)")
+        ax.set_ylabel(f"Teneur en {sp_a} (fraction)")
         ax.set_ylim(0, 1)
         ax.legend(
             fontsize=6,
@@ -2162,25 +2165,49 @@ def fig_mesh(
     out_dir_img: Path,
     out_dir_files: Path,
     timestep_dict: dict | None = None,
-    frame_stride: int = 157,
+    frame_stride: int | None = None,
     series_theta_resolution: int = 8,
     series_phi_resolution: int = 8,
 ) -> None:
-    """
+    """Evaluate the meshed mixer and export a **time-dependent** VTK series.
 
-    timestep_dict : dict {t_value -> DataFrame} donnant les positions réelles
-                    des particules à chaque pas de temps (ex: sortie de
-                    load_parquet_as_timestep_dict). Les clés doivent être dans
-                    la même unité que exp["species"][sp]["times"].
-    frame_stride  : ne garder qu'une frame sur N dans la série .vtp exportée
-                    (le label restant identique à toutes les frames, ce
-                    paramètre ne sert qu'à limiter le volume de fichiers et
-                    le temps d'exécution — pas de perte d'information sur le
-                    label).
+    The exported series contains one ``.vtp`` file per prediction step in
+    which BOTH quantities evolve with time, exactly like a DEM animation:
+
+    * the **particle positions**, read frame by frame from ``timestep_dict``
+      (particles move at every prediction step);
+    * the **state vector** of the particles — the partition label of each
+      particle is updated at every frame from ``exp["matrix"]``
+      (``states_matrix[t]``), so the Markov state written in the mesh is the
+      state of that exact timestep, not a frozen snapshot.
+
+    The collection file ``series_<name>.pvd`` (ParaView time series) lists
+    every frame with its physical time in seconds; the whole series is
+    zipped into ``vtp_series_<name>.zip``. The reference label at the start
+    timestep is kept as an extra scalar ``partition_label_start`` for
+    comparison with the evolving ``partition_state`` scalar.
+
+    Args:
+        exp: Loaded experiment (``config``, ``species`` and the
+            ``matrix`` key of shape ``(n_timesteps, n_particles)``).
+        df_start: Particle data frame at the reference timestep.
+        short_name: Experiment folder name (file naming).
+        out_dir_img: Directory of the matplotlib figures.
+        out_dir_files: Directory of the VTK/CSV/JSON files.
+        timestep_dict: Mapping ``timestep -> DataFrame`` with the real
+            particle positions of every step (keys in the same unit as
+            ``exp["species"][sp]["times"]``). When ``None``, the positions
+            are frozen at ``df_start``.
+        frame_stride: Keep one frame every N steps. When ``None``, the
+            experiment's ``tau`` is used (one frame per prediction step).
+        series_theta_resolution: Sphere tessellation of the glyphs.
+        series_phi_resolution: Sphere tessellation of the glyphs.
     """
     config = exp["config"]
     start = config.get("start_index", 250)
-    frame_stride = config.get("tau", 157)
+    if frame_stride is None:
+        # One frame per prediction step (tau) by default.
+        frame_stride = max(1, int(config.get("tau", 157)))
 
     # 1. Vérifications initiales des données
     states_matrix = exp.get("matrix")  # Format attendu : (n_timesteps, n_particles)
@@ -2237,6 +2264,9 @@ def fig_mesh(
     # =========================================================================
     print("      📊 Extraction de la matrice temporelle complète...")
     states_matrix_clean = np.squeeze(states_matrix)
+    if states_matrix_clean.ndim == 1:
+        # Single-timestep matrix: restore the (1, n_particles) shape.
+        states_matrix_clean = states_matrix_clean.reshape(1, -1)
     n_timesteps, n_particles = states_matrix_clean.shape
 
     npy_matrix_path = out_dir_files / f"matrix_cell_ids_evolution_{short_name}.npy"
@@ -2255,7 +2285,8 @@ def fig_mesh(
     )
 
     # =========================================================================
-    # 🏷️ LABEL DE PARTITION FIGÉ À L'INSTANT DE RÉFÉRENCE (START)
+    # 🏷️ LABEL DE RÉFÉRENCE (START) — utilisé pour la géométrie instantanée
+    #    et conservé dans la série comme scalaire de comparaison.
     # =========================================================================
     row_start = np.searchsorted(times, start)
     if row_start >= len(times) or times[row_start] != start:
@@ -2269,15 +2300,18 @@ def fig_mesh(
         f"      Focus instantané t={times[row_start]} : cell_ids={len(cell_ids)}  coords={len(coords)}  ✅"
     )
     print(
-        "      🔒 Label de partition figé à cet instant — appliqué identique à toutes les frames "
-        "de la série temporelle (maillage fixe, particules mobiles)."
+        "      🏷️  Label de référence à t=start conservé comme scalaire "
+        "'partition_label_start' ; le scalaire 'partition_state' évolue à "
+        "chaque frame de la série temporelle."
     )
 
     # =========================================================================
     # 🎞️ EXPORT SÉRIE TEMPORELLE VTP (GLYPHES SPHÉRIQUES) + PVD (COMPRESSÉE EN .ZIP)
+    #    → positions mobiles ET vecteur d'état évolutif insérés dans le maillage.
     # =========================================================================
     print(
-        "      🎞️  Génération de la série temporelle .vtp (glyphes sphériques) + .pvd..."
+        "      🎞️  Génération de la série temporelle .vtp (positions mobiles + "
+        "états évolutifs) + .pvd..."
     )
 
     if timestep_dict is None:
@@ -2344,9 +2378,13 @@ def fig_mesh(
             frame_coords = df_t[coord_cols].to_numpy()
 
         frame_points = pv.PolyData(frame_coords)
-        frame_points.point_data["partition_label"] = (
-            cell_ids  # figé, identique pour toutes les frames
-        )
+        # ── Vecteur d'état ÉVOLUTIF : l'assignation de partition de CE pas de
+        #    temps est insérée dans le maillage (comme les positions, elle
+        #    change à chaque frame de prédiction).
+        frame_states = states_matrix_clean[t_idx].astype(int)
+        frame_points.point_data["partition_state"] = frame_states
+        # ── Référence figée à t=start, pour comparaison visuelle.
+        frame_points.point_data["partition_label_start"] = cell_ids
         frame_points.point_data["particle_id"] = particle_ids
         frame_points.point_data["Diameter"] = diameters
 
@@ -2356,12 +2394,15 @@ def fig_mesh(
 
         frame_name = f"frame_{t_idx:04d}.vtp"
         frame_glyph.save(str(tmp_series_dir / frame_name))
-        pvd_entries.append((t_value, frame_name))
+        # Le temps physique (secondes) est écrit dans le .pvd :
+        # 1 pas de temps DEM = 0.01 s.
+        pvd_entries.append((t_value, t_value * 0.01, frame_name))
         n_frames_written += 1
 
         if count % log_every == 0:
             print(
-                f"         ...frame {count + 1}/{len(frame_indices)} écrite (t={t_value})"
+                f"         ...frame {count + 1}/{len(frame_indices)} écrite "
+                f"(t={t_value}, états = ligne {t_idx} de la matrice)"
             )
 
     if n_frames_missing:
@@ -2370,21 +2411,24 @@ def fig_mesh(
             f"(position de repli utilisée)."
         )
 
-    # Génération du fichier .pvd (collection ParaView)
+    # Génération du fichier .pvd (collection ParaView).
+    # L'attribut `timestep` porte le TEMPS PHYSIQUE EN SECONDES de chaque
+    # frame (t * 0.01 s), pour animer la série avec la bonne cadence.
     pvd_lines = [
         '<?xml version="1.0"?>',
         '<VTKFile type="Collection" version="0.1">',
         "  <Collection>",
     ]
-    for t_val, fname in pvd_entries:
-        pvd_lines.append(f'    <DataSet timestep="{t_val}" file="{fname}"/>')
+    for _t_idx, t_seconds, fname in pvd_entries:
+        pvd_lines.append(f'    <DataSet timestep="{t_seconds:.2f}" file="{fname}"/>')
     pvd_lines.append("  </Collection>")
     pvd_lines.append("</VTKFile>")
 
     pvd_path = tmp_series_dir / f"series_{short_name}.pvd"
     pvd_path.write_text("\n".join(pvd_lines), encoding="utf-8")
     print(
-        f"      💾 {pvd_path.name} généré ({n_frames_written} frames référencées, stride={frame_stride})"
+        f"      💾 {pvd_path.name} généré ({n_frames_written} frames référencées, "
+        f"stride={frame_stride}, temps en secondes)"
     )
 
     # Compression en .zip puis suppression du dossier non compressé
@@ -2559,16 +2603,16 @@ def fig_mesh(
         aspect="auto",
         cmap="hsv",
         origin="lower",
-        extent=[0, n_particles, times[0], times[n_timesteps - 1]],
+        extent=[0, n_particles, times[0] * 0.01, times[n_timesteps - 1] * 0.01],
     )
     cbar = fig.colorbar(im, ax=ax)
-    cbar.set_label("Cell ID assignée")
+    cbar.set_label("État de partition assigné (cell ID)")
     ax.set_title(
-        f"Évolution de l'assignation des cellules par particule\n{short_name}",
+        f"Évolution temporelle de l'état des particules\n{short_name}",
         fontweight="bold",
     )
     ax.set_xlabel("Index de la particule")
-    ax.set_ylabel("Temps (pas)")
+    ax.set_ylabel("Temps (s)")
     fname_heatmap = f"mesh_evolution_heatmap_{short_name}.png"
     fig.tight_layout()
     fig.savefig(out_dir_img / fname_heatmap, bbox_inches="tight")
@@ -2840,16 +2884,33 @@ def calculate_abs_error_over_time(
     activated: np.ndarray,
     normalize: bool = True,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """
+    """Normalised L1 error between the DEM and Markov distributions.
 
-    Calcule l'erreur L1 (somme des valeurs absolues) entre DEM et Markov
-    pour chaque instant de la série DEM commune.
+    Each trajectory is **homogenised by its particle count** (every row is
+    divided by the number of particles of that timestep), so the comparison
+    is made between fractions of particles::
 
-    Retourne (times_common, error_abs) où `error_abs` est de forme (n_times,)
-    et correspond à E(t) = sum_i |p_i^{DEM}(t) - p_i^{MC}(t)|.
-    Les trajectoires Markov sont interpolées aux temps DEM si nécessaire.
+        E(t) = Σ_i |p_i^DEM(t) - p_i^MC(t)|   ∈ [0, 2]
+
+    The Markov trajectory is linearly interpolated on the common DEM times.
+
+    Args:
+        S_dem: DEM state matrix ``(n_times_dem, n_states)``.
+        S_markov: Markov state matrix ``(n_times_markov, n_states)``.
+        times_dem: DEM timestep indices.
+        times_markov: Markov timestep indices.
+        activated: Boolean mask of the activated cells.
+        normalize: When ``True`` (default), divide each row by its particle
+            count before comparing; when ``False``, compare the raw counts
+            (only valid for experiments with the same particle population).
+
+    Returns:
+        Tuple ``(times_common, error)`` — the common time indices and the
+        normalised L1 error per timestep, shape ``(n_times_common,)``.
     """
     from scipy.interpolate import interp1d
+
+    from postprocessing.metrics import normalize_by_particle_count
 
     # Plage temporelle commune
     t_min = max(times_dem[0], times_markov[0])
@@ -2876,21 +2937,15 @@ def calculate_abs_error_over_time(
         markov_interp.append(f(times_common))
     S_markov_interp = np.array(markov_interp).T  # (n_times, n_active)
 
-    # Normaliser en probabilités si demandé
+    # Homogénéisation par le nombre de particules → fractions.
     if normalize:
-        # éviter division par zéro
-        dem_sums = S_dem_active.sum(axis=1, keepdims=True)
-        dem_sums[dem_sums == 0] = 1.0
-        p_dem = S_dem_active / dem_sums
-
-        markov_sums = S_markov_interp.sum(axis=1, keepdims=True)
-        markov_sums[markov_sums == 0] = 1.0
-        p_markov = S_markov_interp / markov_sums
+        p_dem = normalize_by_particle_count(S_dem_active)
+        p_markov = normalize_by_particle_count(S_markov_interp)
     else:
         p_dem = S_dem_active
         p_markov = S_markov_interp
 
-    # Erreur L1 temporelle
+    # Erreur L1 temporelle (normalisée par le nombre de particules).
     error_abs = np.sum(np.abs(p_dem - p_markov), axis=1)
 
     return times_common, error_abs
@@ -2965,21 +3020,32 @@ def fig_compare_hom_vs_inhom(
         t_plot = t_h_sel
         err_i_on_h = err_i_sel
 
-    # Tracé
-    fig, ax = plt.subplots(figsize=(8, 4))
+    # Tracé — le temps est converti en secondes (1 pas = 0.01 s).
+    t_plot_s = style.timesteps_to_seconds(t_plot)
+    fig, ax = plt.subplots(figsize=(9, 4.6))
     ax.plot(
-        t_plot, err_h_sel, label=f"Homogène: {short_name_hom}", color="#E53935", lw=2
+        t_plot_s,
+        err_h_sel,
+        label=f"Chaîne homogène — {short_name_hom}",
+        color="#E53935",
+        lw=2,
     )
     ax.plot(
-        t_plot,
+        t_plot_s,
         err_i_on_h,
-        label=f"Inhomogène: {short_name_inhom}",
+        label=f"Chaîne inhomogène — {short_name_inhom}",
         color="#1976D2",
         lw=2,
     )
     ax.set_xlabel("Temps (s)")
-    ax.set_ylabel("Erreur L1 (somme des |p_dem - p_mc|)")
-    ax.set_title(f"Comparaison Erreur L1 — espèce '{sp}'")
+    ax.set_ylabel(
+        "Erreur L1 normalisée : Σᵢ |p_DEM,ᵢ - p_MC,ᵢ| (fraction de particules)"
+    )
+    ax.set_title(
+        f"Erreur L1 normalisée par le nombre de particules — homogène vs "
+        f"inhomogène\nespèce '{sp}'",
+        fontweight="bold",
+    )
     ax.grid(True, alpha=0.3)
     ax.legend()
 
@@ -3001,24 +3067,49 @@ def calculate_discrepancy_per_cell(
     times_dem: np.ndarray,
     times_markov: np.ndarray,
     activated: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """
+    normalize: bool = True,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Per-cell discrepancy between the Markov prediction and the DEM data.
 
-    Calcule l'écart (discrepancy) entre la prédiction Markov et DEM
-    pour chaque cellule activée au cours du temps.
+    The comparison is made at the **Markov timesteps**: for each Markov
+    instant, the closest DEM timestep is selected (no interpolation) and the
+    difference is computed cell by cell.
 
-    La comparaison est faite **aux pas de temps de Markov** (times_markov) :
-    pour chaque instant t_m de Markov, on trouve l'indice DEM le plus proche
-    (sans interpolation) et on compare directement |S_markov - S_dem|.
+    Each trajectory is **homogenised by its particle count** (every row is
+    divided by the number of particles of that timestep) when ``normalize``
+    is ``True`` (default): the discrepancy is then a **relative error in
+    fractions of particles** (values in ``[0, 1]`` per cell), comparable
+    between experiments with different particle populations.
+
+    Args:
+        S_dem: DEM state matrix ``(n_times_dem, n_states)``.
+        S_markov: Markov state matrix ``(n_times_markov, n_states)``.
+        times_dem: DEM timestep indices.
+        times_markov: Markov timestep indices.
+        activated: Boolean mask of the activated cells.
+        normalize: When ``True`` (default), divide each row by its particle
+            count before comparing.
 
     Returns:
-        - discrepancy_per_cell : (n_active_cells,) écart cumulé par cellule
-        - discrepancy_over_time : (n_times_markov_common,) écart temporel (RMS entre Markov
-        et DEM)
-        - times_aligned : (n_times_markov_common,) temps de Markov utilisés pour la
-        comparaison
-        - rmse_per_cell : (n_active_cells,) RMSE temporel par cellule
+        Tuple ``(discrepancy_per_cell, discrepancy_over_time, times_aligned,
+        rmse_per_cell, diff_per_step)`` where:
+
+        * ``discrepancy_per_cell``: cumulative discrepancy per cell, shape
+          ``(n_active_cells,)``;
+        * ``discrepancy_over_time``: RMS discrepancy across the cells, shape
+          ``(n_times_markov_common,)``;
+        * ``times_aligned``: Markov timesteps used for the comparison;
+        * ``rmse_per_cell``: temporal RMSE per cell, shape
+          ``(n_active_cells,)``;
+        * ``diff_per_step``: raw absolute differences, shape
+          ``(n_times_markov_common, n_active_cells)``.
+
+    Raises:
+        ValueError: If the DEM/Markov shapes are inconsistent with their
+            time axes, or if the time ranges do not overlap.
     """
+    from postprocessing.metrics import normalize_by_particle_count
+
     # Defensive checks: ensure arrays have expected orientations
     S_dem = np.asarray(S_dem)
     S_markov = np.asarray(S_markov)
@@ -3048,6 +3139,11 @@ def calculate_discrepancy_per_cell(
                 f"Markov shape mismatch: S_markov.shape={S_markov.shape} "
                 f"but times_markov.len={len(times_markov)}"
             )
+
+    # Homogénéisation par le nombre de particules → fractions de particules.
+    if normalize:
+        S_dem = normalize_by_particle_count(S_dem)
+        S_markov = normalize_by_particle_count(S_markov)
 
     # Trouver la plage temporelle commune
     t_min = max(times_dem[0], times_markov[0])
@@ -3086,7 +3182,7 @@ def calculate_discrepancy_per_cell(
     S_dem_active = S_dem_at_markov[:, active_indices]
     S_markov_active = S_markov_common[:, active_indices]
 
-    # Écart ponctuel (valeur absolue de la différence)
+    # Écart ponctuel (fraction de particules si normalize=True)
     diff_per_step = np.abs(S_markov_active - S_dem_active)
 
     # Écart cumulé par cellule (somme temporelle)
@@ -3101,7 +3197,13 @@ def calculate_discrepancy_per_cell(
     # Temps alignés = temps Markov (référence de la comparaison)
     times_aligned = times_markov_common
 
-    return discrepancy_per_cell, discrepancy_over_time, times_aligned, rmse_per_cell
+    return (
+        discrepancy_per_cell,
+        discrepancy_over_time,
+        times_aligned,
+        rmse_per_cell,
+        diff_per_step,
+    )
 
 
 def fig_discrepancy_analysis(
@@ -3127,12 +3229,16 @@ def fig_discrepancy_analysis(
         discrepancy_over_time,
         times_aligned,
         _rmse_per_cell,
+        diff_per_step_full,
     ) = calculate_discrepancy_per_cell(
         S_dem, S_markov, times_dem, times_markov, activated
     )
 
     active_indices = np.where(activated)[0]
     n_active = len(active_indices)
+
+    # Temps physique en secondes (1 pas = 0.01 s).
+    times_s = style.timesteps_to_seconds(times_aligned)
 
     # Figure avec 2 sous-graphiques (1 ligne, 2 colonnes)
     fig = plt.figure(figsize=(16, 6))
@@ -3141,28 +3247,28 @@ def fig_discrepancy_analysis(
     # ── 1. Écart temporel moyen (courbe) ────────────────────────────
     ax1 = fig.add_subplot(gs[0, 0])
     ax1.plot(
-        times_aligned,
+        times_s,
         discrepancy_over_time,
         "-",
         color="#E53935",
         linewidth=2.5,
         alpha=0.9,
-        label="Écart temporel (RMS)",
+        label="Écart RMS (fraction de particules)",
     )
     ax1.fill_between(
-        times_aligned,
+        times_s,
         0,
         discrepancy_over_time,
         color="#E53935",
         alpha=0.2,
     )
     ax1.set_title(
-        "Écart temporel moyen : |Markov - DEM|",
+        "Écart temporel moyen : |Markov - DEM| (normalisé par N)",
         fontweight="bold",
         fontsize=12,
     )
     ax1.set_xlabel("Temps (s)")
-    ax1.set_ylabel("RMS de l'écart")
+    ax1.set_ylabel("RMS de l'écart relatif (fraction de particules)")
     ax1.legend(fontsize=10)
     ax1.grid(True, alpha=0.3)
     ax1.axhline(y=0, color="black", linestyle="--", linewidth=0.5)
@@ -3171,22 +3277,16 @@ def fig_discrepancy_analysis(
     ax2 = fig.add_subplot(gs[0, 1])
 
     n_aligned = len(times_aligned)
-    # Récupérer l'écart ponctuel (valeur absolue de la différence)
-    S_dem_aligned = S_dem[:n_aligned]
-    S_markov_aligned = S_markov[:n_aligned]
-    S_dem_active = S_dem_aligned[:, active_indices]
-    S_markov_active = S_markov_aligned[:, active_indices]
-    diff_per_step_full = np.abs(S_markov_active - S_dem_active)
 
     # Sous-échantillonner le temps si trop de points pour clarté
     max_time_points = 300
     if n_aligned > max_time_points:
-        step_time = n_aligned // max_time_points
+        step_time = max(1, n_aligned // max_time_points)
         diff_plot = diff_per_step_full[::step_time, :]
-        times_plot = times_aligned[::step_time]
+        times_plot = times_s[::step_time]
     else:
         diff_plot = diff_per_step_full
-        times_plot = times_aligned
+        times_plot = times_s
 
     im = ax2.imshow(
         diff_plot.T,
@@ -3197,18 +3297,19 @@ def fig_discrepancy_analysis(
         interpolation="nearest",
     )
     cbar = plt.colorbar(im, ax=ax2, fraction=0.046, pad=0.04)
-    cbar.set_label("Écart absolu |Markov - DEM|", fontsize=10)
+    cbar.set_label("Écart relatif |Markov - DEM| (fraction de particules)", fontsize=10)
     ax2.set_xlabel("Temps (s)")
     ax2.set_ylabel(f"Indice de cellule (total: {n_active} cellules)")
     ax2.set_title(
-        "Écart absolu : TOUTES les cellules au cours du temps",
+        "Écart relatif : TOUTES les cellules au cours du temps",
         fontweight="bold",
         fontsize=12,
     )
 
     # Titre général
     fig.suptitle(
-        f"Analyse de l'écart Markov vs DEM — espèce '{sp}'\n{short_name}",
+        f"Écart Markov vs DEM — espèce '{sp}' — normalisé par le nombre de "
+        f"particules\n{short_name}",
         fontsize=14,
         fontweight="bold",
         y=0.98,
@@ -3258,6 +3359,7 @@ def fig_global_discrepancy(
         discrepancy_over_time,
         times_aligned,
         _rmse_per_cell,
+        diff_per_step_full,
     ) = calculate_discrepancy_per_cell(
         S_dem_total, S_markov_total, times_dem, times_markov, activated_total
     )
@@ -3266,6 +3368,9 @@ def fig_global_discrepancy(
     n_active = len(active_indices)
     n_aligned = len(times_aligned)
 
+    # Temps physique en secondes (1 pas = 0.01 s).
+    times_s = style.timesteps_to_seconds(times_aligned)
+
     # Figure avec 2 sous-graphiques
     fig = plt.figure(figsize=(16, 6))
     gs = fig.add_gridspec(1, 2, hspace=0.25, wspace=0.3)
@@ -3273,28 +3378,28 @@ def fig_global_discrepancy(
     # ── 1. Écart temporel moyen (courbe) ────────────────────────────────
     ax1 = fig.add_subplot(gs[0, 0])
     ax1.plot(
-        times_aligned,
+        times_s,
         discrepancy_over_time,
         "-",
         color="#E53935",
         linewidth=2.5,
         alpha=0.9,
-        label="Écart temporel (RMS)",
+        label="Écart RMS (fraction de particules)",
     )
     ax1.fill_between(
-        times_aligned,
+        times_s,
         0,
         discrepancy_over_time,
         color="#E53935",
         alpha=0.2,
     )
     ax1.set_title(
-        "Écart temporel moyen (toutes espèces) : |Markov - DEM|",
+        "Écart temporel moyen (toutes espèces) : |Markov - DEM| / N",
         fontweight="bold",
         fontsize=12,
     )
     ax1.set_xlabel("Temps (s)")
-    ax1.set_ylabel("RMS de l'écart (total particules)")
+    ax1.set_ylabel("RMS de l'écart relatif (fraction de particules)")
     ax1.legend(fontsize=10)
     ax1.grid(True, alpha=0.3)
     ax1.axhline(y=0, color="black", linestyle="--", linewidth=0.5)
@@ -3302,33 +3407,15 @@ def fig_global_discrepancy(
     # ── 2. Heatmap d'écart absolu pour toutes les cellules ──────────────
     ax2 = fig.add_subplot(gs[0, 1])
 
-    # Reconstruire diff_per_step aux indices Markov (comme dans calculate_discrepancy_per_cell)
-    # pour la heatmap — matching avec searchsorted
-    mask_dem = (times_dem >= times_aligned[0]) & (times_dem <= times_aligned[-1])
-    S_dem_common = S_dem_total[mask_dem]
-    times_dem_common = times_dem[mask_dem]
-
-    dem_indices = np.searchsorted(times_dem_common, times_aligned, side="left")
-    dem_indices = np.clip(dem_indices, 0, len(times_dem_common) - 1)
-    left = np.clip(dem_indices - 1, 0, len(times_dem_common) - 1)
-    closer = np.abs(times_dem_common[dem_indices] - times_aligned) > np.abs(
-        times_dem_common[left] - times_aligned
-    )
-    dem_indices[closer] = left[closer]
-
-    S_dem_at_markov = S_dem_common[dem_indices][:, active_indices]
-    S_markov_active = S_markov_total[:n_aligned][:, active_indices]
-    diff_per_step_full = np.abs(S_markov_active - S_dem_at_markov)
-
     # Sous-échantillonner le temps si trop de points
     max_time_points = 300
     if n_aligned > max_time_points:
         step_time = max(1, n_aligned // max_time_points)
         diff_plot = diff_per_step_full[::step_time, :]
-        times_plot = times_aligned[::step_time]
+        times_plot = times_s[::step_time]
     else:
         diff_plot = diff_per_step_full
-        times_plot = times_aligned
+        times_plot = times_s
 
     im = ax2.imshow(
         diff_plot.T,
@@ -3339,18 +3426,19 @@ def fig_global_discrepancy(
         interpolation="nearest",
     )
     cbar = plt.colorbar(im, ax=ax2, fraction=0.046, pad=0.04)
-    cbar.set_label("Écart absolu |Markov - DEM|", fontsize=10)
+    cbar.set_label("Écart relatif |Markov - DEM| (fraction de particules)", fontsize=10)
     ax2.set_xlabel("Temps (s)")
     ax2.set_ylabel(f"Indice de cellule (total: {n_active} cellules)")
     ax2.set_title(
-        "Écart absolu : toutes les cellules — toutes espèces",
+        "Écart relatif : toutes les cellules — toutes espèces",
         fontweight="bold",
         fontsize=12,
     )
 
     # Titre général
     fig.suptitle(
-        f"Analyse de l'écart global Markov vs DEM — toutes espèces\n{short_name}",
+        f"Écart global Markov vs DEM — toutes espèces — normalisé par le "
+        f"nombre de particules\n{short_name}",
         fontsize=14,
         fontweight="bold",
         y=0.98,

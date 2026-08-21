@@ -17,12 +17,15 @@ import numpy as np
 import pytest
 
 from postprocessing.metrics import (
+    ProbabilityLawFit,
     clean_transition_matrix,
     concentration_from_S,
     detect_convention,
     entropy_concentration,
+    fit_probability_evolution,
     intensity_of_segregation,
     mixing_times,
+    normalize_by_particle_count,
     propagate_markov,
     propagate_markov_inhomogeneous,
     rsd_concentration,
@@ -394,3 +397,73 @@ class TestValidation:
         # Mass conservation holds after standardisation; RSD may still be
         # physical, so the report simply must be built without crashing.
         assert len(report.checks) > 0
+
+
+# ============================================================================
+# NORMALISATION BY PARTICLE COUNT
+# ============================================================================
+
+
+class TestNormalizeByParticleCount:
+    def test_rows_sum_to_one(self) -> None:
+        S = np.array([[10.0, 20.0, 20.0], [0.0, 0.0, 0.0], [5.0, 5.0, 0.0]])
+        norm = normalize_by_particle_count(S)
+        np.testing.assert_allclose(norm[0].sum(), 1.0)
+        np.testing.assert_allclose(norm[1], 0.0)  # empty row stays zero
+        np.testing.assert_allclose(norm[2], [0.5, 0.5, 0.0])
+
+    def test_scale_invariance(self) -> None:
+        """Multiplying the counts by a constant does not change the fractions."""
+        S = np.array([[10.0, 30.0, 60.0], [20.0, 30.0, 50.0]])
+        np.testing.assert_allclose(
+            normalize_by_particle_count(3.0 * S), normalize_by_particle_count(S)
+        )
+
+
+# ============================================================================
+# INTERPOLATION LAW OF p_ij(t)
+# ============================================================================
+
+
+class TestFitProbabilityLaw:
+    def test_linear_law_selected(self) -> None:
+        x = np.array([1.0, 2.0, 3.0, 4.0])
+        y = 2.0 * x + 1.0
+        fit = fit_probability_evolution(x, y)
+        assert isinstance(fit, ProbabilityLawFit)
+        assert fit.degree == 1
+        assert fit.r2 == pytest.approx(1.0, abs=1e-9)
+        np.testing.assert_allclose(fit.coefficients, [2.0, 1.0], atol=1e-9)
+
+    def test_quadratic_law_selected(self) -> None:
+        x = np.array([0.0, 1.0, 2.0, 3.0, 4.0])
+        y = x**2
+        fit = fit_probability_evolution(x, y)
+        assert fit.degree == 2
+        assert fit.r2 == pytest.approx(1.0, abs=1e-9)
+
+    def test_constant_law_selected(self) -> None:
+        x = np.array([1.0, 2.0, 3.0])
+        y = np.array([0.5, 0.5, 0.5])
+        fit = fit_probability_evolution(x, y)
+        assert fit.degree == 0
+        np.testing.assert_allclose(fit.coefficients, [0.5], atol=1e-9)
+
+    def test_predict(self) -> None:
+        x = np.array([1.0, 2.0, 3.0, 4.0])
+        y = 3.0 * x - 1.0
+        fit = fit_probability_evolution(x, y)
+        np.testing.assert_allclose(fit.predict(np.array([5.0, 10.0])), [14.0, 29.0])
+
+    def test_law_label_readable(self) -> None:
+        fit = fit_probability_evolution(
+            np.array([1.0, 2.0, 3.0]), np.array([1.0, 2.0, 3.0])
+        )
+        assert fit.law_label.startswith("p = ")
+        assert "t" in fit.law_label
+
+    def test_negative_max_degree_raises(self) -> None:
+        with pytest.raises(ValueError, match="max_degree"):
+            fit_probability_evolution(
+                np.array([1.0, 2.0]), np.array([1.0, 2.0]), max_degree=-1
+            )
