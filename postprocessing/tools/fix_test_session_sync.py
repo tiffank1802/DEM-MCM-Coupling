@@ -1,4 +1,5 @@
 """Script to fix ANN annotations in test_session_sync.py."""
+
 import re
 
 filepath = "tests/test_session_sync.py"
@@ -53,27 +54,40 @@ for i, line in enumerate(lines):
         # Check if any fixture params are in this function's signature
         modified = False
         for param_name, param_type in fixture_types.items():
-            # Match the parameter name followed by , or ) or = 
+            # Match the parameter name followed by , or ) or =
             # But not already annotated
             old = rf"\b{param_name}\b(?!\s*:)"
 
             # Check if the param is present but not annotated
-            if re.search(rf"\b{param_name}\b", stripped) and param_name + ":" not in stripped:
+            if (
+                re.search(rf"\b{param_name}\b", stripped)
+                and param_name + ":" not in stripped
+            ):
                 # Replace param_name with param_name: param_type
                 # But only in the function's parameter list
                 new = rf"{param_name}: {param_type}"
                 # Find the exact position in the line
-                idx = stripped.find(f"def ")
+                idx = stripped.find("def ")
                 if idx >= 0:
                     params_start = stripped.find("(", idx)
                     params_end = stripped.rfind(")")
                     if params_start >= 0 and params_end > params_start:
-                        params_section = stripped[params_start:params_end+1]
+                        params_section = stripped[params_start : params_end + 1]
                         # Check if param is in params section
-                        if f" {param_name}," in params_section or f" {param_name})" in params_section or f" {param_name}=" in params_section:
-                            lines[i] = lines[i].replace(f" {param_name},", f" {param_name}: {param_type},")
-                            lines[i] = lines[i].replace(f" {param_name})", f" {param_name}: {param_type})")
-                            lines[i] = lines[i].replace(f" {param_name}=", f" {param_name}: {param_type}=")
+                        if (
+                            f" {param_name}," in params_section
+                            or f" {param_name})" in params_section
+                            or f" {param_name}=" in params_section
+                        ):
+                            lines[i] = lines[i].replace(
+                                f" {param_name},", f" {param_name}: {param_type},"
+                            )
+                            lines[i] = lines[i].replace(
+                                f" {param_name})", f" {param_name}: {param_type})"
+                            )
+                            lines[i] = lines[i].replace(
+                                f" {param_name}=", f" {param_name}: {param_type}="
+                            )
                             modified = True
                             fixes += 1
         if modified:
@@ -104,7 +118,9 @@ elif "import typing" not in content:
         for i, l in enumerate(lines):
             if l.startswith("import ") or l.startswith("from "):
                 if "from typing import" in content:
-                    content = content.replace("from typing import ", "from typing import Any, ")
+                    content = content.replace(
+                        "from typing import ", "from typing import Any, "
+                    )
                     break
                 lines.insert(i, "from typing import Any")
                 content = "\n".join(lines)
@@ -113,7 +129,9 @@ elif "import typing" not in content:
 # Add MagicMock import if needed (it's from unittest.mock)
 if "from unittest.mock import " in content:
     if "MagicMock" not in content.split("from unittest.mock import ")[1].split("\n")[0]:
-        content = content.replace("from unittest.mock import ", "from unittest.mock import MagicMock, ")
+        content = content.replace(
+            "from unittest.mock import ", "from unittest.mock import MagicMock, "
+        )
 elif "unittest.mock" not in content:
     lines = content.split("\n")
     for i, l in enumerate(lines):

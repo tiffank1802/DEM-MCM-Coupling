@@ -122,8 +122,8 @@ def fig_matrices_blocks_grid(
                 interpolation="nearest",
             )
             ax.set_title(f"Bloc {k + 1}/{n_blocks}", fontsize=10)
-            ax.set_xlabel("Source (j)")
-            ax.set_ylabel("Dest. (i)")
+            ax.set_xlabel("Destination (j)")
+            ax.set_ylabel("Source (i)")
             ax.tick_params(which="both", bottom=False, left=False, labelsize=7)
             for i in range(n_states):
                 for j in range(n_states):
@@ -158,6 +158,7 @@ def fig_matrices_blocks_grid(
         plt.close(fig)
     print(f"   💾 {fname}")
 
+
 def fig_matrix_components_evolution(
     sp: str,
     sp_data: dict,
@@ -188,7 +189,7 @@ def fig_matrix_components_evolution(
         xlabel = "Bloc NLT"
     else:
         x_values = np.asarray(block_times, dtype=float)
-        xlabel = "Temps (centièmes de seconde)"
+        xlabel = "Temps (s)"
 
     # Seuil de significativité (on ignore les transitions quasi-nulles)
     threshold = 0.01
@@ -227,8 +228,8 @@ def fig_matrix_components_evolution(
 
         for idx_in_fig in range(pairs_in_fig):
             global_idx = start_idx + idx_in_fig
-            i = sig_pairs[0][global_idx]  # destination
-            j = sig_pairs[1][global_idx]  # source
+            i = sig_pairs[0][global_idx]  # source state (row index)
+            j = sig_pairs[1][global_idx]  # destination state (column index)
             values = P_blocks[:, i, j]
 
             ax = axes[idx_in_fig // ncols][idx_in_fig % ncols]
@@ -323,11 +324,11 @@ def fig_matrix_differences(
             interpolation="nearest",
         )
         ax.set_title(
-            f"Δ_{{ {d_idx + 1} }} = P_{{ {d_idx + 1} }} − P_{{ {d_idx} }}",
+            f"Δ_{{ {d_idx + 1} }} = P_{{ {d_idx + 1} }} - P_{{ {d_idx} }}",
             fontsize=10,
         )
-        ax.set_xlabel("Source (j)")
-        ax.set_ylabel("Dest. (i)")
+        ax.set_xlabel("Destination (j)")
+        ax.set_ylabel("Source (i)")
         ax.tick_params(which="both", bottom=False, left=False, labelsize=7)
 
         cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
@@ -406,9 +407,10 @@ def run_inhomogeneous_postprocess(
     start_base = c.get("start_index", 157)
     step = c.get("step", 157)
     tau = c.get("tau", 157)
-    # Chaque bloc k commence à start_base + k * (step + tau)
-    block_times = [start_base + k * (step + tau) for k in range(n_blocks)]
-    print(f"   ⏱️  Temps (centièmes de seconde) : {block_times}")
+    # Each block k starts at start_base + k * (step + tau) timesteps;
+    # converted to physical seconds with the 0.01 s timestep.
+    block_times = [(start_base + k * (step + tau)) * 0.01 for k in range(n_blocks)]
+    print(f"   ⏱️  Block start times (s): {block_times}")
 
     bucket_subfolder = f"postraitement/{category}/{short_name}"
 
@@ -496,13 +498,17 @@ def run_inhomogeneous_postprocess(
                 hom_paths = find_experiment_paths(HF_BASE, folder_name=hom_short)
             except FileNotFoundError:
                 # Heuristique de secours : chercher par mots-clés extraits
-                tokens = [t for t in re.split(r"[_\-]", hom_short) if t and not t.startswith("NLT")]
-                print(f"   ℹ️  Recherche alternative homogène par mots-clés: {tokens}")
+                tokens = [
+                    t
+                    for t in re.split(r"[_\-]", hom_short)
+                    if t and not t.startswith("NLT")
+                ]
+                print(f"   i️  Recherche alternative homogène par mots-clés: {tokens}")
                 hom_paths = find_all_experiments_by_keywords(HF_BASE, tokens)
 
             if hom_paths:
                 hom_path_hf, hom_shortname = hom_paths[0]
-                print(f"   ℹ️  Chargement version homogène : {hom_shortname}")
+                print(f"   i️  Chargement version homogène : {hom_shortname}")
                 exp_hom = load_experiment(hom_path_hf)
                 hom_species_data = prepare_species(exp_hom)
                 # tracer la comparaison pour chaque espèce commune
@@ -520,9 +526,13 @@ def run_inhomogeneous_postprocess(
                         except Exception as e:
                             print(f"   ⚠️  Comparaison {sp} ignorée : {e}")
             else:
-                print("   ℹ️  Aucune expérience homogène correspondante trouvée pour comparaison.")
+                print(
+                    "   i️  Aucune expérience homogène correspondante trouvée pour comparaison."
+                )
         except Exception as e:
-            print(f"   ⚠️  Erreur lors de la tentative de comparaison homogène/inhomogène: {e}")
+            print(
+                f"   ⚠️  Erreur lors de la tentative de comparaison homogène/inhomogène: {e}"
+            )
 
         # ── 4. Maillage ──────────────────────────────────────────────────────
         print("\n🗺️  Maillage...")

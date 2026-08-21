@@ -1,4 +1,5 @@
 """Fix remaining type annotations in test_inhomogeneous_markov.py - round 2."""
+
 import re
 
 with open("tests/test_inhomogeneous_markov.py") as f:
@@ -37,16 +38,20 @@ while i < len(lines):
     stripped = line.lstrip()
     indent = line[: len(line) - len(stripped)]
     is_continuation = False
-    
+
     # Check if this line starts a function definition
     m = re.match(r"^(def\s+\w+\s*\()(.*)$", stripped)
     if m:
         prefix = m.group(1)
         params_str = m.group(2)
-        
+
         # Collect all parameter lines (handle multi-line defs)
         full_params = params_str
-        while not full_params.rstrip().endswith("):") and not full_params.rstrip().endswith(":") and not full_params.rstrip().endswith("-> None:"):
+        while (
+            not full_params.rstrip().endswith("):")
+            and not full_params.rstrip().endswith(":")
+            and not full_params.rstrip().endswith("-> None:")
+        ):
             # Check if there's a return type annotation
             if "->" in full_params and full_params.rstrip().endswith(":"):
                 break
@@ -54,7 +59,7 @@ while i < len(lines):
             if i < len(lines):
                 next_line = lines[i]
                 full_params += " " + next_line.strip()
-        
+
         # Now parse the full parameter string
         # Find the position of the closing parenthesis
         paren_depth = 0
@@ -62,41 +67,43 @@ while i < len(lines):
         return_annotation = ""
         in_params = False
         for ch in full_params:
-            if ch == '(':
+            if ch == "(":
                 paren_depth += 1
                 if paren_depth == 1:
                     in_params = True
                     continue
-            if ch == ')':
+            if ch == ")":
                 paren_depth -= 1
                 if paren_depth == 0:
                     in_params = False
                     continue
             if in_params:
                 params_body += ch
-            elif paren_depth == 0 and ch != ':':
+            elif paren_depth == 0 and ch != ":":
                 return_annotation += ch
-        
-        if params_body.strip() and not ("self)" in full_params and len(params_body.strip()) == 4):
+
+        if params_body.strip() and not (
+            "self)" in full_params and len(params_body.strip()) == 4
+        ):
             # Parse individual params
             params = []
             current = ""
             depth = 0
             for ch in params_body:
-                if ch in ('(', '['):
+                if ch in ("(", "["):
                     depth += 1
                     current += ch
-                elif ch in (')', ']'):
+                elif ch in (")", "]"):
                     depth -= 1
                     current += ch
-                elif ch == ',' and depth == 0:
+                elif ch == "," and depth == 0:
                     params.append(current.strip())
                     current = ""
                 else:
                     current += ch
             if current.strip():
                 params.append(current.strip())
-            
+
             new_params = []
             for p in params:
                 if not p:
@@ -110,12 +117,12 @@ while i < len(lines):
                 if p.startswith("**") or p.startswith("*"):
                     new_params.append(p)
                     continue
-                
+
                 p_parts = p.split("=", 1)
                 p_name = p_parts[0].strip()
                 has_default = len(p_parts) > 1
                 default_val = p_parts[1] if has_default else None
-                
+
                 ptype = fixture_types.get(p_name)
                 if ptype:
                     if has_default:
@@ -128,15 +135,15 @@ while i < len(lines):
                     changes += 1
                 else:
                     new_params.append(p)
-            
+
             params_body = ", ".join(new_params)
-        
+
         # Rebuild the def line
         if return_annotation.strip():
             new_line = indent + "def " + full_params.split("def ", 1)[1]
         else:
             new_line = indent + "def " + full_params.split("def ", 1)[1]
-        
+
         new_lines.append(new_line)
     else:
         new_lines.append(line)

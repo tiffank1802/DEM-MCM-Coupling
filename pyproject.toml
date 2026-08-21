@@ -118,6 +118,7 @@ ignore = [
     "D213",  # multi-line docstring (conflicts with D212)
     "ANN401", # Any type — too strict
     "N802",   # function names like compute_P_matrix_torch are public API
+    "N803",   # argument names (P, S, M, phi_A, ...) stay uppercase
     "N806",   # mathematical variables (P, S, M, phi_A, ...) stay uppercase
     "N812",   # lower-case import — too strict
     "SIM108", # ternary — sometimes less readable
@@ -128,6 +129,12 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "D104"]
 "tests/*.py" = ["D", "ANN", "N", "F811"]
+# Legacy French docstrings keep their historical layout (D205/W505); the
+# matplotlib Agg backend must be selected before importing pyplot (E402).
+"postprocessing/postprocess.py" = ["D205", "W505", "E402"]
+"postprocessing/postprocess_inhomogeneous.py" = ["E402", "D205", "W505"]
+# One-off maintenance scripts.
+"postprocessing/tools/*.py" = ["D", "E402", "E741", "F601", "N816", "F841", "W505", "E722", "SIM102"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["dem_mcm_coupling"]

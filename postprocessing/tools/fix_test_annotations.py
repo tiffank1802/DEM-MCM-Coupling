@@ -1,4 +1,5 @@
 """Fix missing type annotations in test_inhomogeneous_markov.py."""
+
 import re
 
 with open("tests/test_inhomogeneous_markov.py") as f:

@@ -3,7 +3,7 @@ import asyncio
 asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
 from huggingface_hub import HfFileSystem
 
-from postprocessing.directory import BUCKET_ID
+from postprocessing.tools.directory import BUCKET_ID
 
 fs = HfFileSystem()
 import io
@@ -78,7 +78,9 @@ for species in species_list:
 
 
 # ── Propagation Markov par espèce ────────────────────────────────────────────
-def propagate_markov(S0: np.ndarray, P: np.ndarray, times: np.ndarray, start_idx: int) -> tuple[np.ndarray, np.ndarray]:
+def propagate_markov(
+    S0: np.ndarray, P: np.ndarray, times: np.ndarray, start_idx: int
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Propage S0 avec P sur les pas de temps tau à partir de start_idx.
     Retourne (trajectory, times_markov).
@@ -297,11 +299,11 @@ print(f"  RSD stationnaire = {pi.std() / pi.mean():.4f}")
 # Si RSD_stationnaire ≈ 0 → P converge vers uniforme → problème structurel
 
 # ── Vérification colonnes vides ──────────────────────────────────────────────
-col_sums = P.sum(axis=0)
-n_empty = (col_sums == 0).sum()
-n_not_one = (np.abs(col_sums - 1) > 0.01).sum()
-print(f"\nColonnes vides        : {n_empty}/{P.shape[0]}")
-print(f"Colonnes non normalisées (|sum-1|>0.01) : {n_not_one}/{P.shape[0]}")
+row_sums = P.sum(axis=1)
+n_empty = (row_sums == 0).sum()
+n_not_one = (np.abs(row_sums - 1) > 0.01).sum()
+print(f"\nLignes vides        : {n_empty}/{P.shape[0]}")
+print(f"Lignes non normalisées (|sum-1|>0.01) : {n_not_one}/{P.shape[0]}")
 
 # ── Visualisation ────────────────────────────────────────────────────────────
 fig, axes = plt.subplots(1, 3, figsize=(15, 4))
@@ -348,7 +350,7 @@ rsd_trajectory = []
 for t in range(200):
     mean_S = S.mean()
     rsd_trajectory.append(S.std() / mean_S if mean_S > 0 else 0)
-    S = P.T @ S
+    S = S @ P  # row convention: phi' = phi @ P
 
 ax.semilogy(rsd_trajectory)
 ax.axhline(
@@ -413,8 +415,8 @@ for t in range(n_steps):
         rsd_dem[t] = rsd_concentration(S_dem_s, S_dem_l)
 
     # Propagation
-    S_s = P_small.T @ S_s
-    S_l = P_large.T @ S_l
+    S_s = S_s @ P_small  # row convention
+    S_l = S_l @ P_large
 
 # ── Figure ──────────────────────────────────────────────────────────────────
 fig, ax = plt.subplots(figsize=(10, 5))
@@ -464,8 +466,8 @@ S_s_traj[0] = S_s
 S_l_traj[0] = S_l
 
 for k in range(1, n_steps):
-    S_s_traj[k] = P_small.T @ S_s_traj[k - 1]
-    S_l_traj[k] = P_large.T @ S_l_traj[k - 1]
+    S_s_traj[k] = S_s_traj[k - 1] @ P_small  # row convention
+    S_l_traj[k] = S_l_traj[k - 1] @ P_large
 
 rsd_markov_full = compute_rsd_concentration(S_s_traj, S_l_traj)
 

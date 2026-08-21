@@ -10,9 +10,7 @@ asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
 
 from huggingface_hub import HfFileSystem
 
-from postprocessing.directory import (
-    BUCKET_ID,
-)
+from postprocessing.tools.directory import BUCKET_ID
 
 fs = HfFileSystem()
 from dem_mcm_coupling.partitioners import create_partitioner
@@ -116,7 +114,7 @@ states_dem_history = []
 # Markov evolution
 for i in range(start, 6000, tau):
     states_history.append(S)
-    S = P @ S
+    S = S @ P  # row convention: phi' = phi @ P
 
 # DEM evolution
 for i in range(start, 6000, tau_dem):
