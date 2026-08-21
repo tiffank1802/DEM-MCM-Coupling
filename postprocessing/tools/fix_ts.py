@@ -57,17 +57,29 @@ while i < len(lines):
         for param_name in fixture_types:
             if param_name in stripped and f"{param_name}:" not in stripped:
                 # Need to add annotation
-                lines[i] = lines[i].replace(f" {param_name},", f" {param_name}: {fixture_types[param_name]},")
-                lines[i] = lines[i].replace(f" {param_name})", f" {param_name}: {fixture_types[param_name]})")
-                lines[i] = lines[i].replace(f" {param_name}=", f" {param_name}: {fixture_types[param_name]}=")
+                lines[i] = lines[i].replace(
+                    f" {param_name},", f" {param_name}: {fixture_types[param_name]},"
+                )
+                lines[i] = lines[i].replace(
+                    f" {param_name})", f" {param_name}: {fixture_types[param_name]})"
+                )
+                lines[i] = lines[i].replace(
+                    f" {param_name}=", f" {param_name}: {fixture_types[param_name]}="
+                )
                 fixes += 1
     elif stripped.startswith("def ") and "self" in stripped and "->" not in stripped:
         # Check for params that need annotation or return type
         for param_name in fixture_types:
             if param_name in stripped and f"{param_name}:" not in stripped:
-                lines[i] = lines[i].replace(f" {param_name},", f" {param_name}: {fixture_types[param_name]},")
-                lines[i] = lines[i].replace(f" {param_name})", f" {param_name}: {fixture_types[param_name]})")
-                lines[i] = lines[i].replace(f" {param_name}=", f" {param_name}: {fixture_types[param_name]}=")
+                lines[i] = lines[i].replace(
+                    f" {param_name},", f" {param_name}: {fixture_types[param_name]},"
+                )
+                lines[i] = lines[i].replace(
+                    f" {param_name})", f" {param_name}: {fixture_types[param_name]})"
+                )
+                lines[i] = lines[i].replace(
+                    f" {param_name}=", f" {param_name}: {fixture_types[param_name]}="
+                )
                 fixes += 1
     i += 1
 
@@ -88,8 +100,13 @@ if "from typing import Any" not in content:
             lines.insert(last_import + 1, "from typing import Any")
         content = "\n".join(lines)
 
-if "from unittest.mock import MagicMock" not in content and "from unittest.mock import " in content:
-    content = content.replace("from unittest.mock import ", "from unittest.mock import MagicMock, ")
+if (
+    "from unittest.mock import MagicMock" not in content
+    and "from unittest.mock import " in content
+):
+    content = content.replace(
+        "from unittest.mock import ", "from unittest.mock import MagicMock, "
+    )
 elif "MagicMock" in content and "from unittest.mock import MagicMock" not in content:
     # Need to add the import
     lines = content.split("\n")
@@ -102,7 +119,10 @@ elif "MagicMock" in content and "from unittest.mock import MagicMock" not in con
             # Already has patch import, add MagicMock
             for i, l in enumerate(lines):
                 if l.strip().startswith("from unittest.mock import patch"):
-                    lines[i] = l.replace("from unittest.mock import patch", "from unittest.mock import MagicMock, patch")
+                    lines[i] = l.replace(
+                        "from unittest.mock import patch",
+                        "from unittest.mock import MagicMock, patch",
+                    )
                     break
         else:
             lines.insert(last_import + 1, "from unittest.mock import MagicMock")

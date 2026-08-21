@@ -1,4 +1,5 @@
 """
+
 postprocess.py — Post-traitement automatisé des expériences DEM/Markov.
 
 Usage :
@@ -16,6 +17,7 @@ Usage :
 
 import argparse
 import asyncio
+import contextlib
 import io
 import json
 import re
@@ -49,6 +51,7 @@ from dem_mcm_coupling.bucket_io import (
     get_simulation_category,
 )
 from dem_mcm_coupling.utils import load_parquet_as_timestep_dict
+from postprocessing import style
 
 fs = HfFileSystem()
 
@@ -75,12 +78,10 @@ STYLE = {
 }
 plt.rcParams.update(STYLE)
 
-# Palette cohérente : DEM = bleu/orange selon espèce, Markov = rouge/vert
-SPECIES_COLORS = {
-    "small": {"dem": "#2196F3", "markov": "#E53935"},
-    "large": {"dem": "#FF9800", "markov": "#43A047"},
-}
-DEFAULT_COLOR = {"dem": "#607D8B", "markov": "#9C27B0"}
+# Palette cohérente : DEM = bleu/orange selon espèce, Markov = rouge/vert.
+# Canonical definition lives in postprocessing.style.
+SPECIES_COLORS = style.SPECIES_COLORS
+DEFAULT_COLOR = style.DEFAULT_COLOR
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -94,7 +95,9 @@ def find_experiment_paths(
     keywords: list[str] | None = None,
 ) -> list[tuple[str, str]]:
     """
-    Retourne une liste de (hf_path, short_name) pour TOUS les dossiers d'expérience trouvés.
+
+    Retourne une liste de (hf_path, short_name) pour TOUS les dossiers d'expérience
+    trouvés.
     Cherche dans tous les sous-dossiers de catégorie, puis à la racine (fallback).
 
     Priority : folder_name exact > keywords
@@ -183,6 +186,7 @@ def _load_json(path_hf: str, filename: str) -> dict:
 
 def load_experiment(path_hf: str) -> dict:
     """
+
     Charge config, stats et données par espèce depuis le bucket.
     Détecte automatiquement le format homogène vs inhomogène.
     Retourne un dict complet avec les matrices et méta-données.
@@ -239,143 +243,29 @@ def load_experiment(path_hf: str) -> dict:
 # ═════════════════════════════════════════════════════════════════════════════
 
 
-def clean_transition_matrix(
-    P: np.ndarray, threshold: float = 0.5
-) -> tuple[np.ndarray, np.ndarray]:
-    """Clean a transition matrix: drop unvisited states and renormalise rows.
-
-    Convention (row-stochastic): ``P[i, j]`` is the probability to jump from
-    state ``i`` to state ``j``; a state vector evolves as ``S_next = S @ P``.
-
-    Args:
-        P: Raw transition matrix of shape ``(n_states, n_states)``.
-        threshold: Rows with a total outgoing mass below this threshold are
-            considered unvisited and deactivated.
-
-    Returns:
-        Tuple ``(P_clean, activated)`` where ``P_clean`` has zero rows for
-        the deactivated states and renormalised rows elsewhere, and
-        ``activated`` is the boolean mask of kept states.
-    """
-    P_clean = P.copy()
-    row_sums = P_clean.sum(axis=1)
-    activated = row_sums >= threshold
-    P_clean[~activated, :] = 0.0
-    safe = row_sums.copy()
-    safe[~activated] = 1.0
-    P_clean = P_clean / safe[:, np.newaxis]
-    return P_clean, activated
-
-
-def propagate_markov(
-    S0: np.ndarray,
-    P: np.ndarray,
-    times: np.ndarray,
-    start_idx: int,
-    tau: int,
-    activated: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Propagate a state vector with a row-stochastic transition matrix.
-
-    ``S_next = S @ P``; the total particle count is conserved when ``P`` is
-    row-stochastic.
-
-    Args:
-        S0: Initial state vector, shape ``(n_states,)``.
-        P: Row-stochastic transition matrix, shape ``(n_states, n_states)``.
-        times: Timestep indices of the DEM data.
-        start_idx: First timestep used.
-        tau: Markov step (in timesteps).
-        activated: Boolean mask of the activated states; deactivated states
-            are zeroed in the initial vector.
-
-    Returns:
-        Tuple ``(trajectory, times_markov)`` with trajectory shape
-        ``(n_steps + 1, n_states)``.
-    """
-    row_start = np.searchsorted(times, start_idx)
-    times_full = times[row_start:]
-    markov_idx = np.arange(0, len(times_full), tau)
-    times_markov = times_full[markov_idx]
-    S = S0.copy().astype(float)
-    S[~activated] = 0.0
-    traj = [S.copy()]
-    for _ in range(1, len(markov_idx)):
-        S = S @ P
-        traj.append(S.copy())
-    return np.array(traj), times_markov
-
-
-def propagate_markov_inhomogeneous(
-    S0: np.ndarray,
-    P_blocks: np.ndarray,
-    times: np.ndarray,
-    start_idx: int,
-    tau: int,
-    activated: np.ndarray,
-    step: int | None = None,
-    nlt: int | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Propagate a state vector with time-varying transition matrices.
-
-    The matrices ``P_k`` are applied according to the real temporal span of
-    their blocks: block ``k`` covers
-    ``[start_idx + k*(step+tau), start_idx + (k+1)*(step+tau))``.
-
-    Convention (row-stochastic): ``S_next = S @ P_k``.
-
-    Args:
-        S0: Initial state vector, shape ``(n_states,)``.
-        P_blocks: Transition matrices, shape ``(n_blocks, n_states,
-            n_states)``.
-        times: Timestep indices of the DEM data.
-        start_idx: First timestep used.
-        tau: Markov step (in timesteps).
-        activated: Boolean mask of the activated states; deactivated states
-            are zeroed in the initial vector.
-        step: Optional temporal-structure parameter (distance between
-            consecutive block starts); falls back to a uniform division when
-            ``None``.
-        nlt: Optional number of learning timesteps (blocks).
-
-    Returns:
-        Tuple ``(trajectory, times_markov)`` with trajectory shape
-        ``(n_steps + 1, n_states)``.
-    """
-    row_start = np.searchsorted(times, start_idx)
-    times_full = times[row_start:]
-    markov_idx = np.arange(0, len(times_full), tau)
-    times_markov = times_full[markov_idx]
-    n_steps = len(markov_idx) - 1  # number of propagations
-    n_blocks = len(P_blocks)
-
-    S = S0.copy().astype(float)
-    S[~activated] = 0.0
-    traj = [S.copy()]
-
-    # Determine the block used at each propagation step.
-    if step is not None and nlt is not None:
-        # Real temporal structure of the blocks.
-        block_duration = step + tau
-        for t in range(1, len(markov_idx)):
-            time_curr = times_markov[t - 1]  # time before the propagation
-            block_idx = int((time_curr - start_idx) / block_duration)
-            block_idx = min(max(block_idx, 0), n_blocks - 1)
-            S = S @ P_blocks[block_idx]
-            traj.append(S.copy())
-    else:
-        # Fallback: uniform division of the trajectory over the blocks.
-        block_size = max(1, n_steps // n_blocks) if n_blocks > 0 else 1
-        for t in range(1, len(markov_idx)):
-            block_idx = min((t - 1) // block_size, n_blocks - 1)
-            S = S @ P_blocks[block_idx]
-            traj.append(S.copy())
-
-    return np.array(traj), times_markov
+# Re-exported from postprocessing.metrics (single source of truth for the
+# mixing physics: row-stochastic convention, propagation, segregation
+# metrics). Keeping the names here preserves the historical import paths.
+from postprocessing.metrics import (  # noqa: F401
+    clean_transition_matrix,
+    concentration_from_S,
+    detect_convention,
+    entropy_concentration,
+    entropy_from_S,
+    intensity_of_segregation,
+    mixing_times,
+    propagate_markov,
+    propagate_markov_inhomogeneous,
+    rsd_concentration,
+    rsd_from_S,
+    standardize_transition_matrix,
+    stationary_distribution,
+)
 
 
 def prepare_species(exp: dict) -> dict:
     """
+
     Nettoie P, calcule les cellules activées, propage Markov, extrait DEM tronqué.
     Retourne un dict enrichi par espèce.
     """
@@ -386,7 +276,14 @@ def prepare_species(exp: dict) -> dict:
     out = {}
 
     for sp, data in exp["species"].items():
-        P_clean, activated = clean_transition_matrix(data["P_raw"])
+        # Tolerate sources that only provide "P" (no raw matrix).
+        P_raw = data.get("P_raw", data.get("P"))
+        if P_raw is None:
+            raise KeyError(
+                f"Species '{sp}' has neither 'P_raw' nor 'P' — "
+                "cannot prepare the species."
+            )
+        P_clean, activated = clean_transition_matrix(P_raw)
         row_start = np.searchsorted(data["times"], start)
         S0 = data["S_matrix"][row_start].astype(float)
         traj, times_markov = propagate_markov(
@@ -394,7 +291,7 @@ def prepare_species(exp: dict) -> dict:
         )
         out[sp] = {
             "P": P_clean,
-            "P_raw": data["P_raw"],
+            "P_raw": P_raw,
             "S_matrix": data["S_matrix"],
             "times": data["times"],
             "S_dem": data["S_matrix"][row_start:],
@@ -408,6 +305,7 @@ def prepare_species(exp: dict) -> dict:
 
 def prepare_species_inhomogeneous(exp: dict) -> dict:
     """
+
     Version inhomogène de prepare_species avec structure temporelle correcte.
 
     Utilise P_blocks (une matrice par NLT) pour la propagation au lieu
@@ -419,13 +317,16 @@ def prepare_species_inhomogeneous(exp: dict) -> dict:
 
     - "P" : première matrice P_blocks[0] (proprement nettoyée)
     - "P_blocks" : toutes les matrices (spécifique inhomogène)
-    - "traj_markov" : propagation avec matrices variables selon leur plage temporelle réelle
+    - "traj_markov" : propagation avec matrices variables selon leur plage temporelle
+    réelle
     """
     config = exp["config"]
-    start_index = config.get("start_index", 157)  # Le vrai début (start_base) utilisé dans les blocs
+    start_index = config.get(
+        "start_index", 157
+    )  # Le vrai début (start_base) utilisé dans les blocs
     tau = config.get("tau", 50)
     step = config.get("step", 157)  # Paramètre structurant les blocs
-    nlt = config.get("nlt", 2)       # Nombre de blocs
+    nlt = config.get("nlt", 2)  # Nombre de blocs
     out = {}
 
     for sp, data in exp["species"].items():
@@ -441,7 +342,7 @@ def prepare_species_inhomogeneous(exp: dict) -> dict:
         P_clean, activated = clean_transition_matrix(P_blocks[0])
         row_start = np.searchsorted(data["times"], start_index)
         S0 = data["S_matrix"][row_start].astype(float)
-        
+
         # Passer step et nlt pour que la propagation utilise la structure temporelle réelle
         # IMPORTANT: passer start_index (pas 0) pour que le calcul du bloc soit correct
         traj, times_markov = propagate_markov_inhomogeneous(
@@ -464,6 +365,7 @@ def prepare_species_inhomogeneous(exp: dict) -> dict:
 
 def _short_label(name: str, all_names: list[str]) -> str:
     """
+
     Extrait uniquement les parties du nom qui varient entre les expériences.
     Fallback : extrait les paramètres clés connus (tau, start, step, dt, NLT).
     """
@@ -522,6 +424,7 @@ def find_all_experiments_by_keywords(
     keywords: list[str],
 ) -> list[tuple[str, str]]:
     """
+
     Retourne [(hf_path, short_name), ...] pour TOUS les dossiers
     dont le nom contient tous les mots-clés, dans toutes les catégories.
     """
@@ -561,6 +464,17 @@ def get_dem_reference(
     all_species_data: dict[str, dict],
     dem_ref: str,
 ) -> tuple[str, dict]:
+    """Select the DEM reference used by the comparison figures.
+
+    Args:
+        all_species_data: Mapping ``experiment name -> prepared species
+            data`` of every loaded experiment.
+        dem_ref: Selector — an exact experiment name, ``"mean"`` (average of
+            every DEM series) or ``"first"`` (first experiment, fallback).
+
+    Returns:
+        Tuple ``(label, species_data)`` of the chosen reference.
+    """
     names = list(all_species_data.keys())
 
     # ── Nom exact ────────────────────────────────────────────────────────────
@@ -613,6 +527,7 @@ def fig_compare_rsd(
     model_type: str = "",
 ) -> None:
     """
+
     RSD de concentration (cross-espèce) — compare la variation du ratio
     small/(small+large) entre les cellules.
     - Une courbe DEM de référence (grise).
@@ -784,6 +699,7 @@ def fig_compare_states(
     model_type: str = "",
 ) -> None:
     """
+
     États des k cellules les plus peuplées.
     - Une courbe DEM de référence (noire, épaisse).
     - Une courbe Markov par expérience (couleurs tab10).
@@ -828,7 +744,7 @@ def fig_compare_states(
                 d_ref = dem_ref_data[sp]
                 if cell < d_ref["S_dem"].shape[1]:
                     ax.plot(
-                        d_ref["times_dem"],
+                        style.timesteps_to_seconds(d_ref["times_dem"]),
                         d_ref["S_dem"][:, cell],
                         "-",
                         color="#AAAAAA",
@@ -845,7 +761,7 @@ def fig_compare_states(
                 d = sd[sp]
                 if cell < d["traj_markov"].shape[1]:
                     ax.plot(
-                        d["times_markov"],
+                        style.timesteps_to_seconds(d["times_markov"]),
                         d["traj_markov"][:, cell],
                         "-",
                         color=colors[name],
@@ -886,6 +802,7 @@ def fig_compare_n_particles(
     model_type: str = "",
 ) -> None:
     """
+
     Nombre total de particules par espèce.
     - Une courbe DEM de référence (noire, épaisse).
     - Une courbe Markov par expérience (couleurs tab10).
@@ -911,7 +828,7 @@ def fig_compare_n_particles(
             d_ref = dem_ref_data[sp]
             n_ref = d_ref["S_dem"][:, d_ref["activated"]].sum(axis=1)
             ax.plot(
-                d_ref["times_dem"],
+                style.timesteps_to_seconds(d_ref["times_dem"]),
                 n_ref,
                 "-",
                 color="#AAAAAA",
@@ -928,7 +845,7 @@ def fig_compare_n_particles(
             d = sd[sp]
             n_markov = d["traj_markov"][:, d["activated"]].sum(axis=1)
             ax.plot(
-                d["times_markov"],
+                style.timesteps_to_seconds(d["times_markov"]),
                 n_markov,
                 "-",
                 color=colors[name],
@@ -966,6 +883,7 @@ def fig_compare_teneur(
     max_cells: int = 9,
 ) -> None:
     """
+
     Comparaison de la teneur (fraction de petites particules) par cellule.
     - DEM référence : traits gris fins.
     - Une courbe Markov par expérience (couleurs viridis).
@@ -1109,6 +1027,18 @@ def run_comparison(
     top_states: int = 3,
     dem_ref: str = "first",
 ) -> None:
+    """Compare several experiments sharing the same keywords.
+
+    Produces the comparison figures (RSD, states, content) with one DEM
+    reference curve and one Markov curve per experiment.
+
+    Args:
+        experiments: List of ``(hf_path, short_name)`` of the experiments.
+        keywords: Keywords used to group the experiments (file naming).
+        bucket_prefix: Bucket prefix.
+        top_states: Number of most-populated cells shown.
+        dem_ref: DEM reference selector (see :func:`get_dem_reference`).
+    """
     keyword_slug = "_".join(keywords)
     print(f"\n{'═' * 60}")
     print(f"🔀 Comparaison : {keyword_slug}")
@@ -1199,51 +1129,6 @@ def run_comparison(
 # ═════════════════════════════════════════════════════════════════════════════
 
 
-def rsd_from_S(S: np.ndarray, activated: np.ndarray) -> np.ndarray:
-    S_a = S[:, activated]
-    mean = S_a.mean(axis=1)
-    std = S_a.std(axis=1)
-    return np.where(mean > 0, std / mean, 0.0)
-
-
-def rsd_concentration(S_small: np.ndarray, S_large: np.ndarray, act_s: np.ndarray, act_l: np.ndarray) -> np.ndarray:
-    act = act_s & act_l
-    total = S_small[:, act] + S_large[:, act]
-    C = np.where(total > 0, S_small[:, act] / total, 0.0)
-    mean = C.mean(axis=1)
-    std = C.std(axis=1)
-    return np.where(mean > 0, std / mean, 0.0)
-
-
-def entropy_from_S(S: np.ndarray, activated: np.ndarray) -> np.ndarray:
-    S_a = S[:, activated]
-    N = S_a.sum(axis=1, keepdims=True)
-    N = np.where(N > 0, N, 1.0)
-    p = S_a / N
-    H = np.zeros(len(S_a))
-    for t in range(len(S_a)):
-        pt = p[t]
-        m = pt > 0
-        if m.any():
-            H[t] = -np.sum(pt[m] * np.log(pt[m]))
-    return H
-
-
-def entropy_concentration(S_small: np.ndarray, S_large: np.ndarray, act_s: np.ndarray, act_l: np.ndarray) -> np.ndarray:
-    act = act_s & act_l
-    total = S_small[:, act] + S_large[:, act]
-    total = np.where(total > 0, total, 1.0)
-    C = S_small[:, act] / total
-    H = np.zeros(len(C))
-    for t in range(len(C)):
-        Ct = C[t]
-        v = (Ct > 0) & (Ct < 1)
-        if v.any():
-            Cv = Ct[v]
-            H[t] = -np.sum(Cv * np.log(Cv) + (1 - Cv) * np.log(1 - Cv))
-    return H
-
-
 # ═════════════════════════════════════════════════════════════════════════════
 # FIGURES
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1274,6 +1159,7 @@ def _plot_states_grid(
     filename: str,
 ) -> None:
     """
+
     Trace une grille de sous-figures (max 3 colonnes).
     Chaque sous-figure = une cellule.
     DEM tracé EN PREMIER (au premier plan via zorder=3), Markov derrière (zorder=2).
@@ -1298,9 +1184,9 @@ def _plot_states_grid(
 
     for idx, cell in enumerate(cell_indices):
         ax = axes[idx // ncols][idx % ncols]
-        t_d = sp_data["times_dem"]
+        t_d = style.timesteps_to_seconds(sp_data["times_dem"])
         S_d = sp_data["S_dem"]
-        t_m = sp_data["times_markov"]
+        t_m = style.timesteps_to_seconds(sp_data["times_markov"])
         S_m = sp_data["traj_markov"]
 
         # ── [FIX] DEM tracé en premier — au premier plan (zorder=3) ──
@@ -1329,7 +1215,7 @@ def _plot_states_grid(
 
         mean_occ = S_d[:, cell].mean()
         ax.set_title(f"Cellule {cell}  (occupation moy. DEM : {mean_occ:.1f})", pad=6)
-        ax.set_xlabel("Temps (centièmes de seconde)")
+        ax.set_xlabel("Temps (s)")
         ax.set_ylabel("Nb particules")
         ax.legend(loc="upper right")
         ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{int(x)}"))
@@ -1385,6 +1271,17 @@ def fig_states_top_populated(
 def fig_transition_matrix(
     sp: str, sp_data: dict, short_name: str, out_dir: Path
 ) -> None:
+    """Heatmap of the cleaned transition matrix (row convention).
+
+    Rows are the source states ``i``, columns the destination states ``j``,
+    so cell ``(i, j)`` displays ``P(i → j)``.
+
+    Args:
+        sp: Species name.
+        sp_data: Prepared species data (``"P"`` key required).
+        short_name: Experiment folder name.
+        out_dir: Destination directory.
+    """
     P = sp_data["P"]
     n = P.shape[0]
     vmax = np.percentile(P[P > 0], 98) if (P > 0).any() else 1.0
@@ -1401,8 +1298,8 @@ def fig_transition_matrix(
         f"Matrice de transition P nettoyée — {sp}\n{short_name}",
         fontweight="bold",
     )
-    ax.set_xlabel("Cellule source (colonne j)")
-    ax.set_ylabel("Cellule destination (ligne i)")
+    ax.set_xlabel("Cellule destination (colonne j)")
+    ax.set_ylabel("Cellule source (ligne i)")
 
     # Annotations numériques sur toutes les cellules > 0.01
     for i in range(n):
@@ -1440,6 +1337,18 @@ def fig_transition_matrix(
 def fig_spectral_diagnostic(
     sp: str, sp_data: dict, short_name: str, out_dir: Path
 ) -> None:
+    """Spectral diagnostic of the transition matrix.
+
+    Three panels: the eigenvalue spectrum in the unit disk, the stationary
+    distribution ``π`` (dominant left eigenvector, ``π P = π``) with its
+    RSD, and the cleaned matrix.
+
+    Args:
+        sp: Species name.
+        sp_data: Prepared species data (``"P"`` and ``"activated"`` keys).
+        short_name: Experiment folder name.
+        out_dir: Destination directory.
+    """
     P = sp_data["P"]
     activated = sp_data["activated"]
 
@@ -1499,8 +1408,8 @@ def fig_spectral_diagnostic(
     )
     plt.colorbar(im, ax=axes[2], fraction=0.046, pad=0.04)
     axes[2].set_title("Matrice P (nettoyée)")
-    axes[2].set_xlabel("Cellule source")
-    axes[2].set_ylabel("Cellule dest.")
+    axes[2].set_xlabel("Cellule destination (j)")
+    axes[2].set_ylabel("Cellule source (i)")
 
     fig.tight_layout()
     fname = f"diagnostic_spectral_{sp}.png"
@@ -1513,6 +1422,15 @@ def fig_spectral_diagnostic(
 
 
 def fig_rsd(species_data: dict, short_name: str, out_dir: Path) -> None:
+    """RSD per species, DEM reference against the Markov prediction.
+
+    Time axes are expressed in seconds (1 timestep = 0.01 s).
+
+    Args:
+        species_data: Prepared per-species data.
+        short_name: Experiment folder name.
+        out_dir: Destination directory.
+    """
     species_list = list(species_data.keys())
     n = len(species_list)
     fig, axes = plt.subplots(1, n, figsize=(7 * n, 5), squeeze=False)
@@ -1527,7 +1445,7 @@ def fig_rsd(species_data: dict, short_name: str, out_dir: Path) -> None:
         rsd_m = rsd_from_S(d["traj_markov"], d["activated"])
 
         ax.plot(
-            d["times_dem"],
+            style.timesteps_to_seconds(d["times_dem"]),
             rsd_d,
             "-",
             color=colors["dem"],
@@ -1537,7 +1455,7 @@ def fig_rsd(species_data: dict, short_name: str, out_dir: Path) -> None:
             zorder=3,
         )
         ax.plot(
-            d["times_markov"],
+            style.timesteps_to_seconds(d["times_markov"]),
             rsd_m,
             "o--",
             color=colors["markov"],
@@ -1549,7 +1467,7 @@ def fig_rsd(species_data: dict, short_name: str, out_dir: Path) -> None:
         )
 
         ax.set_title(f"RSD — espèce '{sp}'")
-        ax.set_xlabel("Temps (centièmes de seconde)")
+        ax.set_xlabel("Temps (s)")
         ax.set_ylabel("RSD")
         ax.legend()
         ax.set_ylim(bottom=0)
@@ -1564,6 +1482,15 @@ def fig_rsd(species_data: dict, short_name: str, out_dir: Path) -> None:
 
 
 def fig_concentration(species_data: dict, short_name: str, out_dir: Path) -> None:
+    """Concentration RSD of the small species, DEM vs Markov.
+
+    Requires at least two species. Time axes are expressed in seconds.
+
+    Args:
+        species_data: Prepared per-species data.
+        short_name: Experiment folder name.
+        out_dir: Destination directory.
+    """
     sps = list(species_data.keys())
     if len(sps) < 2:
         print("   ⚠️  Moins de 2 espèces — figure concentration ignorée.")
@@ -1609,11 +1536,10 @@ def fig_concentration(species_data: dict, short_name: str, out_dir: Path) -> Non
         [axes],
         [
             (rsd_c_d, rsd_c_m, "RSD de C", f"RSD de concentration C({sp_a})"),
-            
         ],
     ):
         ax.plot(
-            da["times_dem"][:n_d],
+            style.timesteps_to_seconds(da["times_dem"][:n_d]),
             yd,
             "-",
             color="#2196F3",
@@ -1634,7 +1560,7 @@ def fig_concentration(species_data: dict, short_name: str, out_dir: Path) -> Non
             zorder=2,
         )
         ax.set_title(title)
-        ax.set_xlabel("Temps (centièmes de seconde)")
+        ax.set_xlabel("Temps (s)")
         ax.set_ylabel(ylabel)
         ax.legend()
         ax.set_ylim(bottom=0)
@@ -1651,10 +1577,20 @@ def fig_states_by_species(
     short_name: str,
     out_dir: Path,
 ) -> None:
+    """Particle count per cell over time, DEM vs Markov (per species).
+
+    Time axes are expressed in seconds (1 timestep = 0.01 s).
+
+    Args:
+        sp: Species name.
+        sp_data: Prepared species data.
+        short_name: Experiment folder name.
+        out_dir: Destination directory.
+    """
     S_d = np.asarray(sp_data["S_dem"]).squeeze()
     S_m = np.asarray(sp_data["traj_markov"]).squeeze()
-    t_d = np.asarray(sp_data["times_dem"]).ravel()
-    t_m = np.asarray(sp_data["times_markov"]).ravel()
+    t_d = style.timesteps_to_seconds(np.asarray(sp_data["times_dem"]).ravel())
+    t_m = style.timesteps_to_seconds(np.asarray(sp_data["times_markov"]).ravel())
     activated = sp_data["activated"]
 
     # Debug temporaire — à supprimer une fois confirmé
@@ -1693,7 +1629,7 @@ def fig_states_by_species(
         )
 
     ax.set_title(f"États par cellule — espèce '{sp}'\n{short_name}", fontweight="bold")
-    ax.set_xlabel("Temps (centièmes de seconde)")
+    ax.set_xlabel("Temps (s)")
     ax.set_ylabel("Nombre de particules")
     ax.legend(fontsize=7, ncol=2, loc="upper right")
     ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{int(x)}"))
@@ -1709,6 +1645,15 @@ def fig_states_by_species(
 
 
 def fig_entropy_total(species_data: dict, short_name: str, out_dir: Path) -> None:
+    """Shannon entropy of the particle distribution, DEM vs Markov.
+
+    Requires at least two species. Time axes are expressed in seconds.
+
+    Args:
+        species_data: Prepared per-species data.
+        short_name: Experiment folder name.
+        out_dir: Destination directory.
+    """
     sps = list(species_data.keys())
     if len(sps) < 2:
         return
@@ -1726,7 +1671,7 @@ def fig_entropy_total(species_data: dict, short_name: str, out_dir: Path) -> Non
 
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.plot(
-        da["times_dem"][:n_d],
+        style.timesteps_to_seconds(da["times_dem"][:n_d]),
         ent_d,
         "-",
         color="#607D8B",
@@ -1747,7 +1692,7 @@ def fig_entropy_total(species_data: dict, short_name: str, out_dir: Path) -> Non
         zorder=2,
     )
     ax.set_title(f"Entropie totale ({sp_a} + {sp_b})\n{short_name}", fontweight="bold")
-    ax.set_xlabel("Temps (centièmes de seconde)")
+    ax.set_xlabel("Temps (s)")
     ax.set_ylabel("H (nats)")
     ax.legend()
     fig.tight_layout()
@@ -1761,6 +1706,15 @@ def fig_teneur(
     short_name: str,
     out_dir: Path,
 ) -> None:
+    """Small-species content (teneur) per cell, DEM vs Markov.
+
+    Requires at least two species. Time axes are expressed in seconds.
+
+    Args:
+        species_data: Prepared per-species data.
+        short_name: Experiment folder name.
+        out_dir: Destination directory.
+    """
     sps = list(species_data.keys())
     if len(sps) < 2:
         print("   ⚠️ fig_teneur annulée : Moins de 2 espèces trouvées.")
@@ -1775,10 +1729,10 @@ def fig_teneur(
     S_m_a = np.asarray(da["traj_markov"]).squeeze()
     S_m_b = np.asarray(db["traj_markov"]).squeeze()
 
-    t_d_a = np.asarray(da["times_dem"]).ravel()
-    t_d_b = np.asarray(db["times_dem"]).ravel()
-    t_m_a = np.asarray(da["times_markov"]).ravel()
-    t_m_b = np.asarray(db["times_markov"]).ravel()
+    t_d_a = style.timesteps_to_seconds(np.asarray(da["times_dem"]).ravel())
+    t_d_b = style.timesteps_to_seconds(np.asarray(db["times_dem"]).ravel())
+    t_m_a = style.timesteps_to_seconds(np.asarray(da["times_markov"]).ravel())
+    t_m_b = style.timesteps_to_seconds(np.asarray(db["times_markov"]).ravel())
 
     n_d = min(len(t_d_a), len(t_d_b))
     n_m = min(len(t_m_a), len(t_m_b))
@@ -1871,7 +1825,7 @@ def fig_teneur(
         fontweight="bold",
         pad=20,
     )
-    ax.set_xlabel("Temps (centièmes de seconde)", fontsize=14)
+    ax.set_xlabel("Temps (s)", fontsize=14)
     ax.set_ylabel(f"Teneur en {sp_a} (fraction)", fontsize=14)
     ax.set_ylim(0, 1)
     ax.tick_params(labelsize=12)
@@ -1917,6 +1871,7 @@ def fig_states_totale(
     out_dir: Path,
 ) -> None:
     """
+
     Trace l'évolution du nombre total de particules (big + small) dans chaque cellule.
     - DEM : traits pleins
     - Markov : pointillés avec marqueurs.
@@ -1935,10 +1890,10 @@ def fig_states_totale(
     S_m_a = np.asarray(da["traj_markov"]).squeeze()
     S_m_b = np.asarray(db["traj_markov"]).squeeze()
 
-    t_d_a = np.asarray(da["times_dem"]).ravel()
-    t_d_b = np.asarray(db["times_dem"]).ravel()
-    t_m_a = np.asarray(da["times_markov"]).ravel()
-    t_m_b = np.asarray(db["times_markov"]).ravel()
+    t_d_a = style.timesteps_to_seconds(np.asarray(da["times_dem"]).ravel())
+    t_d_b = style.timesteps_to_seconds(np.asarray(db["times_dem"]).ravel())
+    t_m_a = style.timesteps_to_seconds(np.asarray(da["times_markov"]).ravel())
+    t_m_b = style.timesteps_to_seconds(np.asarray(db["times_markov"]).ravel())
 
     n_d = min(len(t_d_a), len(t_d_b))
     n_m = min(len(t_m_a), len(t_m_b))
@@ -2022,7 +1977,7 @@ def fig_states_totale(
         fontweight="bold",
         pad=20,
     )
-    ax.set_xlabel("Temps (centièmes de seconde)", fontsize=14)
+    ax.set_xlabel("Temps (s)", fontsize=14)
     ax.set_ylabel("Nombre total de particules", fontsize=14)
     ax.tick_params(labelsize=12)
 
@@ -2065,6 +2020,7 @@ def fig_compaction_population(
     volumes_dict: dict, short_name: str, out_dir: Path
 ) -> None:
     """
+
     Génère des graphiques explicites séparés pour comparer le volume des partitions,
     le volume des particules et la compacité résultante.
     """
@@ -2211,6 +2167,7 @@ def fig_mesh(
     series_phi_resolution: int = 8,
 ) -> None:
     """
+
     timestep_dict : dict {t_value -> DataFrame} donnant les positions réelles
                     des particules à chaque pas de temps (ex: sortie de
                     load_parquet_as_timestep_dict). Les clés doivent être dans
@@ -2618,10 +2575,9 @@ def fig_mesh(
     plt.close(fig)
     print(f"   💾 {fname_heatmap}")
 
-    try:
+    with contextlib.suppress(NameError):
+        # Only available when the volume data are present.
         fig_compaction_population(volumes_dict, short_name, out_dir_img)
-    except NameError:
-        pass  # Si la fonction n'est pas définie globalement
 
 
 def fig_population_par_cellule(
@@ -2631,13 +2587,14 @@ def fig_population_par_cellule(
     out_dir: Path,
 ) -> None:
     """
+
     Visualise l'évolution du nombre de particules dans chaque cellule au cours du temps.
     Génère :
     1. Un graphique temporel (courbes superposées)
     2. Une heatmap de la distribution moyenne.
     """
     S_dem = np.asarray(sp_data["S_dem"]).squeeze()
-    times_dem = np.asarray(sp_data["times_dem"]).ravel()
+    times_dem = style.timesteps_to_seconds(np.asarray(sp_data["times_dem"]).ravel())
     activated = sp_data["activated"]
 
     # Filtrer uniquement les cellules activées
@@ -2672,7 +2629,7 @@ def fig_population_par_cellule(
         fontweight="bold",
         fontsize=13,
     )
-    ax.set_xlabel("Temps (centièmes de seconde)", fontsize=11)
+    ax.set_xlabel("Temps (s)", fontsize=11)
     ax.set_ylabel("Nombre de particules", fontsize=11)
     ax.legend(
         fontsize=7,
@@ -2775,7 +2732,7 @@ def fig_population_par_cellule(
         fontweight="bold",
         fontsize=13,
     )
-    ax3.set_xlabel("Temps (centièmes de seconde)", fontsize=11)
+    ax3.set_xlabel("Temps (s)", fontsize=11)
     ax3.set_ylabel("Nombre de particules", fontsize=11)
     ax3.legend(
         fontsize=7,
@@ -2815,9 +2772,9 @@ def fig_matrice_population_heatmap(
     short_name: str,
     out_dir: Path,
 ) -> None:
-    """Crée une heatmap 2D (temps × cellules) montrant l'évolution de la population."""
+    """Crée une heatmap 2D (temps x cellules) montrant l'évolution de la population."""
     S_dem = np.asarray(sp_data["S_dem"]).squeeze()
-    times_dem = np.asarray(sp_data["times_dem"]).ravel()
+    times_dem = style.timesteps_to_seconds(np.asarray(sp_data["times_dem"]).ravel())
     activated = sp_data["activated"]
 
     # Filtrer les cellules activées
@@ -2853,7 +2810,7 @@ def fig_matrice_population_heatmap(
         fontweight="bold",
         fontsize=13,
     )
-    ax.set_xlabel("Temps (centièmes de seconde)", fontsize=11)
+    ax.set_xlabel("Temps (s)", fontsize=11)
     ax.set_ylabel("Cellule", fontsize=11)
 
     # Labels des cellules (seulement quelques-uns si trop nombreux)
@@ -2884,6 +2841,7 @@ def calculate_abs_error_over_time(
     normalize: bool = True,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
+
     Calcule l'erreur L1 (somme des valeurs absolues) entre DEM et Markov
     pour chaque instant de la série DEM commune.
 
@@ -2909,7 +2867,11 @@ def calculate_abs_error_over_time(
     markov_interp = []
     for j in range(S_markov_active.shape[1]):
         f = interp1d(
-            times_markov, S_markov_active[:, j], kind="linear", bounds_error=False, fill_value="extrapolate"
+            times_markov,
+            S_markov_active[:, j],
+            kind="linear",
+            bounds_error=False,
+            fill_value="extrapolate",
         )
         markov_interp.append(f(times_common))
     S_markov_interp = np.array(markov_interp).T  # (n_times, n_active)
@@ -2943,6 +2905,7 @@ def fig_compare_hom_vs_inhom(
     out_dir: Path,
 ) -> None:
     """
+
     Trace la courbe comparée de l'erreur L1 (|DEM - Markov| somme) entre
     une trajectoire Markov homogène et une trajectoire inhomogène.
 
@@ -2955,9 +2918,9 @@ def fig_compare_hom_vs_inhom(
     times_markov_h = np.asarray(hom_sp_data["times_markov"]).ravel()
     activated_h = hom_sp_data["activated"]
 
-    S_dem_i = np.asarray(inhom_sp_data["S_dem"]).squeeze()
+    # Note: the DEM reference is the homogeneous one (same physical data);
+    # only the Markov trajectories differ between the two models.
     S_markov_i = np.asarray(inhom_sp_data["traj_markov"]).squeeze()
-    times_dem_i = np.asarray(inhom_sp_data["times_dem"]).ravel()
     times_markov_i = np.asarray(inhom_sp_data["times_markov"]).ravel()
     activated_i = inhom_sp_data["activated"]
 
@@ -2989,7 +2952,13 @@ def fig_compare_hom_vs_inhom(
     if not np.allclose(t_h_sel, t_i_sel):
         from scipy.interpolate import interp1d
 
-        f_i = interp1d(t_i_sel, err_i_sel, kind="linear", bounds_error=False, fill_value="extrapolate")
+        f_i = interp1d(
+            t_i_sel,
+            err_i_sel,
+            kind="linear",
+            bounds_error=False,
+            fill_value="extrapolate",
+        )
         err_i_on_h = f_i(t_h_sel)
         t_plot = t_h_sel
     else:
@@ -2998,9 +2967,17 @@ def fig_compare_hom_vs_inhom(
 
     # Tracé
     fig, ax = plt.subplots(figsize=(8, 4))
-    ax.plot(t_plot, err_h_sel, label=f"Homogène: {short_name_hom}", color="#E53935", lw=2)
-    ax.plot(t_plot, err_i_on_h, label=f"Inhomogène: {short_name_inhom}", color="#1976D2", lw=2)
-    ax.set_xlabel("Temps (centièmes de seconde)")
+    ax.plot(
+        t_plot, err_h_sel, label=f"Homogène: {short_name_hom}", color="#E53935", lw=2
+    )
+    ax.plot(
+        t_plot,
+        err_i_on_h,
+        label=f"Inhomogène: {short_name_inhom}",
+        color="#1976D2",
+        lw=2,
+    )
+    ax.set_xlabel("Temps (s)")
     ax.set_ylabel("Erreur L1 (somme des |p_dem - p_mc|)")
     ax.set_title(f"Comparaison Erreur L1 — espèce '{sp}'")
     ax.grid(True, alpha=0.3)
@@ -3026,6 +3003,7 @@ def calculate_discrepancy_per_cell(
     activated: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
+
     Calcule l'écart (discrepancy) entre la prédiction Markov et DEM
     pour chaque cellule activée au cours du temps.
 
@@ -3035,8 +3013,10 @@ def calculate_discrepancy_per_cell(
 
     Returns:
         - discrepancy_per_cell : (n_active_cells,) écart cumulé par cellule
-        - discrepancy_over_time : (n_times_markov_common,) écart temporel (RMS entre Markov et DEM)
-        - times_aligned : (n_times_markov_common,) temps de Markov utilisés pour la comparaison
+        - discrepancy_over_time : (n_times_markov_common,) écart temporel (RMS entre Markov
+        et DEM)
+        - times_aligned : (n_times_markov_common,) temps de Markov utilisés pour la
+        comparaison
         - rmse_per_cell : (n_active_cells,) RMSE temporel par cellule
     """
     # Defensive checks: ensure arrays have expected orientations
@@ -3113,10 +3093,10 @@ def calculate_discrepancy_per_cell(
     discrepancy_per_cell = np.sum(diff_per_step, axis=0)
 
     # RMSE par cellule
-    rmse_per_cell = np.sqrt(np.mean(diff_per_step ** 2, axis=0))
+    rmse_per_cell = np.sqrt(np.mean(diff_per_step**2, axis=0))
 
     # Écart temporel global (RMS entre toutes les cellules)
-    discrepancy_over_time = np.sqrt(np.mean(diff_per_step ** 2, axis=1))
+    discrepancy_over_time = np.sqrt(np.mean(diff_per_step**2, axis=1))
 
     # Temps alignés = temps Markov (référence de la comparaison)
     times_aligned = times_markov_common
@@ -3130,10 +3110,11 @@ def fig_discrepancy_analysis(
     short_name: str,
     out_dir: Path,
 ) -> None:
-    """
-    Génère une figure analysant l'écart Markov vs DEM :
-    1. Écart temporel moyen (RMS au fil du temps)
-    2. Heatmap de l'écart absolu pour TOUTES les cellules (temps × cellules)
+    """Analyse the Markov vs DEM discrepancy.
+
+    Generates a figure with:
+    1. the mean temporal discrepancy (RMS over time);
+    2. a heatmap of the absolute discrepancy for every cell (time x cells).
     """
     S_dem = np.asarray(sp_data["S_dem"]).squeeze()
     S_markov = np.asarray(sp_data["traj_markov"]).squeeze()
@@ -3142,11 +3123,13 @@ def fig_discrepancy_analysis(
     activated = sp_data["activated"]
 
     (
-        discrepancy_per_cell,
+        _discrepancy_per_cell,
         discrepancy_over_time,
         times_aligned,
-        rmse_per_cell,
-    ) = calculate_discrepancy_per_cell(S_dem, S_markov, times_dem, times_markov, activated)
+        _rmse_per_cell,
+    ) = calculate_discrepancy_per_cell(
+        S_dem, S_markov, times_dem, times_markov, activated
+    )
 
     active_indices = np.where(activated)[0]
     n_active = len(active_indices)
@@ -3178,7 +3161,7 @@ def fig_discrepancy_analysis(
         fontweight="bold",
         fontsize=12,
     )
-    ax1.set_xlabel("Temps (centièmes de seconde)")
+    ax1.set_xlabel("Temps (s)")
     ax1.set_ylabel("RMS de l'écart")
     ax1.legend(fontsize=10)
     ax1.grid(True, alpha=0.3)
@@ -3215,10 +3198,10 @@ def fig_discrepancy_analysis(
     )
     cbar = plt.colorbar(im, ax=ax2, fraction=0.046, pad=0.04)
     cbar.set_label("Écart absolu |Markov - DEM|", fontsize=10)
-    ax2.set_xlabel("Temps (centièmes de seconde)")
+    ax2.set_xlabel("Temps (s)")
     ax2.set_ylabel(f"Indice de cellule (total: {n_active} cellules)")
     ax2.set_title(
-        f"Écart absolu : TOUTES les cellules au cours du temps",
+        "Écart absolu : TOUTES les cellules au cours du temps",
         fontweight="bold",
         fontsize=12,
     )
@@ -3237,17 +3220,19 @@ def fig_discrepancy_analysis(
     plt.close(fig)
     print(f"   💾 {fname}")
 
+
 def fig_global_discrepancy(
     species_data: dict,
     short_name: str,
     out_dir: Path,
 ) -> None:
     """
+
     Génère une figure analysant l'écart Markov vs DEM **toutes espèces confondues**
     (somme small + large = nombre total de particules par cellule).
 
     1. Écart temporel moyen (RMS au fil du temps) — total particles
-    2. Heatmap de l'écart absolu pour toutes les cellules (temps × cellules)
+    2. Heatmap de l'écart absolu pour toutes les cellules (temps x cellules)
     """
     sps = list(species_data.keys())
     if len(sps) < 2:
@@ -3259,17 +3244,20 @@ def fig_global_discrepancy(
 
     # ── Somme des deux espèces = nombre total de particules par cellule ──
     S_dem_total = np.asarray(da["S_dem"]).squeeze() + np.asarray(db["S_dem"]).squeeze()
-    S_markov_total = np.asarray(da["traj_markov"]).squeeze() + np.asarray(db["traj_markov"]).squeeze()
+    S_markov_total = (
+        np.asarray(da["traj_markov"]).squeeze()
+        + np.asarray(db["traj_markov"]).squeeze()
+    )
     times_dem = np.asarray(da["times_dem"]).ravel()
     times_markov = np.asarray(da["times_markov"]).ravel()
     # Cellule active si l'une ou l'autre espèce y est active
     activated_total = np.asarray(da["activated"]) | np.asarray(db["activated"])
 
     (
-        discrepancy_per_cell,
+        _discrepancy_per_cell,
         discrepancy_over_time,
         times_aligned,
-        rmse_per_cell,
+        _rmse_per_cell,
     ) = calculate_discrepancy_per_cell(
         S_dem_total, S_markov_total, times_dem, times_markov, activated_total
     )
@@ -3305,7 +3293,7 @@ def fig_global_discrepancy(
         fontweight="bold",
         fontsize=12,
     )
-    ax1.set_xlabel("Temps (centièmes de seconde)")
+    ax1.set_xlabel("Temps (s)")
     ax1.set_ylabel("RMS de l'écart (total particules)")
     ax1.legend(fontsize=10)
     ax1.grid(True, alpha=0.3)
@@ -3352,7 +3340,7 @@ def fig_global_discrepancy(
     )
     cbar = plt.colorbar(im, ax=ax2, fraction=0.046, pad=0.04)
     cbar.set_label("Écart absolu |Markov - DEM|", fontsize=10)
-    ax2.set_xlabel("Temps (centièmes de seconde)")
+    ax2.set_xlabel("Temps (s)")
     ax2.set_ylabel(f"Indice de cellule (total: {n_active} cellules)")
     ax2.set_title(
         "Écart absolu : toutes les cellules — toutes espèces",
@@ -3373,9 +3361,18 @@ def fig_global_discrepancy(
     fig.savefig(out_dir / fname, bbox_inches="tight", dpi=150)
     plt.close(fig)
     print(f"   💾 {fname}")
+
+
 def export_transition_matrices(
     species_data: dict, short_name: str, out_dir: Path
 ) -> None:
+    """Export the raw transition matrices as CSV files.
+
+    Args:
+        species_data: Prepared per-species data (``"P"`` key required).
+        short_name: Experiment folder name.
+        out_dir: Destination directory.
+    """
     for sp, d in species_data.items():
         np.save(out_dir / f"P_{sp}_{short_name}.npy", d["P"])
         np.savetxt(out_dir / f"P_{sp}_{short_name}.txt", d["P"], fmt="%.6f")
@@ -3468,10 +3465,12 @@ def run_postprocess(
         try:
             inhom_short = f"inhomogeneous_{short_name}"
             # Chercher le dossier inhomogène correspondant
-            inhom_paths = find_experiment_paths(f"hf://buckets/{BUCKET_ID}/_Good/Experiment", folder_name=inhom_short)
+            inhom_paths = find_experiment_paths(
+                f"hf://buckets/{BUCKET_ID}/_Good/Experiment", folder_name=inhom_short
+            )
             if inhom_paths:
                 inhom_path_hf, inhom_shortname = inhom_paths[0]
-                print(f"   ℹ️  Chargement version inhomogène : {inhom_shortname}")
+                print(f"   i️  Chargement version inhomogène : {inhom_shortname}")
                 exp_inhom = load_experiment(inhom_path_hf)
                 inhom_species_data = prepare_species_inhomogeneous(exp_inhom)
                 for sp in species_data:
@@ -3488,7 +3487,7 @@ def run_postprocess(
                         except Exception as e:
                             print(f"   ⚠️  Comparaison inhomogène {sp} ignorée : {e}")
             else:
-                print("   ℹ️  Aucune version inhomogène trouvée pour comparaison.")
+                print("   i️  Aucune version inhomogène trouvée pour comparaison.")
         except Exception as e:
             print(f"   ⚠️  Erreur lors de la tentative de comparaison inhomogène: {e}")
 
@@ -3611,6 +3610,7 @@ Exemples :
 
 
 def main() -> None:
+    """Command-line entry point of the homogeneous post-processing."""
     parser = _build_parser()
     args = parser.parse_args()
 

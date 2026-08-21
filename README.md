@@ -91,7 +91,7 @@ post-traitement.
 
 ---
 
-## 🗂️ Structure de la librairie
+## 🗂️ Structure du dépôt
 
 ```
 dem_mcm_coupling/
@@ -108,11 +108,37 @@ dem_mcm_coupling/
 ├── analyze_results.py   # analyse RSD vs τ, entropie, temps de mélange
 ├── bucket_io.py         # lecture/écriture bas niveau du bucket Hugging Face
 └── utils.py             # utilitaires généraux
-postprocessing/          # scripts de post-traitement des expériences (non packagés)
-tests/                   # tests pytest (81 tests)
+postprocessing/          # outils de post-traitement (non packagés dans PyPI)
+├── metrics.py           # ← physique du mélange : convention des matrices,
+│                        #   propagation, RSD/entropie/ségrégation, validation
+├── style.py             # ← code couleur global (méthode & espèce) + style figures
+├── figures.py           # ← figures scientifiques annotées (t50/t90, unités SI)
+├── validate_bucket.py   # ← validation physique des expériences du bucket
+├── postprocess.py       # pipeline homogène + CLI
+├── postprocess_inhomogeneous.py  # pipeline inhomogène (P_blocks) + CLI
+├── tools/               # scripts de maintenance ponctuels
+└── run_parallel.sh
+tests/                   # tests pytest (124 tests)
 docs/                    # guides, méthodes et notebooks d'analyse
 pyproject.toml           # packaging PyPI, dépendances, ruff, mypy
 ```
+
+## ✅ Validation physique des résultats du bucket
+
+Les expériences du bucket peuvent être vérifiées contre la physique du
+mélange (probabilités positives, lignes stochastiques, conservation de la
+masse, distribution stationnaire, RSD ∈ [0, 1] et décroissant) :
+
+```bash
+python -m postprocessing.validate_bucket --method voronoi --max 5
+python -m postprocessing.validate_bucket --synthetic   # démo hors-ligne
+```
+
+**Compatibilité des anciennes données** : les matrices stockées avant
+l'unification de la convention (stochastiques en colonnes) sont
+automatiquement détectées et transposées au chargement
+(`postprocessing.metrics.standardize_transition_matrix`) — les anciennes
+expériences gardent donc leur sens physique avec le nouveau code.
 
 ## 🖥️ Ligne de commande
 
@@ -125,8 +151,11 @@ dem-mcm-sweep --method cartesian --inhomogeneous # sweep inhomogène (P par bloc
 ## 📌 Notes
 
 - **Données** : les sources DEM et les résultats Markov ne sont pas dans ce
-  dépôt — ils sont stockés sur le bucket Hugging Face (`ktongue/DEM_MCM`) et
-  chargés via la couche `data`.
+  dépôt — ils sont stockés sur le bucket Hugging Face (`ktongue/DEM_MCM`,
+  dépôt privé/gated : nécessite `huggingface-cli login` avec un compte ayant
+  accès) et chargés via la couche `data`.
 - Les principaux points d'entrée du post-traitement sont
   `postprocessing/postprocess.py` et
-  `postprocessing/postprocess_inhomogeneous.py`.
+  `postprocessing/postprocess_inhomogeneous.py` ; les nouvelles figures
+  scientifiques annotées sont dans `postprocessing/figures.py`.
+
