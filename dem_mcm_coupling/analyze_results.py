@@ -1,17 +1,16 @@
-"""
-===================================================================================
-ANALYSE MARKOVIENNE — Chargement et visualisation depuis le bucket HuggingFace.
-===================================================================================
+"""Markovian analysis — loading and comparison of RSD vs tau curves.
 
-Charge les expériences de la méthode spécifiée (voronoi, cartesian, cylindrical,
-quantile, octree, physics) et compare les courbes RSD vs tau.
+Loads the experiments of a given method (voronoi, cartesian, cylindrical,
+quantile, octree, physics, ...) from a data source and compares the RSD vs
+tau curves against the DEM reference.
 
-Usage:
-    from analyze_results import MarkovAnalyzer
+Usage::
+
+    from dem_mcm_coupling.analyze_results import MarkovAnalyzer
+
     analyzer = MarkovAnalyzer()
     analyzer.load_method("physics")
     analyzer.plot_rsd_vs_tau_comparison(...)
-===================================================================================
 """
 
 from __future__ import annotations
@@ -21,14 +20,14 @@ import io
 import json
 import logging
 from collections import defaultdict
+from typing import Any
 
-import matplotlib.pyplot as plt
 import numpy as np
-from huggingface_hub import HfFileSystem
 
-from . import bucket_io as b_io
-from .bucket_io import ALL_CATEGORIES
-from .utils import load_parquet_as_timestep_dict
+from dem_mcm_coupling import bucket_io as b_io
+from dem_mcm_coupling._config import BUCKET_ID, DEFAULT_BUCKET_PREFIX, get_bucket_prefix
+from dem_mcm_coupling.data.base import DataSource
+from dem_mcm_coupling.utils import load_parquet_as_timestep_dict
 
 logger = logging.getLogger(__name__)
 
@@ -36,33 +35,16 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION
 # =============================================================================
 
-BUCKET_ID = b_io.BUCKET_ID
-BUCKET_PREFIX = b_io.BUCKET_PREFIX
-BUCKET_BASE = b_io.BUCKET_BASE
+BUCKET_PREFIX = DEFAULT_BUCKET_PREFIX
+BUCKET_BASE = f"hf://buckets/{BUCKET_ID}/{BUCKET_PREFIX}"
 
-
-def _get_bucket_prefix_from_particle_diameter(particle_diameter: float) -> str:
-    if particle_diameter == 0.008:
-        return "BIG"
-    elif particle_diameter == 0.004:
-        return "SMALL"
-    else:
-        return "Experiments"
-
-
-ALL_BUCKET_PREFIXES = ["Experiments", "SMALL", "BIG"]
-
-OLD_BUCKET_PREFIX = "Experiments"
-OLD_BUCKET_BASE = f"hf://buckets/{BUCKET_ID}/{OLD_BUCKET_PREFIX}"
-
+#: Bucket bases explored when no specific prefix is requested.
 ALL_BUCKET_BASES = [
-    f"hf://buckets/{BUCKET_ID}/{prefix}" for prefix in ALL_BUCKET_PREFIXES
+    f"hf://buckets/{BUCKET_ID}/{get_bucket_prefix(d)}" for d in (0.004, 0.008, None)
 ]
-if OLD_BUCKET_BASE not in ALL_BUCKET_BASES:
-    ALL_BUCKET_BASES.append(OLD_BUCKET_BASE)
 
-
-METHOD_PREFIXES = {
+#: Name prefixes used to detect the method of an experiment folder.
+METHOD_PREFIXES: dict[str, list[str]] = {
     "cartesian": ["cartesian_", "NLT_"],
     "cylindrical": ["cylindrical_"],
     "voronoi": ["voronoi_"],
@@ -74,7 +56,8 @@ METHOD_PREFIXES = {
     "single": ["single_"],
 }
 
-METHOD_COLORS = {
+#: Default colour per method (matplotlib hex codes).
+METHOD_COLORS: dict[str, str] = {
     "cartesian": "#1f77b4",
     "cylindrical": "#ff7f0e",
     "voronoi": "#2ca02c",
@@ -89,46 +72,61 @@ METHOD_COLORS = {
 
 
 # =============================================================================
-# CLASSE PRINCIPALE
+# MAIN CLASS
 # =============================================================================
 
 
 class MarkovAnalyzer:
-    """Chargeur et analyseur de résultats Markoviens."""
+    """Loader and analyser of Markovian experiment results."""
 
-    def __init__(self: MarkovAnalyzer) -> None:
-        self.fs = HfFileSystem()
-        self.results: dict = {}
-        self.by_method = defaultdict(dict)
+    def __init__(self, data_source: DataSource | None = None) -> None:
+        from dem_mcm_coupling.bucket_io import get_fs
 
-        self.dem_snapshots: list = []
-        self.dem_file_indices: list = []
-        self.n_particles: int = 0
-        self.dem_diameters: np.ndarray = None  # type: ignore
-        self.dem_velocities: np.ndarray = None  # type: ignore
-        self.dem_angular_velocities: np.ndarray = None  # type: ignore
-        self.species_labels: np.ndarray = None  # type: ignore
+        self.data_source = data_source
+        self.fs = get_fs()
+        self.results: dict[str, dict[str, Any]] = {}
+        self.by_method: defaultdict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
 
-        self.current_partitioner = None
-        self.partitioners = {}
+        # DEM data.
+        self.dem_snapshots: list[dict[str, Any]] = []
+        self.dem_file_indices: list[int] = []
+        self.n_particles = 0
+        self.dem_diameters: np.ndarray | None = None
+        self.dem_velocities: np.ndarray | None = None
+        self.species_labels: np.ndarray | None = None
 
-        self.dem_rsd_results = {}
-        self.markov_rsd_results = {}
+        self.current_partitioner: Any | None = None
+        self.partitioners: dict[str, Any] = {}
+
+        self.dem_rsd_results: dict[str, dict[str, Any]] = {}
+        self.markov_rsd_results: dict[str, Any] = {}
 
         self.initial_time = 250
-        self.C0 = None
-        self.phi_A_0 = None
-        self.phi_total_0 = None
+        self.C0: np.ndarray | None = None
+        self.phi_A_0: np.ndarray | None = None
+        self.phi_total_0: np.ndarray | None = None
 
     # ─────────────────────────────────────────────────────────────────────
-    # DÉTECTION DE MÉTHODE
+    # METHOD DETECTION
     # ─────────────────────────────────────────────────────────────────────
 
-    def _detect_method(self, folder_name: str, params: dict | None = None) -> str:
+    def _detect_method(
+        self, folder_name: str, params: dict[str, Any] | None = None
+    ) -> str:
+        """Detect the partitioning method from a folder name/parameters.
+
+        Args:
+            folder_name: Experiment folder name.
+            params: Optional experiment parameters (``method`` wins over the
+                name prefixes).
+
+        Returns:
+            The detected method (``"unknown"`` when undetermined).
+        """
         if params:
             if "method" in params:
-                return params["method"]
-            if "nx" in params and "method" not in params:
+                return str(params["method"])
+            if "nx" in params:
                 return "cartesian"
 
         for method, prefixes in METHOD_PREFIXES.items():
@@ -137,8 +135,21 @@ class MarkovAnalyzer:
                     return method
         return "unknown"
 
-    def _parse_experiment_info(self, folder_name: str, params: dict, stats: dict) -> dict:
-        info = {
+    def _parse_experiment_info(
+        self, folder_name: str, params: dict[str, Any], stats: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Extract human-readable experiment metadata.
+
+        Args:
+            folder_name: Experiment folder name.
+            params: Experiment parameters.
+            stats: Experiment statistics.
+
+        Returns:
+            Dictionary with ``folder``, ``n_states``, ``nlt``,
+            ``step_size``, ``start_index`` and ``description``.
+        """
+        info: dict[str, Any] = {
             "folder": folder_name,
             "n_states": None,
             "nlt": None,
@@ -163,44 +174,53 @@ class MarkovAnalyzer:
                 nz = params.get("nz", "?")
                 info["description"] = f"nx={nx}, ny={ny}, nz={nz}"
                 if info["n_states"] is None:
-                    with contextlib.suppress(BaseException):
+                    with contextlib.suppress(Exception):
                         info["n_states"] = int(nx) * int(ny) * int(nz)
         return info
 
     # ─────────────────────────────────────────────────────────────────────
-    # CHARGEMENT
+    # LOW-LEVEL LOADING
     # ─────────────────────────────────────────────────────────────────────
 
     def _load_npy(self, full_path: str) -> np.ndarray:
-        with self.fs.open(full_path, "rb") as f:
-            return np.load(io.BytesIO(f.read()))
+        """Load a numpy array from a ``hf://`` path."""
+        with self.fs.open(full_path, "rb") as fh:
+            return np.load(io.BytesIO(fh.read()))
 
-    def _load_json(self, full_path: str) -> dict:
-        with self.fs.open(full_path, "r") as f:
-            return json.load(f)
+    def _load_json(self, full_path: str) -> dict[str, Any]:
+        """Load a JSON dictionary from a ``hf://`` path."""
+        with self.fs.open(full_path, "r") as fh:
+            return json.load(fh)
 
-    def _load_partitioner_data(self, partitioner_path: str) -> dict:
-        meta_file = f"{partitioner_path}/partitioner_meta.json"
-        meta = self._load_json(meta_file)
+    def _load_partitioner_data(self, partitioner_path: str) -> dict[str, Any]:
+        """Load the partitioner metadata of an experiment folder.
 
-        partitioner_data = {
+        Args:
+            partitioner_path: Path of the ``partitioner`` sub-folder.
+
+        Returns:
+            Dictionary with ``type``, ``label``, ``n_cells`` and, when
+            available, the method-specific arrays.
+        """
+        meta = self._load_json(f"{partitioner_path}/partitioner_meta.json")
+        partitioner_data: dict[str, Any] = {
             "type": meta.get("type"),
             "label": meta.get("label"),
             "n_cells": meta.get("n_cells"),
         }
 
         partitioner_type = meta.get("type")
-
         if partitioner_type == "CylindricalPartitioner":
             try:
                 cyl_params = self._load_json(
                     f"{partitioner_path}/cylindrical_params.json"
                 )
                 partitioner_data.update(cyl_params)
-                r_edges = self._load_npy(f"{partitioner_path}/r_edges.npy")
-                partitioner_data["r_edges"] = r_edges
-            except Exception as e:
-                print(f"⚠️  Impossible de charger les données cylindriques: {e}")
+                partitioner_data["r_edges"] = self._load_npy(
+                    f"{partitioner_path}/r_edges.npy"
+                )
+            except Exception as exc:
+                logger.warning("Could not load cylindrical data: %s", exc)
 
         elif partitioner_type == "CartesianPartitioner":
             try:
@@ -208,68 +228,100 @@ class MarkovAnalyzer:
                     f"{partitioner_path}/cartesian_params.json"
                 )
                 partitioner_data.update(cart_params)
-            except Exception as e:
-                print(f"⚠️  Impossible de charger les données cartésiennes: {e}")
+            except Exception as exc:
+                logger.warning("Could not load cartesian data: %s", exc)
 
         elif partitioner_type == "VoronoiPartitioner":
             try:
                 vor_params = self._load_json(f"{partitioner_path}/voronoi_params.json")
                 partitioner_data.update(vor_params)
-                centroids = self._load_npy(f"{partitioner_path}/centroids.npy")
-                partitioner_data["centroids"] = centroids
-            except Exception as e:
-                print(f"⚠️  Impossible de charger les données Voronoï: {e}")
+                partitioner_data["centroids"] = self._load_npy(
+                    f"{partitioner_path}/centroids.npy"
+                )
+            except Exception as exc:
+                logger.warning("Could not load Voronoi data: %s", exc)
 
         return partitioner_data
 
-    def _list_folders(self, base_path: str = BUCKET_BASE) -> list:
+    def _list_folders(self, base_path: str = BUCKET_BASE) -> list[str]:
+        """List the experiment folders under a bucket base path.
+
+        Args:
+            base_path: Bucket base path.
+
+        Returns:
+            Sorted folder names (empty list when the path is unreachable).
+        """
         try:
             items = self.fs.ls(base_path)
-            return sorted(
-                [
-                    item["name"].split("/")[-1]
-                    for item in items
-                    if item["type"] == "directory"
-                ]
-            )
         except FileNotFoundError:
             return []
+        names = []
+        for item in items:
+            if isinstance(item, dict):
+                if item.get("type") == "directory":
+                    names.append(str(item["name"]).split("/")[-1])
+            else:
+                stripped = item.rstrip("/")
+                if stripped:
+                    names.append(stripped.split("/")[-1])
+        return sorted(names)
 
-    def _load_experiment(self, base_path: str = BUCKET_BASE, folder_name: str | None = None) -> dict:
+    def _load_experiment(
+        self, base_path: str = BUCKET_BASE, folder_name: str | None = None
+    ) -> dict[str, Any]:
+        """Load one experiment, trying several bucket layouts in order.
+
+        Args:
+            base_path: Bucket base path. When ``folder_name`` is ``None``,
+                this argument is interpreted as the folder name and the
+                default base path is used (single-argument form).
+            folder_name: Experiment folder name.
+
+        Returns:
+            Dictionary with ``matrix``, ``params``, ``stats``, ``method``,
+            ``info``, ``centroids``, ``partitioner_data`` and the
+            inhomogeneous flags.
+
+        Raises:
+            FileNotFoundError: If the experiment cannot be loaded from any
+                bucket.
+        """
+        if folder_name is None:
+            # Single-argument form: _load_experiment(folder_name).
+            base_path, folder_name = BUCKET_BASE, base_path
         prefix = f"{base_path}/{folder_name}"
 
-        stats = {}
+        stats: dict[str, Any] = {}
         try:
             stats = self._load_json(f"{prefix}/stats.json")
             particle_diameter = stats.get("particle_diameter")
             if particle_diameter is not None:
-                correct_bucket_prefix = _get_bucket_prefix_from_particle_diameter(
-                    particle_diameter
+                correct_base_path = (
+                    f"hf://buckets/{BUCKET_ID}/{get_bucket_prefix(particle_diameter)}"
                 )
-                correct_base_path = f"hf://buckets/{BUCKET_ID}/{correct_bucket_prefix}"
                 if correct_base_path != base_path:
-                    print(
-                        f"     ℹ️  bucket fourni {base_path} → rechargement depuis {correct_bucket_prefix} (particle_diameter={particle_diameter})"
+                    logger.info(
+                        "Bucket %s → reloading from %s (particle_diameter=%s)",
+                        base_path,
+                        correct_base_path,
+                        particle_diameter,
                     )
                     base_path = correct_base_path
                     prefix = f"{base_path}/{folder_name}"
-        except:
+        except Exception:
             pass
 
         buckets_to_try = [base_path] + [b for b in ALL_BUCKET_BASES if b != base_path]
-        direct_base = base_path.replace("/markov_results", "")
-        if direct_base not in buckets_to_try:
-            buckets_to_try.append(direct_base)
 
-        loaded = False
-        last_error = None
+        last_error: Exception | None = None
         inhomogeneous = False
-        inhomogeneous_metadata = None
+        inhomogeneous_metadata: dict[str, Any] | None = None
 
         for attempt_path in buckets_to_try:
             prefix = f"{attempt_path}/{folder_name}"
             try:
-                # Détection du format inhomogène
+                # Inhomogeneous-format detection.
                 inhomogeneous = False
                 inhomogeneous_metadata = None
                 try:
@@ -281,34 +333,33 @@ class MarkovAnalyzer:
                     pass
 
                 if inhomogeneous:
-                    # Chargement inhomogène : P_blocks (toutes les matrices par espèce)
+                    # Load P_blocks (all matrices per species).
                     stats = self._load_json(f"{prefix}/stats.json")
                     species_list = stats.get("species_list", ["small"])
-                    # Prendre la première espèce comme matrice de référence
                     first_sp = species_list[0]
                     P_blocks = self._load_npy(f"{prefix}/P_blocks_{first_sp}.npy")
-                    matrix = P_blocks[0]  # 1ère matrice pour compatibilité
+                    matrix = P_blocks[0]  # first matrix for compatibility
                 else:
                     matrix = self._load_npy(f"{prefix}/transitionmatrix.npy")
 
-                params = {}
-                for fname in ["config.json", "params.json"]:
+                params: dict[str, Any] = {}
+                for fname in ("config.json", "params.json"):
                     try:
                         params = self._load_json(f"{prefix}/{fname}")
                         break
-                    except:
+                    except Exception:
                         continue
 
                 if not stats:
-                    with contextlib.suppress(BaseException):
+                    with contextlib.suppress(Exception):
                         stats = self._load_json(f"{prefix}/stats.json")
 
                 centroids = None
-                with contextlib.suppress(BaseException):
+                with contextlib.suppress(Exception):
                     centroids = self._load_npy(f"{prefix}/centroids.npy")
 
                 partitioner_data = None
-                with contextlib.suppress(BaseException):
+                with contextlib.suppress(Exception):
                     partitioner_data = self._load_partitioner_data(
                         f"{prefix}/partitioner"
                     )
@@ -318,129 +369,133 @@ class MarkovAnalyzer:
                 if info["n_states"] is None:
                     info["n_states"] = matrix.shape[0]
 
-                loaded = True
-                break
-
-            except Exception as e:
-                last_error = e
+                return {
+                    "matrix": matrix,
+                    "params": params,
+                    "stats": stats,
+                    "method": method,
+                    "info": info,
+                    "centroids": centroids,
+                    "partitioner_data": partitioner_data,
+                    "inhomogeneous": inhomogeneous,
+                    "inhomogeneous_metadata": inhomogeneous_metadata,
+                }
+            except Exception as exc:
+                last_error = exc
                 continue
 
-        if loaded:
-            return {
-                "matrix": matrix,
-                "params": params,
-                "stats": stats,
-                "method": method,
-                "info": info,
-                "centroids": centroids,
-                "partitioner_data": partitioner_data,
-                "inhomogeneous": inhomogeneous if loaded else False,
-                "inhomogeneous_metadata": inhomogeneous_metadata if loaded else None,
-            }
-        else:
-            buckets_str = ", ".join(
-                [b.replace("hf://buckets/ktongue/DEM_MCM/", "") for b in buckets_to_try]
-            )
-            raise Exception(
-                f"Impossible de charger {folder_name} depuis les buckets: {buckets_str}. Erreur: {last_error}"
-            )
+        buckets_str = ", ".join(
+            b.replace(f"hf://buckets/{BUCKET_ID}/", "") for b in buckets_to_try
+        )
+        raise FileNotFoundError(
+            f"Could not load {folder_name} from buckets: {buckets_str}. "
+            f"Error: {last_error}"
+        )
 
     def load_method(self, method: str) -> None:
+        """Load every experiment of a method.
+
+        Args:
+            method: Partitioning method (see :data:`METHOD_PREFIXES`).
+        """
         self.results = {}
         self.by_method = defaultdict(dict)
-        loaded_folders = set()
+        loaded_folders: set[str] = set()
 
         for base_path in ALL_BUCKET_BASES:
-            bucket_name = base_path.replace("hf://buckets/ktongue/DEM_MCM/", "")
-
+            bucket_name = base_path.replace(f"hf://buckets/{BUCKET_ID}/", "")
             try:
                 folders = self._list_folders(base_path)
-                for folder in folders:
-                    if folder in loaded_folders:
-                        continue
+            except Exception as exc:
+                logger.warning("Could not list %s: %s", bucket_name, exc)
+                continue
 
-                    detected = self._detect_method(folder)
-                    if detected == method:
-                        try:
-                            data = self._load_experiment(base_path, folder)
-                            self.results[folder] = data
-                            self.by_method[method][folder] = data
-                            loaded_folders.add(folder)
-                            print(f"   ✅ {folder}: shape={data['matrix'].shape}")
-                        except Exception as e:
-                            print(f"   ⚠️  {folder}: {e}")
-            except Exception as e:
-                print(f"   ⚠️  Impossible de lister {bucket_name}: {e}")
+            for folder in folders:
+                if folder in loaded_folders:
+                    continue
+                if self._detect_method(folder) != method:
+                    continue
+                try:
+                    data = self._load_experiment(base_path, folder)
+                    self.results[folder] = data
+                    self.by_method[method][folder] = data
+                    loaded_folders.add(folder)
+                    print(f"   ✅ {folder}: shape={data['matrix'].shape}")
+                except Exception as exc:
+                    print(f"   ⚠️  {folder}: {exc}")
 
-        print(f"\n{len(self.results)} expériences {method} chargées")
+        print(f"\n{len(self.results)} {method} experiments loaded")
 
     def get_matrix(self, folder_name: str) -> np.ndarray:
+        """Return the transition matrix of a loaded experiment.
+
+        Args:
+            folder_name: Experiment folder name.
+
+        Returns:
+            The transition matrix.
+
+        Raises:
+            KeyError: If the experiment was not loaded.
+        """
         return self.results[folder_name]["matrix"]
 
     # ─────────────────────────────────────────────────────────────────────
-    # SPECIES LABELING
+    # SPECIES LABELLING
     # ─────────────────────────────────────────────────────────────────────
 
     def label_species(self, criterion: str = "small") -> np.ndarray:
-        """
-        Label particles as "species A" (True) or "species B" (False).
+        """Label particles as species A (True) or species B (False).
 
         Args:
-            criterion: Labeling criterion
-                - "small": Diameter < 0.006 m (small particles)
-                - "first_half": First half of particles (index-based)
-                - "spatial_bottom": Bottom half (z-coordinate)
+            criterion: Labelling criterion — ``"small"`` (diameter < 0.006 m),
+                ``"first_half"`` (index-based) or ``"spatial_bottom"``
+                (bottom half by z-coordinate).
 
         Returns:
-            Boolean array, shape (N_particles,)
+            Boolean array of shape ``(n_particles,)``.
+
+        Raises:
+            ValueError: If no DEM snapshot is loaded or the criterion is
+                unknown.
         """
         if not self.dem_snapshots:
-            raise ValueError(
-                "❌ No DEM snapshots loaded. Call load_dem_snapshots() first."
-            )
+            raise ValueError("No DEM snapshot loaded. Call load_dem_snapshots() first.")
 
         snap_0 = self.dem_snapshots[0]
         df_0 = snap_0.get("df")
 
         if df_0 is None:
-            logger.warning(
-                "⚠️  DataFrame not available in snapshot, cannot label species"
-            )
+            logger.warning("DataFrame unavailable in snapshot — all particles True")
             self.species_labels = np.ones(self.n_particles, dtype=bool)
             return self.species_labels
 
         if criterion == "small":
-            # Label small particles (diameter < 0.006 m)
             if "Diameter" in df_0.columns:
-                self.species_labels = df_0["Diameter"].values < 0.006
+                self.species_labels = df_0["Diameter"].to_numpy() < 0.006
             else:
-                logger.warning(
-                    "⚠️  'Diameter' column not found, using first_half criterion"
-                )
+                logger.warning("'Diameter' column not found — using first_half")
                 self.species_labels = (
                     np.arange(self.n_particles) < self.n_particles // 2
                 )
-
         elif criterion == "first_half":
-            # Label first half of particles
             self.species_labels = np.arange(self.n_particles) < self.n_particles // 2
-
         elif criterion == "spatial_bottom":
-            # Label bottom half by z-coordinate
             z_coords = snap_0["coords"][:, 2]
             self.species_labels = z_coords < np.median(z_coords)
         else:
             raise ValueError(f"Unknown criterion: {criterion}")
 
         logger.info(
-            f"✅ Species labeled: {criterion} → "
-            f"{self.species_labels.sum()} / {len(self.species_labels)} particles"
+            "Species labelled: %s → %d / %d particles",
+            criterion,
+            int(self.species_labels.sum()),
+            len(self.species_labels),
         )
-
         return self.species_labels
 
     # ─────────────────────────────────────────────────────────────────────
-    # DONNÉES DEM
+    # DEM DATA
     # ─────────────────────────────────────────────────────────────────────
 
     def load_dem_snapshots(
@@ -448,326 +503,248 @@ class MarkovAnalyzer:
         file_indices: list[int] | None = None,
         sample_every: int = 1,
         particle_diameter: float | None = None,
-    ) -> list[dict[str, any]]:
-        """
-        Charger les snapshots DEM depuis HuggingFace.
+        data_source: DataSource | None = None,
+    ) -> list[dict[str, Any]]:
+        """Load DEM snapshots from the parquet file of a data source.
 
-        Convertit le parquet HF (Dict[timestep, DataFrame]) en liste de dicts
-        avec format {t: timestep_index, coords: (N, 3) array}.
+        Converts the parquet data (mapping ``timestep -> DataFrame``) into a
+        list of dictionaries ``{"t", "coords", "df"}``.
 
         Args:
-            file_indices: List of timestep indices to load (e.g., [250, 300, 350, ...]).
-                         If None, defaults to [250, 300, ..., 6000] (50-step intervals)
-            sample_every: Sample every Nth timestep (default=1, no sampling)
-            particle_diameter: Filter by diameter (0.004, 0.008, None for all).
-                              If None, inferred from stats.json if available.
+            file_indices: Timestep indices to load (default: ``250, 300, ...,
+                6000``).
+            sample_every: Sample every Nth timestep.
+            particle_diameter: Optional diameter filter. Only used to pick
+                the bucket prefix of the default Hugging Face source.
+            data_source: Optional explicit data source.
 
         Returns:
-            List of dicts with structure:
-            [
-                {"t": 250, "coords": (N, 3) array},
-                {"t": 300, "coords": (N, 3) array},
-                ...
-            ]
+            List of snapshot dictionaries.
 
         Raises:
-            FileNotFoundError: If HF bucket not accessible
-            ValueError: If file_indices is empty or invalid
-
-        Examples:
-            >>> analyzer = MarkovAnalyzer()
-            >>> # Load standard timesteps
-            >>> snapshots = analyzer.load_dem_snapshots()
-            >>> print(f"Loaded {len(snapshots)} snapshots")
-            >>>
-            >>> # Load specific timesteps, filter diameter
-            >>> snapshots = analyzer.load_dem_snapshots(
-            ...     file_indices=[250, 500, 1000],
-            ...     particle_diameter=0.004
-            ... )
+            ValueError: If ``file_indices`` is empty.
+            DataSourceError: If the data cannot be read.
         """
-        # Default timesteps if not provided
         if file_indices is None:
             file_indices = list(range(250, 6001, 50))  # 250 to 6000, every 50
-
         if not file_indices:
-            raise ValueError("❌ file_indices cannot be empty")
-
-        # Apply sampling
+            raise ValueError("file_indices cannot be empty")
         if sample_every > 1:
             file_indices = file_indices[::sample_every]
 
-        # Determine bucket prefix from particle diameter
-        if particle_diameter is None:
-            # Try to infer from stats if available
-            try:
-                if self.results:
-                    for folder_data in self.results.values():
-                        if folder_data.get("stats"):
-                            particle_diameter = folder_data["stats"].get(
-                                "particle_diameter"
-                            )
-                            if particle_diameter:
-                                break
-            except:
-                pass
-
-        bucket_prefix = _get_bucket_prefix_from_particle_diameter(particle_diameter)
-        parquet_path = f"hf://buckets/{BUCKET_ID}/simulation_complete.parquet"
+        # Infer the diameter from the loaded stats when not given.
+        if particle_diameter is None and self.results:
+            for folder_data in self.results.values():
+                stats = folder_data.get("stats") or {}
+                particle_diameter = stats.get("particle_diameter")
+                if particle_diameter:
+                    break
 
         logger.info(
-            f"📦 Chargement DEM snapshots: "
-            f"indices={file_indices[0]}-{file_indices[-1]}, "
-            f"prefix={bucket_prefix}"
+            "Loading DEM snapshots: indices=%s-%s",
+            file_indices[0],
+            file_indices[-1],
         )
 
-        try:
-            # Load timestep dict from HF
+        if data_source is not None:
+            timestep_dict = data_source.read_timesteps(file_indices)
+        else:
+            parquet_path = f"hf://buckets/{BUCKET_ID}/simulation_complete.parquet"
             timestep_dict = load_parquet_as_timestep_dict(
                 parquet_path=parquet_path, fs=self.fs
             )
 
-            # Convert to dem_snapshots format
-            dem_snapshots = []
-            missing_indices = []
-
-            for idx in file_indices:
-                if idx in timestep_dict:
-                    df = timestep_dict[idx]
-                    # Extract coordinates (columns: 'coordinates:0', 'coordinates:1', 'coordinates:2')
-                    coords = np.column_stack(
-                        [
-                            df["coordinates:0"].to_numpy(),
-                            df["coordinates:1"].to_numpy(),
-                            df["coordinates:2"].to_numpy(),
-                        ]
-                    )
-                    dem_snapshots.append(
-                        {
-                            "t": idx,
-                            "coords": coords,
-                            "df": df,  # Keep DataFrame for later access if needed
-                        }
-                    )
-                else:
-                    missing_indices.append(idx)
-
-            # Log warnings for missing timesteps
-            if missing_indices:
-                logger.warning(
-                    f"⚠️  {len(missing_indices)} timesteps not found in parquet: "
-                    f"{missing_indices[:5]}{'...' if len(missing_indices) > 5 else ''}"
+        dem_snapshots: list[dict[str, Any]] = []
+        missing_indices: list[int] = []
+        for idx in file_indices:
+            if idx not in timestep_dict:
+                missing_indices.append(idx)
+                continue
+            df = timestep_dict[idx]
+            coords = np.column_stack(
+                (
+                    df["coordinates:0"].to_numpy(),
+                    df["coordinates:1"].to_numpy(),
+                    df["coordinates:2"].to_numpy(),
                 )
+            )
+            dem_snapshots.append({"t": idx, "coords": coords, "df": df})
 
-            # Store metadata
-            self.dem_snapshots = dem_snapshots
-            self.dem_file_indices = file_indices
-            if dem_snapshots:
-                self.n_particles = dem_snapshots[0]["coords"].shape[0]
-
-            logger.info(
-                f"✅ {len(dem_snapshots)} snapshots chargés "
-                f"(N={self.n_particles} particules)"
+        if missing_indices:
+            logger.warning(
+                "%d timesteps not found in the parquet: %s",
+                len(missing_indices),
+                missing_indices[:5],
             )
 
-            return dem_snapshots
+        self.dem_snapshots = dem_snapshots
+        self.dem_file_indices = file_indices
+        if dem_snapshots:
+            self.n_particles = dem_snapshots[0]["coords"].shape[0]
 
-        except Exception as e:
-            logger.error(f"❌ Erreur chargement DEM snapshots: {e}")
-            raise
+        logger.info(
+            "%d snapshots loaded (N=%d particles)", len(dem_snapshots), self.n_particles
+        )
+        return dem_snapshots
 
     def list_available_models(
         self,
         method: str | None = None,
         particle_diameter: float | None = None,
         fraction_visited_threshold: float = 0.95,
-    ) -> list[dict[str, any]]:
-        """
-        Lister les modèles disponibles sur HuggingFace avec filtrage.
+    ) -> list[dict[str, Any]]:
+        """List the available models with a fraction_visited filter.
 
-        **FILTRE CRITIQUE**: Garde seulement `fraction_visited >= threshold`
-        pour garantir que les données DEM couvrent bien le domaine.
+        **Critical filter**: only models with
+        ``fraction_visited >= threshold`` are kept, to guarantee the DEM data
+        cover the domain.
 
         Args:
-            method: Filter by partitioning method (e.g., "voronoi", "cartesian").
-                   If None, returns all methods.
-            particle_diameter: Filter by diameter (0.004, 0.008, None for all).
-            fraction_visited_threshold: Min fraction_visited in stats.json.
-                                       Default=0.95 (HF standard).
+            method: Optional method filter.
+            particle_diameter: Optional diameter filter.
+            fraction_visited_threshold: Minimum ``fraction_visited`` from
+                ``stats.json`` (default 0.95).
 
         Returns:
-            List of dicts with structure:
-            [
-                {
-                    "folder_name": "voronoi_125_run1",
-                    "method": "voronoi",
-                    "n_states": 125,
-                    "particle_diameter": 0.004,
-                    "fraction_visited": 0.98,
-                    "stats": {...},
-                    "info": {...},
-                },
-                ...
-            ]
-
-        Examples:
-            >>> analyzer = MarkovAnalyzer()
-            >>> # All models with good fraction_visited
-            >>> models = analyzer.list_available_models()
-            >>>
-            >>> # Only Voronoi with small particles
-            >>> models = analyzer.list_available_models(
-            ...     method="voronoi",
-            ...     particle_diameter=0.004
-            ... )
-            >>> for m in models:
-            ...     print(f"{m['folder_name']}: {m['n_states']} states, "
-            ...           f"fraction_visited={m['fraction_visited']:.2f}")
+            List of model dictionaries (``folder_name``, ``method``,
+            ``n_states``, ``particle_diameter``, ``fraction_visited``,
+            ``stats``, ``info``).
         """
-        available_models = []
-
-        # Determine buckets to search
         if particle_diameter is not None:
             buckets = [
-                f"hf://buckets/{BUCKET_ID}/{_get_bucket_prefix_from_particle_diameter(particle_diameter)}"
+                f"hf://buckets/{BUCKET_ID}/{get_bucket_prefix(particle_diameter)}"
             ]
         else:
             buckets = ALL_BUCKET_BASES
 
         logger.info(
-            f"🔍 Listage modèles: method={method}, "
-            f"diameter={particle_diameter}, "
-            f"fraction_visited >= {fraction_visited_threshold}"
+            "Listing models: method=%s, diameter=%s, fraction_visited >= %s",
+            method,
+            particle_diameter,
+            fraction_visited_threshold,
         )
 
+        available_models: list[dict[str, Any]] = []
         for bucket_base in buckets:
             try:
                 folders = self._list_folders(bucket_base)
-
-                for folder_name in folders:
-                    # Filter by method if specified
-                    if method is not None:
-                        detected = self._detect_method(folder_name)
-                        if detected != method:
-                            continue
-
-                    try:
-                        # Load experiment (lightweight: just stats + matrix shape)
-                        data = self._load_experiment(bucket_base, folder_name)
-
-                        # Extract stats
-                        stats = data.get("stats", {})
-                        info = data.get("info", {})
-
-                        # **CRITICAL FILTER**: fraction_visited
-                        fv = stats.get("fraction_visited", 1.0)
-                        if fv < fraction_visited_threshold:
-                            logger.debug(
-                                f"   ⏭️  {folder_name}: skipped "
-                                f"(fraction_visited={fv:.2f} < {fraction_visited_threshold})"
-                            )
-                            continue
-
-                        model_info = {
-                            "folder_name": folder_name,
-                            "method": data.get("method"),
-                            "n_states": data["matrix"].shape[0],
-                            "particle_diameter": stats.get("particle_diameter"),
-                            "fraction_visited": fv,
-                            "stats": stats,
-                            "info": info,
-                        }
-
-                        available_models.append(model_info)
-                        logger.debug(
-                            f"   ✅ {folder_name} ({model_info['n_states']} states)"
-                        )
-
-                    except Exception as e:
-                        logger.debug(f"   ⚠️  {folder_name}: {e}")
-                        continue
-
-            except Exception as e:
-                logger.warning(f"⚠️  Error listing {bucket_base}: {e}")
+            except Exception as exc:
+                logger.warning("Error listing %s: %s", bucket_base, exc)
                 continue
 
-        logger.info(f"✅ {len(available_models)} models found")
+            for folder_name in folders:
+                if method is not None and self._detect_method(folder_name) != method:
+                    continue
+                try:
+                    data = self._load_experiment(bucket_base, folder_name)
+                except Exception as exc:
+                    logger.debug("%s: %s", folder_name, exc)
+                    continue
+
+                stats = data.get("stats", {})
+                info = data.get("info", {})
+
+                fraction_visited = stats.get("fraction_visited", 1.0)
+                if fraction_visited < fraction_visited_threshold:
+                    logger.debug(
+                        "%s: skipped (fraction_visited=%.2f < %.2f)",
+                        folder_name,
+                        fraction_visited,
+                        fraction_visited_threshold,
+                    )
+                    continue
+
+                available_models.append(
+                    {
+                        "folder_name": folder_name,
+                        "method": data.get("method"),
+                        "n_states": data["matrix"].shape[0],
+                        "particle_diameter": stats.get("particle_diameter"),
+                        "fraction_visited": fraction_visited,
+                        "stats": stats,
+                        "info": info,
+                    }
+                )
+
+        logger.info("%d models found", len(available_models))
         return available_models
 
-    def get_model_lazy(self, folder_name: str) -> dict:
-        """
-        Charger un modèle avec lazy loading des matrices.
+    # ─────────────────────────────────────────────────────────────────────
+    # RSD COMPUTATION
+    # ─────────────────────────────────────────────────────────────────────
 
-        Retourne un LoadedModel-like dict avec matrices chargées on-demand.
+    def compute_dem_rsd(
+        self,
+        partitioner: Any,
+        species_labels: np.ndarray | None = None,
+        partitioner_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Compute the RSD of the DEM snapshots with a given partitioner.
+
+        Also computes the segregation entropy and the intensity of
+        segregation at every snapshot, the mixing times ``t50``/``t90`` and
+        the initial concentration field ``C0``.
 
         Args:
-            folder_name: Name of experiment folder
+            partitioner: A fitted partitioner.
+            species_labels: Optional boolean species mask; auto-labelled
+                when ``None``.
+            partitioner_name: Optional result key (``partitioner.label`` by
+                default).
 
         Returns:
-            Dict with structure:
-            {
-                "folder_name": str,
-                "method": PartitioningMethod,
-                "matrix": np.ndarray (lazy-loaded),
-                "stats": dict,
-                "config": dict,
-            }
+            Dictionary with ``times``, ``rsd``, ``rsd_percent``,
+            ``concentrations``, ``populations``, ``entropy``,
+            ``intensity_of_segregation``, mixing times and metadata.
+
+        Raises:
+            ValueError: If ``partitioner`` is ``None`` or no snapshot is
+                available.
         """
-        if folder_name not in self.results:
-            # Try to load it
-            try:
-                data = self._load_experiment(BUCKET_BASE, folder_name)
-                self.results[folder_name] = data
-            except Exception as e:
-                logger.error(f"❌ Could not load {folder_name}: {e}")
-                raise
-
-        return self.results[folder_name]
-
-    def compute_dem_rsd(self, partitioner: str, species_labels: list | None = None, partitioner_name: str | None = None) -> dict:
         if partitioner is None:
-            raise ValueError("❌ partitioner est obligatoire pour compute_dem_rsd()")
+            raise ValueError("partitioner is required for compute_dem_rsd()")
 
         n_states = partitioner.n_cells
 
         if species_labels is None:
             if self.species_labels is None:
-                print(
-                    "⚠️  species_labels non fourni, appel automatique de label_species()"
-                )
+                logger.info("species_labels not provided — calling label_species()")
                 self.label_species()
             species_labels = self.species_labels
 
-        if not hasattr(self, "dem_snapshots") or not self.dem_snapshots:
-            print("⚠️  Aucun snapshot DEM chargé, chargement automatique...")
+        if not self.dem_snapshots:
+            logger.info("No DEM snapshot loaded — loading automatically...")
             self.load_dem_snapshots(file_indices=list(range(250, 6000, 50)))
 
         n_snaps = len(self.dem_snapshots)
         if n_snaps == 0:
-            raise ValueError("❌ Aucun snapshot DEM disponible après chargement")
+            raise ValueError("No DEM snapshot available after loading")
+        if species_labels is None:  # pragma: no cover — defensive
+            raise ValueError("species_labels unavailable")
 
         if partitioner_name is None:
             partitioner_name = partitioner.label
 
-        print(f"\n{'═' * 70}")
-        print("📊 CALCUL DU RSD DEM")
-        print(f"{'═' * 70}")
-        print(f"Partitionneur   : {partitioner_name}")
-        print(f"Nombre d'états  : {n_states}")
+        print("\n" + "═" * 70)
+        print("📊 DEM RSD COMPUTATION")
+        print("═" * 70)
+        print(f"Partitioner : {partitioner_name}")
+        print(f"n_states    : {n_states}")
         print(
-            f"Snapshots DEM   : {n_snaps} (t={self.dem_snapshots[0]['t']} → {self.dem_snapshots[-1]['t']})"
+            f"DEM snaps   : {n_snaps} "
+            f"(t={self.dem_snapshots[0]['t']} → {self.dem_snapshots[-1]['t']})"
         )
         print(
-            f"Espèce A        : {species_labels.sum()} particules / {len(species_labels)} total"
+            f"Species A   : {species_labels.sum()} particles / {len(species_labels)} total"
         )
-        print(f"{'─' * 70}")
+        print("─" * 70)
 
         times = np.zeros(n_snaps)
         rsd = np.zeros(n_snaps)
         entropy = np.zeros(n_snaps)
         intensity_seg = np.zeros(n_snaps)
-        concentrations = []
-        populations = []
+        concentrations: list[np.ndarray] = []
+        populations: list[np.ndarray] = []
 
         for k, snap in enumerate(self.dem_snapshots):
             coords = snap["coords"]
@@ -780,45 +757,38 @@ class MarkovAnalyzer:
             n_total = np.bincount(states, minlength=n_states).astype(float)
             n_A = np.bincount(states[species_labels], minlength=n_states).astype(float)
 
-            C = np.zeros(n_states)
+            concentration = np.zeros(n_states)
             mask = n_total > 0
-            C[mask] = n_A[mask]
-            concentrations.append(C.copy())
+            concentration[mask] = n_A[mask] / n_total[mask]
+            concentrations.append(concentration.copy())
             populations.append(n_total.copy())
 
-            C_active = C[mask]
-            if len(C_active) > 1 and C_active.mean() > 0:
-                rsd[k] = C_active.std() / C_active.mean()
-            else:
-                rsd[k] = 0
+            c_active = concentration[mask]
+            if len(c_active) > 1 and c_active.mean() > 0:
+                rsd[k] = c_active.std() / c_active.mean()
 
-            if len(C_active) > 0:
-                C_clip = np.clip(C_active, 1e-10, 1 - 1e-10)
-                H = -np.mean(
-                    C_clip * np.log(C_clip) + (1 - C_clip) * np.log(1 - C_clip)
+            if len(c_active) > 0:
+                c_clip = np.clip(c_active, 1e-10, 1 - 1e-10)
+                h = -np.mean(
+                    c_clip * np.log(c_clip) + (1 - c_clip) * np.log(1 - c_clip)
                 )
-                H_max = np.log(2)
-                entropy[k] = H / H_max if H_max > 0 else 0
-            else:
-                entropy[k] = 0
+                entropy[k] = h / np.log(2)  # normalised by the max entropy
 
-            C_bar = C_active.mean()
-            if 0 < C_bar < 1 and len(C_active) > 1:
-                intensity_seg[k] = C_active.var() / (C_bar * (1 - C_bar))
-            else:
-                intensity_seg[k] = 0
+            c_bar = c_active.mean()
+            if 0 < c_bar < 1 and len(c_active) > 1:
+                intensity_seg[k] = c_active.var() / (c_bar * (1 - c_bar))
 
             if (k + 1) % 10 == 0 or k == 0 or k == n_snaps - 1:
                 print(
                     f"   [{k + 1:4d}/{n_snaps}] t={int(times[k]):5d} | "
                     f"RSD={rsd[k] * 100:6.2f}% | "
                     f"Entropy={entropy[k]:.4f} | "
-                    f"Cellules actives={mask.sum():3d}/{n_states}"
+                    f"Active cells={mask.sum():3d}/{n_states}"
                 )
 
         rsd_0 = rsd[0] if rsd[0] > 0 else 1.0
-        mixing_time_50 = None
-        mixing_time_90 = None
+        mixing_time_50: int | None = None
+        mixing_time_90: int | None = None
         for k in range(n_snaps):
             if mixing_time_50 is None and rsd[k] < 0.5 * rsd_0:
                 mixing_time_50 = int(times[k])
@@ -829,7 +799,6 @@ class MarkovAnalyzer:
         states0 = partitioner.compute_states(
             coords0[:, 0], coords0[:, 1], coords0[:, 2]
         )
-
         self.phi_total_0 = np.bincount(states0, minlength=n_states).astype(float)
         self.phi_A_0 = np.bincount(states0[species_labels], minlength=n_states).astype(
             float
@@ -838,7 +807,6 @@ class MarkovAnalyzer:
         mask0 = self.phi_total_0 > 0
         self.C0 = np.zeros(n_states)
         self.C0[mask0] = self.phi_A_0[mask0] / self.phi_total_0[mask0]
-
         self.initial_time = int(times[0])
 
         result = {
@@ -863,37 +831,60 @@ class MarkovAnalyzer:
         self.partitioners[partitioner_name] = partitioner
         self.current_partitioner = partitioner
 
-        print(f"{'─' * 70}")
-        print("✅ RÉSULTATS DU CALCUL RSD DEM")
-        print(f"{'─' * 70}")
+        print("─" * 70)
+        print("✅ DEM RSD RESULTS")
+        print("─" * 70)
         print(f"RSD initial     : {result['rsd_initial'] * 100:6.2f}%")
         print(f"RSD final       : {result['rsd_final'] * 100:6.2f}%")
         print(
-            f"Réduction RSD   : {(1 - result['rsd_final'] / max(result['rsd_initial'], 1e-10)) * 100:6.2f}%"
+            "RSD reduction   : "
+            f"{(1 - result['rsd_final'] / max(result['rsd_initial'], 1e-10)) * 100:6.2f}%"
         )
-        print(f"Entropie finale : {entropy[-1]:.4f} / 1.000 (max)")
-        print(f"t₅₀ (RSD ÷ 2)  : {mixing_time_50 or 'Non atteint'}")
-        print(f"t₉₀ (RSD ÷ 10) : {mixing_time_90 or 'Non atteint'}")
-        print(f"{'─' * 70}")
-        print(f"Stocké dans     : self.dem_rsd_results['{partitioner_name}']")
+        print(f"Final entropy   : {entropy[-1]:.4f} / 1.000 (max)")
+        print(f"t50 (RSD ÷ 2)   : {mixing_time_50 or 'Not reached'}")
+        print(f"t90 (RSD ÷ 10)  : {mixing_time_90 or 'Not reached'}")
+        print("─" * 70)
+        print(f"Stored in       : self.dem_rsd_results['{partitioner_name}']")
         print(
-            f"Conditions init : self.C0 (shape={self.C0.shape}) à t={self.initial_time}"
+            f"Initial cond.   : self.C0 (shape={self.C0.shape}) at t={self.initial_time}"
         )
-        print(f"{'═' * 70}\n")
+        print("═" * 70 + "\n")
 
         return result
 
+    # ─────────────────────────────────────────────────────────────────────
+    # RSD VS TAU COMPARISON
+    # ─────────────────────────────────────────────────────────────────────
+
     def plot_rsd_vs_tau_comparison(
         self,
-        partitioner: str,
+        partitioner: Any,
         method: str,
         folder_name_template: str,
-        tau_list: list | None = None,
+        tau_list: list[int] | None = None,
         max_time_seconds: int = 60,
-        figsize: tuple = (14, 8),
+        figsize: tuple[int, int] = (14, 8),
         save_name: str | None = None,
         species_criterion: str = "small",
-    ) -> None:
+    ) -> tuple[Any, Any]:
+        """Plot the DEM RSD against Markov RSDs for several tau values.
+
+        Args:
+            partitioner: Fitted partitioner used for both curves.
+            method: Method name (title only).
+            folder_name_template: Format string with a ``{tau}`` placeholder
+                for the experiment folder names.
+            tau_list: List of tau values (default ``[50, 100, 200, 500,
+                1000]``).
+            max_time_seconds: Upper bound of the x axis.
+            figsize: Figure size.
+            save_name: Optional output file name.
+            species_criterion: Species labelling criterion.
+
+        Returns:
+            Tuple ``(fig, ax)`` of the matplotlib figure.
+        """
+        import matplotlib.pyplot as plt
 
         if tau_list is None:
             tau_list = [50, 100, 200, 500, 1000]
@@ -904,16 +895,18 @@ class MarkovAnalyzer:
         total_files = 5999
         file_indices = list(range(start_file, total_files + 1, 50))
 
-        print("\n📊 Calcul RSD DEM...")
+        print("\n📊 DEM RSD computation...")
         self.load_dem_snapshots(file_indices=file_indices)
         if self.species_labels is None:
             self.label_species(criterion=species_criterion)
+
+        species_labels = self.species_labels
+        assert species_labels is not None
 
         all_coords = np.vstack([s["coords"] for s in self.dem_snapshots])
         partitioner.fit(all_coords)
 
         n_states = partitioner.n_cells
-        species_labels = self.species_labels
         n_snaps = len(self.dem_snapshots)
         rsd_dem = np.zeros(n_snaps)
         times_dem_files = np.array([s["t"] for s in self.dem_snapshots])
@@ -923,20 +916,22 @@ class MarkovAnalyzer:
             states = partitioner.compute_states(
                 coords[:, 0], coords[:, 1], coords[:, 2]
             )
-            C_i = np.zeros(n_states)
+            concentration = np.zeros(n_states)
             for sid in range(n_states):
                 mask = states == sid
                 if mask.sum() > 0:
-                    C_i[sid] = species_labels[mask].sum() / mask.sum()
-            mask_active = C_i > 0
+                    concentration[sid] = species_labels[mask].sum() / mask.sum()
+            mask_active = concentration > 0
             if mask_active.sum() > 1:
-                rsd_dem[i] = C_i[mask_active].std() / C_i[mask_active].mean()
+                rsd_dem[i] = (
+                    concentration[mask_active].std() / concentration[mask_active].mean()
+                )
 
         t_dem_seconds = times_dem_files * 0.01
         print(
-            f"   DEM: {n_snaps} points de {t_dem_seconds[0]:.2f}s à {t_dem_seconds[-1]:.2f}s"
+            f"   DEM: {n_snaps} points from {t_dem_seconds[0]:.2f}s to "
+            f"{t_dem_seconds[-1]:.2f}s"
         )
-
         ax.plot(
             t_dem_seconds,
             rsd_dem * 100,
@@ -944,25 +939,23 @@ class MarkovAnalyzer:
             marker="o",
             linewidth=3,
             markersize=8,
-            label="RSD DEM (réel)",
+            label="RSD DEM (real)",
             zorder=10,
             alpha=0.9,
         )
 
         colors = plt.cm.viridis(np.linspace(0.1, 0.9, len(tau_list)))
-
-        print(f"\n📊 Calcul RSD Markov pour {len(tau_list)} tau...")
+        print(f"\n📊 Markov RSD computation for {len(tau_list)} tau...")
 
         for tau_idx, tau in enumerate(tau_list):
             folder_name = folder_name_template.format(tau=tau)
             dt_markov = tau * 0.01
-
-            print(f"\n   ── tau = {tau} ({dt_markov:.3f}s par pas) ──")
+            print(f"\n   ── tau = {tau} ({dt_markov:.3f}s per step) ──")
 
             try:
                 M = self.get_matrix(folder_name)
-            except Exception as e:
-                print(f"   ⚠️  Folder {folder_name} non trouvé: {e}")
+            except Exception as exc:
+                print(f"   ⚠️  Folder {folder_name} not found: {exc}")
                 continue
 
             snap0 = self.dem_snapshots[0]
@@ -979,31 +972,25 @@ class MarkovAnalyzer:
                 phi_A_0[sid] = species_labels[mask].sum()
 
             mask_active = phi_total_0 > 0
-
             n_steps_markov = (total_files - start_file) // tau
             phi_A = phi_A_0.copy()
             phi_total = phi_total_0.copy()
             rsd_markov = np.zeros(n_steps_markov + 1)
 
-            C_t0 = np.zeros(n_states)
-            C_t0[mask_active] = phi_A[mask_active] / phi_total[mask_active]
-            if mask_active.sum() > 1 and C_t0[mask_active].mean() > 0:
-                rsd_markov[0] = C_t0[mask_active].std() / C_t0[mask_active].mean()
+            c_t0 = np.zeros(n_states)
+            c_t0[mask_active] = phi_A[mask_active] / phi_total[mask_active]
+            if mask_active.sum() > 1 and c_t0[mask_active].mean() > 0:
+                rsd_markov[0] = c_t0[mask_active].std() / c_t0[mask_active].mean()
 
             for t in range(1, n_steps_markov + 1):
                 phi_A = phi_A @ M
                 phi_total = phi_total @ M
-                C_t = np.zeros(n_states)
-                C_t[mask_active] = phi_A[mask_active] / phi_total[mask_active]
-                if mask_active.sum() > 1:
-                    rsd_markov[t] = (
-                        C_t[mask_active].std() / C_t[mask_active].mean()
-                        if C_t[mask_active].mean() > 0
-                        else 0
-                    )
+                c_t = np.zeros(n_states)
+                c_t[mask_active] = phi_A[mask_active] / phi_total[mask_active]
+                if mask_active.sum() > 1 and c_t[mask_active].mean() > 0:
+                    rsd_markov[t] = c_t[mask_active].std() / c_t[mask_active].mean()
 
             t_markov_seconds = (start_file + np.arange(n_steps_markov + 1) * tau) * 0.01
-
             ax.plot(
                 t_markov_seconds,
                 rsd_markov * 100,
@@ -1016,19 +1003,19 @@ class MarkovAnalyzer:
             )
 
             print(
-                f"   ✅ {n_steps_markov + 1} points de {t_markov_seconds[0]:.2f}s à {t_markov_seconds[-1]:.2f}s (incl. t=0)"
+                f"   ✅ {n_steps_markov + 1} points from {t_markov_seconds[0]:.2f}s "
+                f"to {t_markov_seconds[-1]:.2f}s (incl. t=0)"
             )
 
-        ax.set_xlabel("Temps (s)", fontsize=13, fontweight="bold")
+        ax.set_xlabel("Time (s)", fontsize=13, fontweight="bold")
         ax.set_ylabel("RSD (%)", fontsize=13, fontweight="bold")
         ax.set_title(
-            f"Influence du pas de temps Markov (tau) sur la cinétique de mélange\n"
-            f"{method.upper()} | {partitioner.label} | {n_states} cellules",
+            "Influence of the Markov time step (tau) on the mixing kinetics\n"
+            f"{method.upper()} | {partitioner.label} | {n_states} cells",
             fontsize=14,
             fontweight="bold",
             pad=15,
         )
-
         ax.legend(fontsize=10, loc="best", framealpha=0.95, edgecolor="black", ncol=2)
         ax.grid(True, alpha=0.3, linestyle="--", linewidth=0.7)
         ax.set_xlim(t_dem_seconds[0], max_time_seconds)
@@ -1040,126 +1027,134 @@ class MarkovAnalyzer:
 
         if save_name is None:
             save_name = f"rsd_tau_comparison_{method}_{n_states}cells.png"
-
         plt.savefig(save_name, dpi=200, bbox_inches="tight", facecolor="white")
-        print(f"\n✅ Figure sauvegardée: {save_name}")
+        print(f"\n✅ Figure saved: {save_name}")
         plt.show()
 
         return fig, ax
 
-    # ═════════════════════════════════════════════════════════════════════
-    # NOUVELLES MÉTHODES INHOMOGÈNES
-    # ═════════════════════════════════════════════════════════════════════
+    # ─────────────────────────────────────────────────────────────────────
+    # INHOMOGENEOUS METHODS
+    # ─────────────────────────────────────────────────────────────────────
 
-    def load_inhomogeneous_method(self, method: str) -> dict:
-        """
-        Charge les expériences inhomogènes d'une méthode donnée depuis Inhomogènes/.
+    def load_inhomogeneous_method(self, method: str) -> dict[str, dict[str, Any]]:
+        """Load the inhomogeneous experiments of a method.
 
-        Sibling de load_method() — liste les dossiers dans Inhomogènes/,
-        filtre par méthode, et charge avec détection du format inhomogène.
+        Sibling of :meth:`load_method` — lists the folders of
+        ``Inhomogènes/`` and of every category, filters by method and loads
+        with inhomogeneous-format detection.
+
+        Args:
+            method: Method name (``"all"`` loads every method).
+
+        Returns:
+            Mapping ``folder_name -> experiment data``.
         """
         self.results = {}
         self.by_method = defaultdict(dict)
-        loaded_folders = set()
+        loaded_folders: set[str] = set()
 
         for base_path in ALL_BUCKET_BASES:
-            base_path.replace("hf://buckets/ktongue/DEM_MCM/", "")
-
-            # Chercher dans Inhomogènes/ puis dans les catégories habituelles
-            search_paths = [f"{base_path}/Inhomogènes"]
-            for cat in ALL_CATEGORIES:
-                search_paths.append(f"{base_path}/{cat}")
+            # Search in Inhomogènes/ first, then in the usual categories.
+            search_paths = [
+                f"{base_path}/Inhomogènes",
+                *[f"{base_path}/{cat}" for cat in b_io.ALL_CATEGORIES],
+            ]
 
             for search_base in search_paths:
                 try:
                     folders = self._list_folders(search_base)
-                    for folder in folders:
-                        if folder in loaded_folders:
-                            continue
+                except Exception as exc:
+                    logger.warning("Could not list %s: %s", search_base, exc)
+                    continue
 
-                        detected = self._detect_method(folder)
-                        if detected == method or method == "all":
-                            try:
-                                data = self._load_experiment(search_base, folder)
-                                if data.get("inhomogeneous", False):
-                                    self.results[folder] = data
-                                    self.by_method[method][folder] = data
-                                    loaded_folders.add(folder)
-                                    n_blocks = data.get(
-                                        "inhomogeneous_metadata", {}
-                                    ).get("n_blocks", "?")
-                                    print(
-                                        f"   ✅ {folder}: {n_blocks} blocs, shape={data['matrix'].shape}"
-                                    )
-                                else:
-                                    print(f"   ⏭️  {folder}: ignoré (homogène)")
-                            except Exception as e:
-                                print(f"   ⚠️  {folder}: {e}")
-                except Exception as e:
-                    print(f"   ⚠️  Impossible de lister {search_base}: {e}")
+                for folder in folders:
+                    if folder in loaded_folders:
+                        continue
+                    if self._detect_method(folder) != method and method != "all":
+                        continue
+                    try:
+                        data = self._load_experiment(search_base, folder)
+                    except Exception as exc:
+                        print(f"   ⚠️  {folder}: {exc}")
+                        continue
+                    if data.get("inhomogeneous", False):
+                        self.results[folder] = data
+                        self.by_method[method][folder] = data
+                        loaded_folders.add(folder)
+                        n_blocks = data.get("inhomogeneous_metadata", {}).get(
+                            "n_blocks", "?"
+                        )
+                        print(
+                            f"   ✅ {folder}: {n_blocks} blocks, shape={data['matrix'].shape}"
+                        )
+                    else:
+                        print(f"   ⏭️  {folder}: ignored (homogeneous)")
 
-        print(f"\n{len(self.results)} expériences inhomogènes {method} chargées")
+        print(f"\n{len(self.results)} inhomogeneous {method} experiments loaded")
         return self.results
 
     def visualize_P_blocks_evolution(
-        self, folder_name: str, species: str = "small", figsize: tuple = (16, 4)
-    ) -> dict:
-        """
-        Visualise l'évolution des matrices de transition P_k (une par NLT).
+        self,
+        folder_name: str,
+        species: str = "small",
+        figsize: tuple[int, int] = (16, 4),
+    ) -> tuple[Any, Any] | tuple[None, None]:
+        """Visualise the evolution of the transition matrices ``P_k``.
 
-        Affiche les heatmaps côte à côte pour tous les blocs, plus une heatmap
-        de la différence entre blocs consécutifs.
+        Heatmaps side by side for every block, plus the differences between
+        consecutive blocks.
 
         Args:
-            folder_name: Nom du dossier de l'expérience inhomogène.
-            species: Espèce à visualiser ("small" ou "large").
-            figsize: Taille de la figure.
+            folder_name: Inhomogeneous experiment folder name.
+            species: Species to visualise (``"small"`` or ``"large"``).
+            figsize: Figure size.
 
         Returns:
-            fig, axes: Figure et axes matplotlib.
+            Tuple ``(fig, axes)``, or ``(None, None)`` when the data are
+            unavailable.
         """
-        data = self._load_experiment(BUCKET_BASE, folder_name)
+        import matplotlib.pyplot as plt
 
+        data = self._load_experiment(BUCKET_BASE, folder_name)
         if not data.get("inhomogeneous", False):
-            print(f"⚠️  {folder_name} n'est pas une expérience inhomogène")
+            print(f"⚠️  {folder_name} is not an inhomogeneous experiment")
             return None, None
 
-        # Chercher les P_blocks pour l'espèce demandée
+        # Look for P_blocks of the requested species.
+        P_blocks: np.ndarray | None = None
         prefix = f"{BUCKET_BASE}/{folder_name}"
-        P_blocks_path = f"{prefix}/P_blocks_{species}.npy"
-
         try:
-            P_blocks = self._load_npy(P_blocks_path)
+            P_blocks = self._load_npy(f"{prefix}/P_blocks_{species}.npy")
         except Exception:
-            # Essayer de trouver dans Inhomogènes/
             for base in ALL_BUCKET_BASES:
-                for cat in ["Inhomogènes", *ALL_CATEGORIES]:
+                for cat in ["Inhomogènes", *b_io.ALL_CATEGORIES]:
                     try:
-                        path = f"{base}/{cat}/{folder_name}/P_blocks_{species}.npy"
-                        P_blocks = self._load_npy(path)
+                        P_blocks = self._load_npy(
+                            f"{base}/{cat}/{folder_name}/P_blocks_{species}.npy"
+                        )
                         break
                     except Exception:
                         continue
-                else:
-                    continue
-                break
-            else:
-                print(f"❌ P_blocks_{species}.npy introuvable pour {folder_name}")
-                return None, None
+                if P_blocks is not None:
+                    break
+
+        if P_blocks is None:
+            print(f"❌ P_blocks_{species}.npy not found for {folder_name}")
+            return None, None
 
         n_blocks = P_blocks.shape[0]
         n_states = P_blocks.shape[1]
 
         fig, axes = plt.subplots(2, max(2, n_blocks), figsize=figsize, squeeze=False)
-
         fig.suptitle(
-            f"Évolution des matrices de transition P_k — {species}\n"
-            f"{folder_name} ({n_blocks} blocs, {n_states} états)",
+            f"Transition matrices evolution P_k — {species}\n"
+            f"{folder_name} ({n_blocks} blocks, {n_states} states)",
             fontweight="bold",
             fontsize=14,
         )
 
-        # Ligne 1 : heatmaps des P_k
+        # Row 1: P_k heatmaps.
         for k in range(n_blocks):
             ax = axes[0, k]
             vmax = (
@@ -1175,17 +1170,17 @@ class MarkovAnalyzer:
                 vmax=vmax,
                 interpolation="nearest",
             )
-            ax.set_title(f"P_{k} (bloc {k + 1}/{n_blocks})")
-            ax.set_xlabel("Source")
-            ax.set_ylabel("Destination")
+            ax.set_title(f"P_{k} (block {k + 1}/{n_blocks})")
+            ax.set_xlabel("Destination")
+            ax.set_ylabel("Source")
             plt.colorbar(im, ax=ax, fraction=0.046)
 
-        # Masquer les axes vides
+        # Hide the unused axes.
         for k in range(n_blocks, axes.shape[1]):
             axes[0, k].set_visible(False)
             axes[1, k].set_visible(False)
 
-        # Ligne 2 : différences entre blocs consécutifs
+        # Row 2: differences between consecutive blocks.
         for k in range(1, n_blocks):
             ax = axes[1, k]
             diff = np.abs(P_blocks[k] - P_blocks[k - 1])
@@ -1198,94 +1193,99 @@ class MarkovAnalyzer:
                 vmax=vmax_diff,
                 interpolation="nearest",
             )
-            ax.set_title(f"|P_{k} - P_{k - 1}| (norme={diff.sum():.4f})")
-            ax.set_xlabel("Source")
-            ax.set_ylabel("Destination")
+            ax.set_title(f"|P_{k} - P_{k - 1}| (norm={diff.sum():.4f})")
+            ax.set_xlabel("Destination")
+            ax.set_ylabel("Source")
             plt.colorbar(im, ax=ax, fraction=0.046)
 
         axes[1, 0].set_visible(False)
-
         plt.tight_layout()
         return fig, axes
 
-    def compute_inhomogeneous_rsd(self, folder_name: str, partitioner: str, species_labels: list | None = None) -> dict:
-        """
-        Calcule le RSD pour une chaîne inhomogène (matrices variables dans le temps).
+    def compute_inhomogeneous_rsd(
+        self,
+        folder_name: str,
+        partitioner: Any,
+        species_labels: np.ndarray | None = None,
+    ) -> dict[str, Any] | None:
+        """Compute the RSD of an inhomogeneous chain (time-varying matrices).
 
-        Charge P_blocks et propage l'état avec des matrices qui changent à chaque bloc.
-        Compare avec le RSD DEM de référence.
+        Loads ``P_blocks`` and propagates the state with matrices changing at
+        each block; compares with the reference DEM RSD.
 
         Args:
-            folder_name: Nom du dossier de l'expérience inhomogène.
-            partitioner: Instance du partitionneur entraîné.
-            species_labels: Masque booléen (n_particles,) pour l'espèce.
+            folder_name: Inhomogeneous experiment folder name.
+            partitioner: Fitted partitioner.
+            species_labels: Optional boolean species mask.
 
         Returns:
-            dict avec times_markov, rsd_markov, et les métriques.
+            Per-species dictionary with ``times``, ``rsd_markov``,
+            ``rsd_dem`` and ``times_dem`` — or ``None`` when the experiment
+            is homogeneous.
         """
-        from .bucket_io import load_experiment_from_bucket
+        from dem_mcm_coupling.bucket_io import load_experiment_from_bucket
 
         data = load_experiment_from_bucket(folder_name)
         if not data.get("inhomogeneous", False):
-            print(f"⚠️  {folder_name} n'est pas inhomogène")
+            print(f"⚠️  {folder_name} is not inhomogeneous")
             return None
 
         inhom_meta = data.get("inhomogeneous_metadata", {})
         n_blocks = inhom_meta.get("n_blocks", 1)
         species_list = inhom_meta.get("species_list", ["small", "large"])
 
-        print(f"\n{'═' * 70}")
-        print(f"📊 RSD INHOMOGÈNE — {folder_name}")
-        print(f"{'═' * 70}")
-        print(f"Nombre de blocs: {n_blocks}")
-        print(f"Espèces: {species_list}")
+        print("\n" + "═" * 70)
+        print(f"📊 INHOMOGENEOUS RSD — {folder_name}")
+        print("═" * 70)
+        print(f"Blocks: {n_blocks}")
+        print(f"Species: {species_list}")
 
         if species_labels is None:
             if self.species_labels is None:
-                print(
-                    "⚠️  species_labels non fourni, appel automatique de label_species()"
-                )
+                logger.info("species_labels not provided — calling label_species()")
                 self.label_species()
             species_labels = self.species_labels
 
-        if not hasattr(self, "dem_snapshots") or not self.dem_snapshots:
-            print("⚠️  Aucun snapshot DEM chargé, chargement automatique...")
+        if not self.dem_snapshots:
+            logger.info("No DEM snapshot loaded — loading automatically...")
             self.load_dem_snapshots(file_indices=list(range(250, 6000, 50)))
+        if species_labels is None:  # pragma: no cover — defensive
+            raise ValueError("species_labels unavailable")
 
         n_states = partitioner.n_cells
         n_snaps = len(self.dem_snapshots)
         times = np.array([s["t"] for s in self.dem_snapshots])
 
-        # RSD DEM de référence
+        # Reference DEM RSD.
         rsd_dem = np.zeros(n_snaps)
         for i, snap in enumerate(self.dem_snapshots):
             coords = snap["coords"]
             states = partitioner.compute_states(
                 coords[:, 0], coords[:, 1], coords[:, 2]
             )
-            C_i = np.zeros(n_states)
+            concentration = np.zeros(n_states)
             for sid in range(n_states):
                 mask = states == sid
                 if mask.sum() > 0:
-                    C_i[sid] = species_labels[mask].sum() / mask.sum()
-            mask_active = C_i > 0
+                    concentration[sid] = species_labels[mask].sum() / mask.sum()
+            mask_active = concentration > 0
             if mask_active.sum() > 1:
-                rsd_dem[i] = C_i[mask_active].std() / C_i[mask_active].mean()
+                rsd_dem[i] = (
+                    concentration[mask_active].std() / concentration[mask_active].mean()
+                )
 
-        # Propagation inhomogène pour chaque espèce
-        results = {}
+        # Inhomogeneous propagation for each species (row-vector convention:
+        # phi_next = phi @ P_k).
+        results: dict[str, Any] = {}
         for sp in species_list:
             P_blocks = data["species"][sp]["P_blocks"]  # (n_blocks, n_states, n_states)
             S0 = data["species"][sp]["S_matrix"][0].astype(float)
 
-            # Propagation avec matrices variables
             n_steps_markov = 200
             block_size = max(1, n_steps_markov // n_blocks)
             phi = S0.copy()
-            phi_total = S0.copy()
             rsd_markov = np.zeros(n_steps_markov + 1)
 
-            # État initial
             mask_active = phi > 0
             if mask_active.sum() > 1 and phi[mask_active].mean() > 0:
                 rsd_markov[0] = phi[mask_active].std() / phi[mask_active].mean()
@@ -1293,11 +1293,10 @@ class MarkovAnalyzer:
             for t in range(1, n_steps_markov + 1):
                 block_idx = min((t - 1) // block_size, n_blocks - 1)
                 phi = phi @ P_blocks[block_idx]
-                phi_total = phi_total @ P_blocks[block_idx]
-                C_t = np.zeros(n_states)
-                C_t[mask_active] = phi[mask_active] / phi_total[mask_active]
-                if mask_active.sum() > 1 and C_t[mask_active].mean() > 0:
-                    rsd_markov[t] = C_t[mask_active].std() / C_t[mask_active].mean()
+                c_t = np.zeros(n_states)
+                c_t[mask_active] = phi[mask_active] / S0[mask_active]
+                if mask_active.sum() > 1 and c_t[mask_active].mean() > 0:
+                    rsd_markov[t] = c_t[mask_active].std() / c_t[mask_active].mean()
 
             results[sp] = {
                 "times": np.arange(n_steps_markov + 1)
@@ -1307,7 +1306,6 @@ class MarkovAnalyzer:
                 "rsd_dem": rsd_dem,
                 "times_dem": times * 0.01,
             }
-
             print(
                 f"   ✅ {sp}: RSD initial={rsd_markov[0] * 100:.2f}%, "
                 f"final={rsd_markov[-1] * 100:.2f}%"

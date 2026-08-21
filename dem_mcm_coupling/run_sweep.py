@@ -1,108 +1,160 @@
-"""
-===================================================================================
-SWEEP MARKOVIEN — Lance les calculs pour un type de partitionnement donné.
-===================================================================================
+"""Markovian sweep pipelines (homogeneous and inhomogeneous).
 
-Usage:
-    python run_sweep.py --method voronoi
-    python run_sweep.py --method cartesian
-    python run_sweep.py --method all
-    python run_sweep.py --method voronoi --list   # liste les configs sans lancer
+Runs every experiment configuration of a given partitioning method: builds
+the transition matrix (or matrices) from DEM state trajectories and uploads
+the results to the configured data source.
 
-Depuis Python:
-    from run_sweep import run_markov_sweep
+Usage::
+
+    python -m dem_mcm_coupling.run_sweep --method voronoi
+    python -m dem_mcm_coupling.run_sweep --method voronoi --list
+    python -m dem_mcm_coupling.run_sweep --method cartesian --inhomogeneous
+
+From Python::
+
+    from dem_mcm_coupling.run_sweep import run_markov_sweep
     run_markov_sweep("cylindrical")
-===================================================================================
 """
+
+from __future__ import annotations
 
 import argparse
+import traceback
 from dataclasses import asdict, dataclass, field
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import torch
-from huggingface_hub import HfFileSystem
 from tqdm import tqdm
 
-from . import partitioners as part
-from .bucket_io import save_experiment_to_bucket
-from .partitioners import REGISTRY, create_partitioner
-from .utils import load_parquet_as_timestep_dict
+from dem_mcm_coupling import partitioners as part
+from dem_mcm_coupling._config import BUCKET_ID
+from dem_mcm_coupling.bucket_io import save_experiment_to_bucket
+from dem_mcm_coupling.data.base import DataSource
+from dem_mcm_coupling.partitioners import REGISTRY, create_partitioner
+from dem_mcm_coupling.utils import load_parquet_as_timestep_dict
 
 # =============================================================================
-# CONFIGURATION GÉNÉRALE
+# GENERAL CONFIGURATION
 # =============================================================================
 
+#: Default local output directory (kept for CLI compatibility).
 BASE_OUTPUT_DIR = "RaffinageTemporel"
-HF_FOLDER = "hf://buckets/ktongue/DEM_MCM/simulation_complete.parquet"
-SAMPLE_RATE = 50  # pour le fit des partitionneurs
+
+#: Default parquet path of the complete DEM simulation (bucket root).
+DEFAULT_PARQUET_PATH = f"hf://buckets/{BUCKET_ID}/simulation_complete.parquet"
+
+#: Timestep from which the DEM simulation is considered stationary:
+#: ``PERMANENT_START * N_PARTICLES`` particles rows are skipped when fitting.
+PERMANENT_START = 250
+N_PARTICLES_PER_TIMESTEP = 1030
 
 
 # =============================================================================
-# DATACLASS EXPÉRIENCE
+# EXPERIMENT CONFIGURATION
 # =============================================================================
+
+
 @dataclass
 class ExperimentConfig:
-    """Configuration d'une expérience."""
+    """Configuration of a single Markov experiment.
+
+    Attributes:
+        method: Partitioning method identifier.
+        method_kwargs: Arguments forwarded to the partitioner.
+        nlt: Number of learning timesteps (NLT blocks).
+        tau: Lag (in timesteps) between the ``start`` and ``end`` of each
+            transition pair.
+        step: Distance between two consecutive block starts (when NLT > 1).
+        dt: Temporal refinement inside each step (pairs are sampled every
+            ``dt`` timesteps).
+        start_index: First timestep index used for learning.
+        particle_diameter: Optional diameter filter (``0.004``, ``0.008``,
+            ``None``).
+        inhomogeneous: When ``True``, one transition matrix per NLT block is
+            built (inhomogeneous chain).
+    """
 
     method: str = "cartesian"
-    method_kwargs: dict = field(default_factory=dict)
+    method_kwargs: dict[str, Any] = field(default_factory=dict)
     nlt: int = 2
-    tau: int = 157  # Écart entre start et end pour chaque paire
-    step: int = 157  # Distance entre 2 starts principaux (quand NLT > 1)
-    dt: int | None = None  # Raffinage temporel à l'intérieur de chaque step
+    tau: int = 157  # gap between start and end of each pair
+    step: int = 157  # distance between two main starts (when NLT > 1)
+    dt: int | None = None  # temporal refinement inside each step
     start_index: int = 157
     particle_diameter: float | None = None
-    inhomogeneous: bool = False  # Si True, construit une matrice P par NLT
+    inhomogeneous: bool = False  # if True, one P matrix per NLT block
 
     def __post_init__(self) -> None:
         if self.method_kwargs is None:
             self.method_kwargs = {}
         if self.dt is None:
-            # Raffinage par défaut : 5 apprentissages par step
+            # Default refinement: 5 learning pairs per step.
             self.dt = max(1, self.step // 100)
 
     def output_folder(self, sample_coords: np.ndarray | None = None) -> str:
-        p = create_partitioner(self.method, **self.method_kwargs)
-        if sample_coords is not None:
-            p.fit(sample_coords)
+        """Return the experiment folder name (no path).
 
-        # Retourner seulement le nom du dossier, pas un chemin
+        For partitioners whose label depends on the data (adaptive,
+        multizone), the partitioner is fitted on ``sample_coords`` first.
+
+        Args:
+            sample_coords: Optional coordinates used to fit the partitioner
+                before reading its label.
+
+        Returns:
+            The folder name, e.g.
+            ``voronoi_125cells_NLT2_step157_dt1_tau157_start157``.
+        """
+        partitioner = create_partitioner(self.method, **self.method_kwargs)
+        if sample_coords is not None:
+            partitioner.fit(sample_coords)
+
         folder_name = (
-            f"{p.label}_NLT{self.nlt}_step{self.step}_"
+            f"{partitioner.label}_NLT{self.nlt}_step{self.step}_"
             f"dt{self.dt}_tau{self.tau}_start{self.start_index}"
         )
 
-        # Ajouter le suffixe particle_diameter si spécifié
         if self.particle_diameter is not None:
             diameter_str = str(self.particle_diameter).replace(".", "")
             folder_name += f"_d{diameter_str}"
 
-        # NOUVEAU: préfixe inhomogeneous_ pour les chaînes inhomogènes
         if self.inhomogeneous:
             folder_name = f"inhomogeneous_{folder_name}"
 
-        return folder_name  # Retourne juste le nom
+        return folder_name
 
 
 # =============================================================================
-# CONFIGURATIONS PAR MÉTHODE
+# CONFIGURATIONS PER METHOD
 # =============================================================================
 
 
 def get_configs(
     method: str, particle_diameter: float | None = None
 ) -> list[ExperimentConfig]:
-    """Retourne la liste de configs pour une méthode donnée."""
-    configs = []
+    """Return the list of experiment configurations of a method.
 
-    print(f"   🔍 Génération des configs pour {method}...")
+    Args:
+        method: Partitioning method identifier.
+        particle_diameter: Optional diameter filter applied to every
+            configuration.
+
+    Returns:
+        List of :class:`ExperimentConfig` (spatial sweep + temporal sweep,
+        deduplicated).
+
+    Raises:
+        ValueError: If ``method`` is unknown.
+    """
+    configs: list[ExperimentConfig] = []
+
+    print(f"   🔍 Generating configs for {method}...")
     if particle_diameter is not None:
-        print(f"   🎯 Filtre diamètre: {particle_diameter}")
+        print(f"   🎯 Diameter filter: {particle_diameter}")
 
-    # ══════════════════════════════════════════════════════════════════════
-    # 1. SWEEP DE DISCRÉTISATION SPATIALE (avec paramètres temporels par défaut)
-    # ══════════════════════════════════════════════════════════════════════
+    # ── 1. Spatial discretisation sweep (default temporal parameters) ──────
 
     if method == "cartesian":
         for n in [2, 3, 4, 5]:
@@ -128,53 +180,13 @@ def get_configs(
                     particle_diameter=particle_diameter,
                 )
             )
+
     elif method == "dbscan":
-        for nr in [3, 4, 5, 6]:
+        for min_samples in [3, 4, 5, 6]:
             configs.append(
                 ExperimentConfig(
                     method="dbscan",
-                    method_kwargs={
-                        "min_samples": nr,
-                    },
-                    particle_diameter=particle_diameter,
-                )
-            )
-        for nth in [1, 2, 3, 4]:
-            configs.append(
-                ExperimentConfig(
-                    method="cylindrical",
-                    method_kwargs={
-                        "nr": 1,
-                        "ntheta": nth,
-                        "nz": 1,
-                        "radial_mode": "equal_area",
-                    },
-                    particle_diameter=particle_diameter,
-                )
-            )
-        for nz in [1, 2]:
-            configs.append(
-                ExperimentConfig(
-                    method="cylindrical",
-                    method_kwargs={
-                        "nr": 2,
-                        "ntheta": 2,
-                        "nz": nz,
-                        "radial_mode": "equal_area",
-                    },
-                    particle_diameter=particle_diameter,
-                )
-            )
-        for mode in ["equal_dr", "equal_area"]:
-            configs.append(
-                ExperimentConfig(
-                    method="cylindrical",
-                    method_kwargs={
-                        "nr": 2,
-                        "ntheta": 2,
-                        "nz": 1,
-                        "radial_mode": mode,
-                    },
+                    method_kwargs={"min_samples": min_samples},
                     particle_diameter=particle_diameter,
                 )
             )
@@ -218,7 +230,7 @@ def get_configs(
             )
 
     elif method == "physics":
-        # Sweep n_cells avec velocity_weight par défaut
+        # n_cells sweep with the default velocity weight.
         for nc in [10, 15, 20, 25, 30]:
             configs.append(
                 ExperimentConfig(
@@ -227,7 +239,7 @@ def get_configs(
                     particle_diameter=particle_diameter,
                 )
             )
-        # Sweep velocity_weight (importance de la vitesse dans le clustering)
+        # velocity_weight sweep (importance of the velocity in the clustering).
         for vw in [0.0, 0.1, 0.2, 0.3, 0.5, 0.7, 1.0, 1.5, 2.0]:
             configs.append(
                 ExperimentConfig(
@@ -238,7 +250,6 @@ def get_configs(
             )
 
     elif method == "physics_full_vel":
-        # Sweep n_cells avec velocity_weight par défaut (vecteur vitesse complet)
         for nc in [10, 15, 20, 25, 30]:
             configs.append(
                 ExperimentConfig(
@@ -247,7 +258,6 @@ def get_configs(
                     particle_diameter=particle_diameter,
                 )
             )
-        # Sweep velocity_weight (importance du vecteur vitesse)
         for vw in [0.1, 0.2, 0.3, 0.5, 0.7, 1.0]:
             configs.append(
                 ExperimentConfig(
@@ -312,6 +322,7 @@ def get_configs(
                     particle_diameter=particle_diameter,
                 )
             )
+
     elif method == "spectral_biclustering":
         for n_cells, n_col in [(20, 3), (30, 3), (40, 4), (50, 4)]:
             configs.append(
@@ -326,6 +337,7 @@ def get_configs(
                     particle_diameter=particle_diameter,
                 )
             )
+
     elif method == "adaptive":
         for y_q in [0.5, 0.6, 0.7, 0.8, 0.9]:
             configs.append(
@@ -437,7 +449,7 @@ def get_configs(
             )
         for n_top in [1, 2, 3, 4]:
             top_method = "single" if n_top == 1 else "cylindrical"
-            top_kwargs = (
+            top_kwargs: dict[str, Any] = (
                 {}
                 if n_top == 1
                 else {
@@ -485,7 +497,7 @@ def get_configs(
             )
 
     elif method == "multizone":
-        pass
+        pass  # no default sweep defined yet
 
     elif method == "single":
         configs.append(
@@ -497,19 +509,17 @@ def get_configs(
         )
 
     else:
-        raise ValueError(f"Méthode inconnue: {method}")
+        raise ValueError(f"Unknown method: {method}")
 
     spatial_count = len(configs)
-    print(f"   📊 Configs spatiales pour {method}: {spatial_count}")
+    print(f"   📊 Spatial configs for {method}: {spatial_count}")
 
-    # ══════════════════════════════════════════════════════════════════════
-    # 2. SWEEP TEMPOREL (avec paramètres spatiaux par défaut)
-    # ══════════════════════════════════════════════════════════════════════
+    # ── 2. Temporal sweep (default spatial parameters) ──────────────────────
 
     default_spatial_kwargs = _get_default_kwargs(method)
-    print(f"   🕒 Ajout des sweeps temporels avec: {default_spatial_kwargs}")
+    print(f"   🕒 Adding temporal sweeps with: {default_spatial_kwargs}")
 
-    temporal_configs = []
+    temporal_configs: list[ExperimentConfig] = []
 
     for nlt in [1, 2, 3, 5]:
         temporal_configs.append(
@@ -582,45 +592,50 @@ def get_configs(
             particle_diameter=particle_diameter,
         ),
     ]
-
     temporal_configs.extend(recommended_configs)
+    print(f"   🕒 Temporal configs generated: {len(temporal_configs)}")
 
-    print(f"   🕒 Configs temporelles générées: {len(temporal_configs)}")
-
-    # ══════════════════════════════════════════════════════════════════════
-    # 3. COMBINAISON ET DÉDOUBLONNAGE INTELLIGENT
-    # ══════════════════════════════════════════════════════════════════════
+    # ── 3. Smart combination and deduplication ──────────────────────────────
 
     all_configs = configs + temporal_configs
     print(
-        f"   🔗 Total avant dédoublonnage: {len(all_configs)} ({spatial_count} spatiales + {len(temporal_configs)} temporelles)"
+        f"   🔗 Total before deduplication: {len(all_configs)} "
+        f"({spatial_count} spatial + {len(temporal_configs)} temporal)"
     )
 
-    seen = set()
-    unique = []
+    seen: set[str] = set()
+    unique: list[ExperimentConfig] = []
     duplicates = 0
 
-    for c in all_configs:
-        if c.method in ["adaptive", "multizone"]:
-            key = f"{c.method}_{c.method_kwargs}_NLT{c.nlt}_step{c.step}_dt{c.dt}_tau{c.tau}_start{c.start_index}"
+    for config in all_configs:
+        if config.method in ["adaptive", "multizone"]:
+            key = (
+                f"{config.method}_{config.method_kwargs}_NLT{config.nlt}"
+                f"_step{config.step}_dt{config.dt}_tau{config.tau}"
+                f"_start{config.start_index}"
+            )
         else:
-            key = c.output_folder()
+            key = config.output_folder()
 
         if key not in seen:
             seen.add(key)
-            unique.append(c)
+            unique.append(config)
         else:
             duplicates += 1
 
     print(
-        f"   🔄 Dédoublonnage: {len(all_configs)} → {len(unique)} ({duplicates} doublons supprimés)"
+        f"   🔄 Deduplication: {len(all_configs)} → {len(unique)} "
+        f"({duplicates} duplicates removed)"
     )
     return unique
 
 
-def _get_default_kwargs(method: str) -> dict:
-    """Paramètres de discrétisation par défaut pour les sweeps temporels."""
-    defaults = {
+def _get_default_kwargs(method: str) -> dict[str, Any]:
+    """Return the default discretisation parameters of a method.
+
+    Used by the temporal sweeps, which fix the spatial discretisation.
+    """
+    defaults: dict[str, dict[str, Any]] = {
         "cartesian": {"nx": 5, "ny": 5, "nz": 5},
         "cylindrical": {
             "nr": 3,
@@ -653,9 +668,7 @@ def _get_default_kwargs(method: str) -> dict:
             "top_method": "single",
             "top_kwargs": {},
             "bottom_method": "voronoi",
-            "bottom_kwargs": {
-                "n_cells": 100,
-            },
+            "bottom_kwargs": {"n_cells": 100},
         },
         "multizone": {
             "y_mode": "quantile",
@@ -685,8 +698,26 @@ def _get_default_kwargs(method: str) -> dict:
 
 
 # =============================================================================
-# CHARGEMENT DES DONNÉES
+# TRANSITION MATRIX (TORCH)
 # =============================================================================
+
+#: Methods whose partitioners consume velocity features when computing states.
+_METHODS_USING_VELOCITY: frozenset[str] = frozenset(
+    {
+        "physics",
+        "physics_full_vel",
+        "spectral",
+        "spectral_biclustering",
+        "gmm",
+        "dbscan",
+    }
+)
+
+#: Methods that are also *fitted* with velocities in the sweeps. (Spectral
+#: clustering and GMM are fitted on positions only, by historical choice.)
+_METHODS_FITTED_WITH_VELOCITY: frozenset[str] = frozenset(
+    {"physics", "physics_full_vel", "spectral_biclustering", "dbscan"}
+)
 
 
 def compute_P_matrix_torch(
@@ -696,9 +727,27 @@ def compute_P_matrix_torch(
     device: str = "cpu",
     species_labels: np.ndarray | None = None,
 ) -> torch.Tensor:
-    """
-    Calcule P_n pour un timestep - version entièrement vectorisée.
-    P[j,i] = probabilité de transition de l'état i vers l'état j.
+    """Compute one transition matrix ``P`` from state transition pairs.
+
+    **Convention** (used everywhere in this package): ``P[i, j]`` is the
+    probability to jump from state ``i`` to state ``j``, rows are stochastic
+    (``P.sum(axis=1) == 1``) and a state vector evolves as
+    ``phi_next = phi @ P``.
+
+    The computation is fully vectorised: every ``(prev, curr)`` pair is
+    one-hot encoded and the joint counts are accumulated with one matrix
+    product.
+
+    Args:
+        states_prev: Previous state of each transition, shape ``(n_pairs,)``.
+        states_curr: Next state of each transition, shape ``(n_pairs,)``.
+        n_states: Total number of states.
+        device: Torch device (``"cpu"`` or ``"cuda"``).
+        species_labels: Unused, kept for API compatibility.
+
+    Returns:
+        The row-stochastic transition matrix as a ``torch.float64`` tensor of
+        shape ``(n_states, n_states)``. Rows never visited are all zeros.
     """
     if isinstance(states_prev, np.ndarray):
         states_prev = torch.from_numpy(states_prev)
@@ -715,33 +764,45 @@ def compute_P_matrix_torch(
     phi_prev = (s_prev.unsqueeze(1) == torch.arange(n_states, device=device)).float()
     phi_curr = (s_curr.unsqueeze(1) == torch.arange(n_states, device=device)).float()
 
+    # transitions[i, j] = number of pairs (i -> j).
     transitions = phi_prev.T @ phi_curr
+    # denominator[i] = number of pairs starting from state i.
     denominator = phi_prev.sum(dim=0)
 
-    P = transitions.T / denominator
+    # Row-stochastic: P[i, j] = #(i -> j) / #(i).
+    P = transitions / denominator.unsqueeze(1)
     P[denominator == 0] = 0.0
 
     return P.to(torch.float64)
 
 
-def save_results(
-    config: ExperimentConfig, partitioner: part.BasePartitioner, results: dict, stats: dict, image_data: dict | None = None, folder_name: str | None = None
-) -> None:
-    """Sauvegarde les résultats par espèce dans le bucket HuggingFace."""
-    if folder_name is None:
-        folder_name = config.output_folder()
+# =============================================================================
+# SAVING
+# =============================================================================
 
-    partitioner_data = {}
+
+def _collect_partitioner_data(partitioner: part.BasePartitioner) -> dict[str, Any]:
+    """Gather the serialisable attributes of a fitted partitioner.
+
+    Args:
+        partitioner: The fitted partitioner.
+
+    Returns:
+        Dictionary of arrays/values to persist.
+    """
+    partitioner_data: dict[str, Any] = {}
+
     if hasattr(partitioner, "centroids") and partitioner.centroids is not None:
         partitioner_data["centroids"] = partitioner.centroids
     if hasattr(partitioner, "_r_edges") and partitioner._r_edges is not None:
         partitioner_data["r_edges"] = partitioner._r_edges
     if hasattr(partitioner, "_leaves") and partitioner._leaves:
         partitioner_data["leaves"] = np.array(partitioner._leaves)
-    if hasattr(partitioner, "_x_edges") and partitioner._x_edges is not None:
-        partitioner_data["x_edges"] = partitioner._x_edges
-        partitioner_data["y_edges"] = partitioner._y_edges
-        partitioner_data["z_edges"] = partitioner._z_edges
+    x_edges = getattr(partitioner, "_x_edges", None)
+    if x_edges is not None:
+        partitioner_data["x_edges"] = x_edges
+        partitioner_data["y_edges"] = getattr(partitioner, "_y_edges", None)
+        partitioner_data["z_edges"] = getattr(partitioner, "_z_edges", None)
     if isinstance(partitioner, part.PhysicsAwarePartitioner):
         if partitioner._mean is not None:
             partitioner_data["mean"] = partitioner._mean
@@ -752,41 +813,82 @@ def save_results(
             "velocity_weight": partitioner.velocity_weight,
             "velocity_mode": partitioner.velocity_mode,
         }
+
     partitioner_data["partitioner_meta"] = {
         "type": type(partitioner).__name__,
         "label": partitioner.label,
         "n_cells": partitioner.n_cells,
     }
+    return partitioner_data
 
-    species_data = {}
 
-    # ✅ NOUVEAU : Sauvegarde de la matrice complète des cell_ids
+def _species_arrays_from_results(results: dict[str, Any]) -> dict[str, np.ndarray]:
+    """Convert per-species result dictionaries into ``.npy`` arrays.
+
+    Args:
+        results: Output of :func:`run_experiment`.
+
+    Returns:
+        Mapping ``file_stem -> array``.
+    """
+    species_data: dict[str, np.ndarray] = {}
     if "matrix" in results:
         species_data["states_matrix"] = results["matrix"]
-        print(f"   📦 states_matrix à sauvegarder : {results['matrix'].shape}")
-
-    # Sauvegarde des matrices par espèce
     for species, data in results.items():
         if species == "matrix":
-            continue  # Déjà traité ci-dessus
+            continue
         species_data[f"transitionmatrix_{species}"] = data["P"]
         species_data[f"S_matrix_{species}"] = data["S_matrix"]
         species_data[f"times_{species}"] = data["times"]
+    return species_data
 
-    stats_with_species = {
-        **stats,
-        "species_list": [k for k in results if k != "matrix"],
-    }
 
-    save_experiment_to_bucket(
-        folder_name=folder_name,
-        species_data=species_data,
-        stats=stats_with_species,
-        config=asdict(config),
-        partitioner_data=partitioner_data,
-        image_data=image_data,
-        particle_diameter=config.particle_diameter,
-    )
+def save_results(
+    config: ExperimentConfig,
+    partitioner: part.BasePartitioner,
+    results: dict[str, Any],
+    stats: dict[str, Any],
+    image_data: dict[str, bytes] | None = None,
+    folder_name: str | None = None,
+    data_source: DataSource | None = None,
+) -> None:
+    """Save a homogeneous experiment (one transition matrix per species).
+
+    Args:
+        config: Experiment configuration.
+        partitioner: The fitted partitioner.
+        results: Output of :func:`run_experiment` (``"matrix"`` + one dict
+            per species with ``"P"``, ``"S_matrix"``, ``"times"``).
+        stats: Statistics dictionary.
+        image_data: Optional images to store.
+        folder_name: Optional folder name (computed from ``config`` when
+            ``None``).
+        data_source: Optional destination source (Hugging Face bucket by
+            default).
+    """
+    if folder_name is None:
+        folder_name = config.output_folder()
+
+    if data_source is not None:
+        data_source.write_experiment(
+            folder_name=folder_name,
+            stats={**stats, "species_list": [k for k in results if k != "matrix"]},
+            config=asdict(config),
+            species_data=_species_arrays_from_results(results),
+            partitioner_data=_collect_partitioner_data(partitioner),
+            image_data=image_data,
+            inhomogeneous_metadata=None,
+        )
+    else:
+        save_experiment_to_bucket(
+            folder_name=folder_name,
+            species_data=_species_arrays_from_results(results),
+            stats={**stats, "species_list": [k for k in results if k != "matrix"]},
+            config=asdict(config),
+            partitioner_data=_collect_partitioner_data(partitioner),
+            image_data=image_data,
+            particle_diameter=config.particle_diameter,
+        )
 
     bucket_name = (
         "BIG"
@@ -801,33 +903,44 @@ def save_results(
     )
 
 
-def sample_coordinates(timestep_dict: dict[int, pd.DataFrame]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Retourne coords, velocities, diameters empilés sur tous les timesteps."""
-    all_coords, all_velocities, all_diameters = [], [], []
+def sample_coordinates(
+    timestep_dict: dict[int, pd.DataFrame],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Stack coordinates, velocities and diameters over every timestep.
 
-    for idx in sorted(timestep_dict.keys()):  # Recupère toutes les features
+    Args:
+        timestep_dict: Mapping ``timestep_index -> DataFrame``.
+
+    Returns:
+        Tuple ``(coordinates, velocities, diameters)``.
+    """
+    all_coords: list[np.ndarray] = []
+    all_velocities: list[np.ndarray] = []
+    all_diameters: list[np.ndarray] = []
+
+    for idx in sorted(timestep_dict):
         df = timestep_dict[idx]
         all_coords.append(
             np.column_stack(
-                [
+                (
                     df["coordinates:0"].to_numpy(),
                     df["coordinates:1"].to_numpy(),
                     df["coordinates:2"].to_numpy(),
-                ]
+                )
             )
         )
         all_velocities.append(
             np.column_stack(
-                [
+                (
                     df["Velocity:0"].to_numpy(),
                     df["Velocity:1"].to_numpy(),
                     df["Velocity:2"].to_numpy(),
-                ]
+                )
             )
         )
         all_diameters.append(df["Diameter"].to_numpy())
 
-    print(f"   📏 Diamètres chargés: {sum(len(d) for d in all_diameters)} particules")
+    print(f"   📏 Diameters loaded: {sum(len(d) for d in all_diameters)} particles")
     return (
         np.vstack(all_coords),
         np.vstack(all_velocities),
@@ -836,80 +949,85 @@ def sample_coordinates(timestep_dict: dict[int, pd.DataFrame]) -> tuple[np.ndarr
 
 
 def _detect_species(df: pd.DataFrame) -> dict[str, np.ndarray]:
-    """Détecte automatiquement les espèces par diamètre et retourne un masque booléen par espèce."""
+    """Auto-detect particle species by diameter.
+
+    Args:
+        df: Data frame of one timestep.
+
+    Returns:
+        Mapping ``species name -> boolean mask`` (aligned with ``df`` rows).
+        A single diameter yields the ``"all"`` species; two diameters yield
+        ``"small"``/``"large"``; more yield generic ``"d0004"``-style names.
+    """
     diameters = df["Diameter"].to_numpy()
     unique_diams = np.sort(np.unique(diameters))
+
     if len(unique_diams) == 1:
-        print(
-            f"   ⚠️  Un seul diamètre trouvé ({unique_diams[0]}) — pas de séparation d'espèces"
-        )
+        print(f"   ⚠️  Single diameter found ({unique_diams[0]}) — no species split")
         return {"all": np.ones(len(diameters), dtype=bool)}
+
     if len(unique_diams) == 2:
         labels = ["small", "large"]
     else:
         labels = [f"d{str(d).replace('.', '')}" for d in unique_diams]
-        print(f"   ℹ️  {len(unique_diams)} diamètres détectés : {unique_diams}")
-    species_masks = {}
+        print(f"   i  {len(unique_diams)} diameters detected: {unique_diams}")
+
+    species_masks: dict[str, np.ndarray] = {}
     for label, diam in zip(labels, unique_diams):
         mask = diameters == diam
         species_masks[label] = mask
-        print(f"   ✅ Espèce '{label}' (d={diam:.4f}) : {mask.sum()} particules")
+        print(f"   ✅ Species '{label}' (d={diam:.4f}): {mask.sum()} particles")
     return species_masks
 
 
-def run_experiment(
-    config: ExperimentConfig, partitioner: part.BasePartitioner, timestep_dict: dict[int, pd.DataFrame], device: str = "cpu"
-) -> tuple[dict, dict]:
-    """Construit une matrice de transition P et des matrices d'états S par espèce."""
-    n_states = getattr(partitioner, "n_states", partitioner.n_cells)
-    tau = config.tau
-    step = config.step
-    dt = config.dt
-    start_base = config.start_index
+# =============================================================================
+# EXPERIMENT RUN (HOMOGENEOUS)
+# =============================================================================
 
-    print(f"   📐 Configuration: NLT={config.nlt}, step={step}, dt={dt}, tau={tau}")
-    print(
-        f"   📦 {len(timestep_dict)} timesteps disponibles "
-        f"(index {min(timestep_dict)} → {max(timestep_dict)})"
-    )
 
-    try:
-        df_init = timestep_dict[start_base]
-    except KeyError:
-        raise KeyError(f"Timestep start_base={start_base} absent du dict")
+def _compute_state_matrices(
+    timestep_dict: dict[int, pd.DataFrame],
+    partitioner: part.BasePartitioner,
+    start_base: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute the flat states and the ``(n_timesteps, n_particles)`` matrix.
 
-    species_masks = _detect_species(df_init)
+    States are computed on every timestep starting from ``start_base``.
+    Velocity features are attached to the partitioner when it is
+    physics-aware.
 
-    sorted_indices = sorted(timestep_dict.keys())
-    # ✅ On ne garde que les timesteps >= start_base
-    sorted_indices = list(sorted_indices)
+    Args:
+        timestep_dict: Mapping ``timestep_index -> DataFrame``.
+        partitioner: The fitted partitioner.
+        start_base: First timestep to consider.
+
+    Returns:
+        Tuple ``(states_matrix, sorted_indices)`` where ``states_matrix`` has
+        shape ``(n_timesteps, n_particles)``.
+    """
+    sorted_indices = sorted(timestep_dict)
     n_timesteps = len(sorted_indices)
     n_particles = len(timestep_dict[sorted_indices[0]])
-    idx_to_row = {idx: row for row, idx in enumerate(sorted_indices)}
 
-    print(
-        f"   🔧 Calcul des états : {n_timesteps} timesteps × {n_particles} particules "
-        f"(à partir de t={start_base})..."
+    uses_velocity = isinstance(
+        partitioner,
+        (
+            part.PhysicsAwarePartitioner,
+            part.SpectralBiclusteringPartitioner,
+            part.GaussianMixturePartitioner,
+            part.DBSCANPartitioner,
+            part.SpectralClusteringPartitioner,
+        ),
     )
 
     all_x, all_y, all_z = [], [], []
     all_vx, all_vy, all_vz = [], [], []
-    is_physics = isinstance(partitioner, part.PhysicsAwarePartitioner)
-    is_bicluster = isinstance(partitioner, part.SpectralBiclusteringPartitioner)
-    is_gaussian = isinstance(partitioner, part.GaussianMixturePartitioner)
-    is_dbscan = isinstance(partitioner, part.DBSCANPartitioner)
-    is_spectral = isinstance(partitioner, part.SpectralClusteringPartitioner)
-
     for idx in sorted_indices:
         df = timestep_dict[idx]
         all_x.append(df["coordinates:0"].to_numpy())
         all_y.append(df["coordinates:1"].to_numpy())
         all_z.append(df["coordinates:2"].to_numpy())
-        # all_x.append(df["Velocity:0"].to_numpy())
-        # all_y.append(df["Velocity:1"].to_numpy())
-        # all_z.append(df["Velocity:2"].to_numpy())
-
-        if is_physics or is_bicluster or is_gaussian or is_dbscan or is_spectral:
+        if uses_velocity:
             all_vx.append(df["Velocity:0"].to_numpy())
             all_vy.append(df["Velocity:1"].to_numpy())
             all_vz.append(df["Velocity:2"].to_numpy())
@@ -918,24 +1036,40 @@ def run_experiment(
     coords_y = np.concatenate(all_y)
     coords_z = np.concatenate(all_z)
 
-    if is_physics or is_bicluster or is_gaussian or is_dbscan or is_spectral:
+    if uses_velocity:
         vx_all = np.concatenate(all_vx)
         vy_all = np.concatenate(all_vy)
         vz_all = np.concatenate(all_vz)
-        if is_physics or is_gaussian or is_bicluster or is_spectral or is_dbscan:
-            partitioner.use_velocity = True
-            partitioner.dem_velocities = np.column_stack([vx_all, vy_all, vz_all])
+        partitioner.use_velocity = True
+        partitioner.dem_velocities = np.column_stack([vx_all, vy_all, vz_all])
         states_flat = partitioner.compute_states(
             coords_x, coords_y, coords_z, vx_all, vy_all, vz_all
         )
     else:
         states_flat = partitioner.compute_states(coords_x, coords_y, coords_z)
 
-    # ✅ shape correcte : (n_timesteps, n_particles) depuis start_base
     states_matrix = states_flat.reshape(n_timesteps, n_particles)
     print(f"   ✅ states_matrix: {states_matrix.shape}")
+    return states_matrix, np.array(sorted_indices)
 
-    S_matrices = {}
+
+def _build_state_matrices(
+    states_matrix: np.ndarray,
+    species_masks: dict[str, np.ndarray],
+    n_states: int,
+) -> dict[str, np.ndarray]:
+    """Count particles per state and per timestep for each species.
+
+    Args:
+        states_matrix: State matrix of shape ``(n_timesteps, n_particles)``.
+        species_masks: Mapping ``species -> boolean mask``.
+        n_states: Number of states.
+
+    Returns:
+        Mapping ``species -> S matrix`` of shape ``(n_timesteps, n_states)``.
+    """
+    n_timesteps = states_matrix.shape[0]
+    S_matrices: dict[str, np.ndarray] = {}
     for species, mask in species_masks.items():
         states_species = states_matrix[:, mask]
         S = np.zeros((n_timesteps, n_states), dtype=np.float64)
@@ -944,18 +1078,40 @@ def run_experiment(
         S_matrices[species] = S
         print(
             f"   ✅ S_matrix '{species}': {S.shape} | "
-            f"sum t=0: {S[0].sum():.0f} particules ({mask.sum()} attendues)"
+            f"sum t=0: {S[0].sum():.0f} particles ({mask.sum()} expected)"
         )
+    return S_matrices
 
-    all_pairs = []
+
+def _build_pairs(
+    config: ExperimentConfig,
+    timestep_dict: dict[int, pd.DataFrame],
+    idx_to_row: dict[int, int],
+) -> list[tuple[int, int]]:
+    """Build the list of ``(start, end)`` transition pairs of a config.
+
+    Args:
+        config: Experiment configuration.
+        timestep_dict: Mapping ``timestep_index -> DataFrame``.
+        idx_to_row: Mapping ``timestep_index -> row in states_matrix``.
+
+    Returns:
+        List of ``(idx_prev, idx_curr)`` pairs.
+    """
+    start_base = config.start_index
+    tau = config.tau
+    step = config.step
+    dt = config.dt or 1
+
+    all_pairs: list[tuple[int, int]] = []
     for nlt_idx in range(config.nlt):
         current_start_base = start_base + nlt_idx * (step + tau)
-        max_end_possible = max(timestep_dict.keys())
+        max_end_possible = max(timestep_dict)
         max_start_possible = max_end_possible - tau
 
         if current_start_base > max_start_possible:
             print(
-                f"   ⚠️  Bloc {nlt_idx + 1} ignoré "
+                f"   ⚠️  Block {nlt_idx + 1} ignored "
                 f"(start={current_start_base} > max={max_start_possible})"
             )
             break
@@ -973,67 +1129,110 @@ def run_experiment(
                 break
             all_pairs.append((start_idx, end_idx))
 
-    if not all_pairs:
-        raise ValueError("Aucune paire possible avec ces paramètres")
+    return all_pairs
+
+
+def run_experiment(
+    config: ExperimentConfig,
+    partitioner: part.BasePartitioner,
+    timestep_dict: dict[int, pd.DataFrame],
+    device: str = "cpu",
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Build the transition matrix and state matrices of an experiment.
+
+    Args:
+        config: Experiment configuration.
+        partitioner: The fitted partitioner.
+        timestep_dict: Mapping ``timestep_index -> DataFrame``.
+        device: Torch device.
+
+    Returns:
+        Tuple ``(results, stats)`` where ``results`` holds the
+        ``"matrix"`` (raw state matrix) and one entry per species
+        (``"P"``, ``"S_matrix"``, ``"times"``).
+
+    Raises:
+        KeyError: If ``config.start_index`` is absent from the data.
+        ValueError: If no transition pair can be built.
+    """
+    n_states = partitioner.n_cells
+    tau = config.tau
+    start_base = config.start_index
 
     print(
-        f"   📊 {len(all_pairs)} paires | "
+        f"   📐 Configuration: NLT={config.nlt}, step={config.step}, dt={config.dt}, tau={tau}"
+    )
+    print(
+        f"   📦 {len(timestep_dict)} timesteps available "
+        f"(index {min(timestep_dict)} → {max(timestep_dict)})"
+    )
+
+    try:
+        df_init = timestep_dict[start_base]
+    except KeyError:
+        raise KeyError(
+            f"Timestep start_base={start_base} absent from the data"
+        ) from None
+
+    species_masks = _detect_species(df_init)
+
+    sorted_indices = sorted(timestep_dict)
+    n_timesteps = len(sorted_indices)
+    idx_to_row = {idx: row for row, idx in enumerate(sorted_indices)}
+
+    print(f"   🔧 State computation: {n_timesteps} timesteps (from t={start_base})...")
+    states_matrix, _ = _compute_state_matrices(timestep_dict, partitioner, start_base)
+    S_matrices = _build_state_matrices(states_matrix, species_masks, n_states)
+
+    all_pairs = _build_pairs(config, timestep_dict, idx_to_row)
+    if not all_pairs:
+        raise ValueError("No valid pair with these parameters")
+
+    print(
+        f"   📊 {len(all_pairs)} pairs | "
         f"data_{all_pairs[0][0]}→{all_pairs[0][1]} … "
         f"data_{all_pairs[-1][0]}→{all_pairs[-1][1]}"
     )
 
-    accumulators = {
+    # Accumulate the (prev, curr) states per species.
+    accumulators: dict[str, dict[str, np.ndarray]] = {
         species: {
             "prev": np.empty(0, dtype=np.int64),
             "curr": np.empty(0, dtype=np.int64),
         }
         for species in species_masks
     }
-
-    for idx_prev, idx_curr in tqdm(all_pairs, desc="   Paires", leave=False):
+    for idx_prev, idx_curr in tqdm(all_pairs, desc="   Pairs", leave=False):
         row_prev = idx_to_row[idx_prev]
         row_curr = idx_to_row[idx_curr]
-
         for species, mask in species_masks.items():
             accumulators[species]["prev"] = np.concatenate(
-                (
-                    accumulators[species]["prev"],
-                    states_matrix[row_prev][mask],
-                )
+                (accumulators[species]["prev"], states_matrix[row_prev][mask])
             )
             accumulators[species]["curr"] = np.concatenate(
-                (
-                    accumulators[species]["curr"],
-                    states_matrix[row_curr][mask],
-                )
+                (accumulators[species]["curr"], states_matrix[row_curr][mask])
             )
 
-    results = {}
-    results["matrix"] = (
-        states_matrix  # shape (n_timesteps, n_particles), depuis start_base
-    )
+    results: dict[str, Any] = {"matrix": states_matrix}
 
     for species in species_masks:
-        print(f"\n   📐 Matrice P — espèce '{species}'...")
-
+        print(f"\n   📐 Matrix P — species '{species}'...")
         P = (
             compute_P_matrix_torch(
                 accumulators[species]["prev"],
                 accumulators[species]["curr"],
                 n_states,
                 device,
-                species_labels=None,
             )
             .cpu()
             .numpy()
         )
 
-        n_visited = int((P.sum(axis=0) > 0).sum())
+        n_visited = int((P.sum(axis=1) > 0).sum())
         S_mat = S_matrices[species]
-
         print(
-            f"      {n_states} états | {n_visited} visités | "
-            f"P(rester)={np.diag(P).mean():.4f} | "
+            f"      {n_states} states | {n_visited} visited | "
+            f"P(stay)={np.diag(P).mean():.4f} | "
             f"S0 sum={S_mat[0].sum():.0f}"
         )
 
@@ -1043,14 +1242,14 @@ def run_experiment(
             "times": np.array(sorted_indices),
         }
 
-    n_paires_par_bloc = (step + tau) // dt
+    n_paires_par_bloc = (config.step + tau) // (config.dt or 1)
     n_blocs_complets = len(all_pairs) // n_paires_par_bloc
     n_paires_dernier_bloc = len(all_pairs) % n_paires_par_bloc
 
     first_species = next(iter(species_masks))
     P_ref = results[first_species]["P"]
-    col_sums = P_ref.sum(axis=0)
-    visited = col_sums > 0
+    row_sums = P_ref.sum(axis=1)
+    visited = row_sums > 0
 
     stats = {
         "n_pairs_used": len(all_pairs),
@@ -1064,11 +1263,11 @@ def run_experiment(
         "diagonal_mean": float(np.diag(P_ref).mean()),
         "diagonal_std": float(np.diag(P_ref).std()),
         "method": config.method,
-        "species": list(species_masks.keys()),
+        "species": list(species_masks),
         "n_timesteps": n_timesteps,
         "tau": tau,
-        "step": step,
-        "dt": dt,
+        "step": config.step,
+        "dt": config.dt,
         "raffinage_ratio": n_paires_par_bloc,
         "plage_temporelle": int(all_pairs[-1][1] - all_pairs[0][0]),
         "start_index": config.start_index,
@@ -1081,98 +1280,133 @@ def run_experiment(
 
 
 # =============================================================================
-# run_markov_sweep
+# SWEEP ORCHESTRATION (HOMOGENEOUS)
 # =============================================================================
+
+
+def _load_timestep_dict(data_source: DataSource | None) -> dict[int, pd.DataFrame]:
+    """Load the DEM timesteps from a data source (or the default bucket).
+
+    Args:
+        data_source: Optional explicit source.
+
+    Returns:
+        Mapping ``timestep_index -> DataFrame``.
+    """
+    if data_source is not None:
+        return data_source.read_timesteps()
+
+    from dem_mcm_coupling.bucket_io import get_fs
+
+    return load_parquet_as_timestep_dict(DEFAULT_PARQUET_PATH, fs=get_fs())
+
+
+def _fit_partitioner_for_sweep(
+    partitioner: part.BasePartitioner,
+    config: ExperimentConfig,
+    sample_coords: np.ndarray,
+    s_velocities: np.ndarray,
+    permanent_start: int,
+) -> None:
+    """Fit a partitioner on the stationary phase of the DEM data.
+
+    Velocity-aware methods receive the velocities of the stationary phase.
+
+    Args:
+        partitioner: The partitioner to fit.
+        config: Experiment configuration.
+        sample_coords: Stacked coordinates over all timesteps.
+        s_velocities: Stacked velocities over all timesteps.
+        permanent_start: Row offset of the stationary phase.
+    """
+    if config.method in _METHODS_FITTED_WITH_VELOCITY:
+        partitioner.use_velocity = True
+        partitioner.dem_velocities = s_velocities[permanent_start:, :]
+        partitioner.fit(sample_coords[permanent_start:, :])
+    elif config.method == "cartesian":
+        partitioner.fit(sample_coords)
+    else:
+        # Fit on the stationary phase of the simulation.
+        partitioner.fit(sample_coords[permanent_start:, :])
+
+
 def run_markov_sweep(
     method: str,
     configs: list[ExperimentConfig] | None = None,
     particle_diameter: float | None = None,
     base_dir: str = BASE_OUTPUT_DIR,
-) -> list[dict]:
+    data_source: DataSource | None = None,
+) -> list[dict[str, Any]]:
+    """Run the homogeneous sweep of one (or all) partitioning method(s).
+
+    Args:
+        method: Partitioning method, or ``"all"`` for every method.
+        configs: Optional explicit list of configurations.
+        particle_diameter: Optional diameter filter for the generated
+            configurations.
+        base_dir: Local output directory (legacy parameter, kept for CLI
+            compatibility).
+        data_source: Optional data source; the Hugging Face bucket is used
+            by default.
+
+    Returns:
+        List of ``{"config", "stats", "success"[, "error"]}`` dictionaries.
+    """
+    del base_dir  # kept for API compatibility
 
     print("=" * 70)
-    print(f"  SWEEP MARKOVIEN — méthode: {method.upper()}")
+    print(f"  MARKOVIAN SWEEP — method: {method.upper()}")
     print("=" * 70)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"🖥️  Device: {device}")
 
-    fs = HfFileSystem()
-    print("\n📦 Chargement du fichier Parquet...")
-    timestep_dict = load_parquet_as_timestep_dict(HF_FOLDER, fs)
+    print("\n📦 Loading the parquet file...")
+    timestep_dict = _load_timestep_dict(data_source)
 
-    print("\n🔍 Échantillonnage des coordonnées pour le fit...")
+    print("\n🔍 Sampling the coordinates for the fit...")
     sample_coords, s_velocities, _all_diameters = sample_coordinates(timestep_dict)
-    print(f"   {len(sample_coords)} points échantillonnés")
+    print(f"   {len(sample_coords)} points sampled")
 
-    if method == "all":
-        methods = list(REGISTRY.keys())
-    else:
-        methods = [method]
+    methods = list(REGISTRY) if method == "all" else [method]
 
     if configs is None:
-        all_configs = []
-        for m in methods:
-            all_configs.extend(get_configs(m, particle_diameter=particle_diameter))
+        all_configs = [
+            c
+            for m in methods
+            for c in get_configs(m, particle_diameter=particle_diameter)
+        ]
     else:
         all_configs = configs
 
-    print(f"\n📋 {len(all_configs)} expériences à lancer:")
+    print(f"\n📋 {len(all_configs)} experiments to run:")
     print("-" * 70)
 
-    results_summary = []
-    for i, config in enumerate(all_configs):
-        # ✅ MODIFICATION 7 : physics et physics_full_vel ont besoin de sample_coords pour le fit
+    results_summary: list[dict[str, Any]] = []
+    permanent_start = PERMANENT_START * N_PARTICLES_PER_TIMESTEP
 
+    for i, config in enumerate(all_configs):
         try:
             partitioner = create_partitioner(config.method, **config.method_kwargs)
-            permanent_start = 250 * 1030
-            print("   🔧 Fit partitionneur...")
+            print("   🔧 Fitting the partitioner...")
 
-            # ✅ MODIFICATION 3 : Les deux variantes physics ont besoin des vitesses
-            if config.method in (
-                "physics",
-                "physics_full_vel",
-                "spectral_biclustering",
-                "dbscan",
-                #   "spectral",
-            ):
-                partitioner.use_velocity = True
-                partitioner.dem_velocities = s_velocities[permanent_start:, :]
-                partitioner.fit(
-                    sample_coords[permanent_start:, :]
-                )  # utilise la vitesse grâce à l'attribut use_velocities et dem_velocities
-                # diag = partitioner.diagnostics(sample_coords[250:,:])
-            elif config.method == "cartesian":
-                partitioner.fit(sample_coords)
-            else:
-                # partitioner.fit(sample_coords[250:,:]) # effectue le fit sur les coordonnées sur la phase stationnaire
-                # partitioner.fit(s_velocities[permanent_start:,:]) # effectue le fit sur les coordonnées sur la phase stationnaire
-                partitioner.fit(
-                    sample_coords[permanent_start:, :]
-                )  # effectue le fit sur les coordonnées sur la phase stationnaire
-                # diag = partitioner.diagnostics(sample_coords)
-                # diag = partitioner.diagnostics(s_velocities)
+            _fit_partitioner_for_sweep(
+                partitioner, config, sample_coords, s_velocities, permanent_start
+            )
 
             if config.method in [
                 "adaptive",
                 "multizone",
-                "physics",
-                "physics_full_vel",
-                "dbscan",
+                *sorted(_METHODS_FITTED_WITH_VELOCITY),
             ]:
                 folder_name = config.output_folder(sample_coords=sample_coords)
             else:
                 folder_name = config.output_folder()
             print(f"\n[{i + 1}/{len(all_configs)}] {folder_name}")
-            # print(
-            #     f"   📊 {partitioner.n_cells} cellules | "
-            #     f"{diag['n_visited']} visitées | "
-            #     f"pop: [{diag['pop_min']}, {diag['pop_max']}] "
-            #     f"μ={diag['pop_mean']:.0f} σ={diag['pop_std']:.0f}"
-            # )
 
-            results, stats = run_experiment(config, partitioner, timestep_dict, device)
+            results, stats = run_experiment(
+                config, partitioner, timestep_dict, str(device)
+            )
 
             save_results(
                 config=config,
@@ -1181,36 +1415,38 @@ def run_markov_sweep(
                 stats=stats,
                 image_data=None,
                 folder_name=folder_name,
+                data_source=data_source,
             )
 
             results_summary.append(
                 {"config": asdict(config), "stats": stats, "success": True}
             )
             print(
-                f"   ✅ {stats['n_states_visited']}/{stats['n_states']} états | "
-                f"P(rester)={stats['diagonal_mean']:.4f} | "
-                f"espèces={stats['species']} | "
+                f"   ✅ {stats['n_states_visited']}/{stats['n_states']} states | "
+                f"P(stay)={stats['diagonal_mean']:.4f} | "
+                f"species={stats['species']} | "
                 f"pairs={stats['n_pairs_used']}"
             )
-        except Exception as e:
-            print(f"   ❌ Erreur: {e}")
+        except Exception as exc:
+            print(f"   ❌ Error: {exc}")
+            traceback.print_exc()
             results_summary.append(
                 {
                     "config": asdict(config),
                     "stats": None,
                     "success": False,
-                    "error": str(e),
+                    "error": str(exc),
                 }
             )
 
     print("\n" + "=" * 70)
-    print("RÉSUMÉ")
+    print("SUMMARY")
     print("=" * 70)
     ok = [r for r in results_summary if r["success"]]
     ko = [r for r in results_summary if not r["success"]]
-    print(f"\n✅ Réussies: {len(ok)}/{len(results_summary)}")
+    print(f"\n✅ Success: {len(ok)}/{len(results_summary)}")
     if ko:
-        print(f"❌ Échouées: {len(ko)}")
+        print(f"❌ Failed: {len(ko)}")
         for r in ko:
             print(f"   - {r['config']['method']}: {r.get('error', '?')}")
 
@@ -1222,146 +1458,74 @@ def run_markov_sweep(
         "results": results_summary,
     }
     try:
-        save_experiment_to_bucket(
-            folder_name=f"_summary_{method}",
-            species_data={},
-            stats=summary_data,
-            config={"type": "summary", "method": method},
-        )
-        print(f"\n💾 Résumé sauvegardé: _summary_{method}/")
-    except Exception as e:
-        print(f"\n⚠️  Impossible de sauvegarder le résumé: {e}")
+        if data_source is not None:
+            data_source.write_experiment(
+                folder_name=f"_summary_{method}",
+                stats=summary_data,
+                config={"type": "summary", "method": method},
+            )
+        else:
+            save_experiment_to_bucket(
+                folder_name=f"_summary_{method}",
+                species_data={},
+                stats=summary_data,
+                config={"type": "summary", "method": method},
+            )
+        print(f"\n💾 Summary saved: _summary_{method}/")
+    except Exception as exc:
+        print(f"\n⚠️  Could not save the summary: {exc}")
 
-    print("✨ Terminé!")
+    print("✨ Done!")
     return results_summary
 
 
 # =============================================================================
-# PIPELINE INHOMOGÈNE (sibling du pipeline homogène ci-dessus)
+# INHOMOGENEOUS PIPELINE (sibling of the homogeneous one above)
 # =============================================================================
 
 
-def run_inhomogeneous_experiment(
-    config: ExperimentConfig, partitioner: part.BasePartitioner, timestep_dict: dict[int, pd.DataFrame], device: str = "cpu"
-) -> tuple[dict, dict]:
-    """
-    Construit une matrice de transition P_k par NLT (chaîne inhomogène).
+def _build_inhomogeneous_blocks(
+    config: ExperimentConfig,
+    timestep_dict: dict[int, pd.DataFrame],
+    idx_to_row: dict[int, int],
+) -> list[list[tuple[int, int]]]:
+    """Build the transition pairs grouped by NLT block.
 
-    Sibling de run_experiment() — même signature, même logique de préparation,
-    mais retourne une liste de matrices (une par NLT) au lieu d'une seule.
+    Args:
+        config: Experiment configuration.
+        timestep_dict: Mapping ``timestep_index -> DataFrame``.
+        idx_to_row: Mapping ``timestep_index -> row in states_matrix``.
 
     Returns:
-        results: dict avec "matrix" + pour chaque espèce: {"P_blocks", "S_matrix", "times"}
-        stats:   dict avec métriques étendues (n_blocks, n_pairs_per_block, inhomogeneous=True)
+        List of blocks; each block is a list of ``(idx_prev, idx_curr)``
+        pairs.
     """
-    n_states = partitioner.n_cells
+    start_base = config.start_index
     tau = config.tau
     step = config.step
-    dt = config.dt
-    start_base = config.start_index
+    dt = config.dt or 1
 
-    print(
-        f"   📐 Configuration inhomogène: NLT={config.nlt}, step={step}, dt={dt}, tau={tau}"
-    )
-    print(
-        f"   📦 {len(timestep_dict)} timesteps disponibles "
-        f"(index {min(timestep_dict)} → {max(timestep_dict)})"
-    )
-
-    try:
-        df_init = timestep_dict[start_base]
-    except KeyError:
-        raise KeyError(f"Timestep start_base={start_base} absent du dict")
-
-    species_masks = _detect_species(df_init)
-
-    sorted_indices = sorted(timestep_dict.keys())
-    sorted_indices = list(sorted_indices)
-    n_timesteps = len(sorted_indices)
-    n_particles = len(timestep_dict[sorted_indices[0]])
-    idx_to_row = {idx: row for row, idx in enumerate(sorted_indices)}
-
-    print(
-        f"   🔧 Calcul des états : {n_timesteps} timesteps × {n_particles} particules "
-        f"(à partir de t={start_base})..."
-    )
-
-    all_x, all_y, all_z = [], [], []
-    all_vx, all_vy, all_vz = [], [], []
-    is_physics = isinstance(partitioner, part.PhysicsAwarePartitioner)
-    is_bicluster = isinstance(partitioner, part.SpectralBiclusteringPartitioner)
-    is_gaussian = isinstance(partitioner, part.GaussianMixturePartitioner)
-    is_dbscan = isinstance(partitioner, part.DBSCANPartitioner)
-    is_spectral = isinstance(partitioner, part.SpectralClusteringPartitioner)
-
-    for idx in sorted_indices:
-        df = timestep_dict[idx]
-        all_x.append(df["coordinates:0"].to_numpy())
-        all_y.append(df["coordinates:1"].to_numpy())
-        all_z.append(df["coordinates:2"].to_numpy())
-
-        if is_physics or is_bicluster or is_gaussian or is_dbscan or is_spectral:
-            all_vx.append(df["Velocity:0"].to_numpy())
-            all_vy.append(df["Velocity:1"].to_numpy())
-            all_vz.append(df["Velocity:2"].to_numpy())
-
-    coords_x = np.concatenate(all_x)
-    coords_y = np.concatenate(all_y)
-    coords_z = np.concatenate(all_z)
-
-    if is_physics or is_bicluster or is_gaussian or is_dbscan or is_spectral:
-        vx_all = np.concatenate(all_vx)
-        vy_all = np.concatenate(all_vy)
-        vz_all = np.concatenate(all_vz)
-        if is_physics or is_gaussian or is_bicluster or is_spectral or is_dbscan:
-            partitioner.use_velocity = True
-            partitioner.dem_velocities = np.column_stack([vx_all, vy_all, vz_all])
-        states_flat = partitioner.compute_states(
-            coords_x, coords_y, coords_z, vx_all, vy_all, vz_all
-        )
-    else:
-        states_flat = partitioner.compute_states(coords_x, coords_y, coords_z)
-
-    # shape correcte : (n_timesteps, n_particles)
-    states_matrix = states_flat.reshape(n_timesteps, n_particles)
-    print(f"   ✅ states_matrix: {states_matrix.shape}")
-
-    S_matrices = {}
-    for species, mask in species_masks.items():
-        states_species = states_matrix[:, mask]
-        S = np.zeros((n_timesteps, n_states), dtype=np.float64)
-        for t in range(n_timesteps):
-            S[t] = np.bincount(states_species[t], minlength=n_states)
-        S_matrices[species] = S
-        print(
-            f"   ✅ S_matrix '{species}': {S.shape} | "
-            f"sum t=0: {S[0].sum():.0f} particules ({mask.sum()} attendues)"
-        )
-
-    # ══════════════════════════════════════════════════════════════════════
-    # CONSTRUCTION PAR BLOC NLT — chaque bloc produit sa propre P_k
-    # ══════════════════════════════════════════════════════════════════════
-
-    blocks = []  # listes de paires (idx_prev, idx_curr), une par NLT
+    blocks: list[list[tuple[int, int]]] = []
     for nlt_idx in range(config.nlt):
-        block_pairs = []
-        """step est la distance entre end et start du prochain"""
+        block_pairs: list[tuple[int, int]] = []
+        # `step` is the distance between the end of a block and the start of
+        # the next one.
         current_start_base = start_base + nlt_idx * (step + tau)
-        max_end_possible = max(timestep_dict.keys())
+        max_end_possible = max(timestep_dict)
         max_start_possible = max_end_possible - tau
 
         if current_start_base > max_start_possible:
             print(
-                f"   ⚠️  Bloc {nlt_idx + 1} ignoré "
+                f"   ⚠️  Block {nlt_idx + 1} ignored "
                 f"(start={current_start_base} > max={max_start_possible})"
             )
             break
 
         if nlt_idx == config.nlt - 1:
             remaining_range = max_start_possible - current_start_base
-            n_apprentissages = min((tau) // dt, remaining_range // dt) + 1
+            n_apprentissages = min(tau // dt, remaining_range // dt) + 1
         else:
-            n_apprentissages = (tau) // dt
+            n_apprentissages = tau // dt
 
         for i in range(n_apprentissages):
             start_idx = current_start_base + i * dt
@@ -1373,19 +1537,81 @@ def run_inhomogeneous_experiment(
         if block_pairs:
             blocks.append(block_pairs)
             print(
-                f"   📦 Bloc {len(blocks)}: {len(block_pairs)} paires "
+                f"   📦 Block {len(blocks)}: {len(block_pairs)} pairs "
                 f"[{block_pairs[0][0]}→{block_pairs[0][1]} … "
                 f"{block_pairs[-1][0]}→{block_pairs[-1][1]}]"
             )
 
-    if not blocks:
-        raise ValueError("Aucune paire valide — impossible de construire des blocs")
+    return blocks
 
-    # Calcul d'une matrice P_k par bloc et par espèce
-    P_blocks_by_species = {species: [] for species in species_masks}
+
+def run_inhomogeneous_experiment(
+    config: ExperimentConfig,
+    partitioner: part.BasePartitioner,
+    timestep_dict: dict[int, pd.DataFrame],
+    device: str = "cpu",
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Build one transition matrix ``P_k`` per NLT block (inhomogeneous).
+
+    Sibling of :func:`run_experiment` — same preparation logic, but returns
+    a list of matrices (one per NLT block) instead of a single one.
+
+    Args:
+        config: Experiment configuration.
+        partitioner: The fitted partitioner.
+        timestep_dict: Mapping ``timestep_index -> DataFrame``.
+        device: Torch device.
+
+    Returns:
+        Tuple ``(results, stats)``; ``results`` holds ``"matrix"`` and, per
+        species, ``{"P_blocks", "S_matrix", "times"}``.
+
+    Raises:
+        KeyError: If ``config.start_index`` is absent from the data.
+        ValueError: If no valid block can be built.
+    """
+    n_states = partitioner.n_cells
+    tau = config.tau
+    start_base = config.start_index
+
+    print(
+        f"   📐 Inhomogeneous configuration: NLT={config.nlt}, "
+        f"step={config.step}, dt={config.dt}, tau={tau}"
+    )
+    print(
+        f"   📦 {len(timestep_dict)} timesteps available "
+        f"(index {min(timestep_dict)} → {max(timestep_dict)})"
+    )
+
+    try:
+        df_init = timestep_dict[start_base]
+    except KeyError:
+        raise KeyError(
+            f"Timestep start_base={start_base} absent from the data"
+        ) from None
+
+    species_masks = _detect_species(df_init)
+
+    sorted_indices = sorted(timestep_dict)
+    n_timesteps = len(sorted_indices)
+    idx_to_row = {idx: row for row, idx in enumerate(sorted_indices)}
+
+    print(f"   🔧 State computation: {n_timesteps} timesteps (from t={start_base})...")
+    states_matrix, _ = _compute_state_matrices(timestep_dict, partitioner, start_base)
+    S_matrices = _build_state_matrices(states_matrix, species_masks, n_states)
+
+    # ── Construction per NLT block: each block produces its own P_k ────────
+
+    blocks = _build_inhomogeneous_blocks(config, timestep_dict, idx_to_row)
+    if not blocks:
+        raise ValueError("No valid pair — cannot build the blocks")
+
+    P_blocks_by_species: dict[str, list[np.ndarray]] = {
+        species: [] for species in species_masks
+    }
 
     for block_idx, block_pairs in enumerate(blocks):
-        accum = {
+        accum: dict[str, dict[str, np.ndarray]] = {
             species: {
                 "prev": np.empty(0, dtype=np.int64),
                 "curr": np.empty(0, dtype=np.int64),
@@ -1398,16 +1624,10 @@ def run_inhomogeneous_experiment(
             row_curr = idx_to_row[idx_curr]
             for species, mask in species_masks.items():
                 accum[species]["prev"] = np.concatenate(
-                    [
-                        accum[species]["prev"],
-                        states_matrix[row_prev][mask],
-                    ]
+                    (accum[species]["prev"], states_matrix[row_prev][mask])
                 )
                 accum[species]["curr"] = np.concatenate(
-                    [
-                        accum[species]["curr"],
-                        states_matrix[row_curr][mask],
-                    ]
+                    (accum[species]["curr"], states_matrix[row_curr][mask])
                 )
 
         for species in species_masks:
@@ -1417,7 +1637,6 @@ def run_inhomogeneous_experiment(
                     accum[species]["curr"],
                     n_states,
                     device,
-                    species_labels=None,
                 )
                 .cpu()
                 .numpy()
@@ -1426,27 +1645,26 @@ def run_inhomogeneous_experiment(
 
         n_visited_k = int(
             (
-                P_blocks_by_species[next(iter(species_masks))][block_idx].sum(axis=0)
+                P_blocks_by_species[next(iter(species_masks))][block_idx].sum(axis=1)
                 > 0
             ).sum()
         )
-        print(f"      P_{block_idx}: {n_states} états, {n_visited_k} visités")
+        print(f"      P_{block_idx}: {n_states} states, {n_visited_k} visited")
 
-    # Assemblage du dict results
-    results = {"matrix": states_matrix}
+    # Assemble the results dictionary.
+    results: dict[str, Any] = {"matrix": states_matrix}
     for species in species_masks:
         results[species] = {
-            "P_blocks": np.array(
-                P_blocks_by_species[species]
-            ),  # (n_blocks, n_states, n_states)
+            # (n_blocks, n_states, n_states)
+            "P_blocks": np.array(P_blocks_by_species[species]),
             "S_matrix": S_matrices[species],
             "times": np.array(sorted_indices),
         }
 
-    # Stats enrichies
+    # Enriched statistics.
     first_species = next(iter(species_masks))
     n_visited_total = int(
-        (results[first_species]["P_blocks"].sum(axis=(0, 1)) > 0).sum()
+        (results[first_species]["P_blocks"].sum(axis=(0, 2)) > 0).sum()
     )
 
     stats = {
@@ -1457,11 +1675,11 @@ def run_inhomogeneous_experiment(
         "n_states_visited": n_visited_total,
         "fraction_visited": round(float(n_visited_total) / n_states, 4),
         "method": config.method,
-        "species": list(species_masks.keys()),
+        "species": list(species_masks),
         "n_timesteps": n_timesteps,
         "tau": tau,
-        "step": step,
-        "dt": dt,
+        "step": config.step,
+        "dt": config.dt,
         "start_index": config.start_index,
         "particle_diameter": config.particle_diameter,
         "inhomogeneous": True,
@@ -1471,51 +1689,39 @@ def run_inhomogeneous_experiment(
 
 
 def save_inhomogeneous_results(
-    config: ExperimentConfig, partitioner: part.BasePartitioner, results: dict, stats: dict, image_data: dict | None = None, folder_name: str | None = None
+    config: ExperimentConfig,
+    partitioner: part.BasePartitioner,
+    results: dict[str, Any],
+    stats: dict[str, Any],
+    image_data: dict[str, bytes] | None = None,
+    folder_name: str | None = None,
+    data_source: DataSource | None = None,
 ) -> None:
-    """
-    Sauvegarde les résultats inhomogènes (P_blocks par espèce) dans le bucket.
+    """Save an inhomogeneous experiment (``P_blocks`` per species).
 
-    Sibling de save_results() — même structure mais sauvegarde P_blocks_{species}.npy
-    (array 3D) au lieu de transitionmatrix_{species}.npy, et ajoute
-    inhomogeneous_metadata.json.
+    Sibling of :func:`save_results` — stores ``P_blocks_{species}.npy``
+    (3-D arrays) instead of ``transitionmatrix_{species}.npy`` and adds
+    ``inhomogeneous_metadata.json``.
+
+    Args:
+        config: Experiment configuration.
+        partitioner: The fitted partitioner.
+        results: Output of :func:`run_inhomogeneous_experiment`.
+        stats: Statistics dictionary.
+        image_data: Optional images to store.
+        folder_name: Optional folder name (computed from ``config`` when
+            ``None``).
+        data_source: Optional destination source (Hugging Face bucket by
+            default).
     """
     if folder_name is None:
         folder_name = config.output_folder()
 
-    # Données du partitionneur (identique à save_results)
-    partitioner_data = {}
-    if hasattr(partitioner, "centroids") and partitioner.centroids is not None:
-        partitioner_data["centroids"] = partitioner.centroids
-    if hasattr(partitioner, "_r_edges") and partitioner._r_edges is not None:
-        partitioner_data["r_edges"] = partitioner._r_edges
-    if hasattr(partitioner, "_leaves") and partitioner._leaves:
-        partitioner_data["leaves"] = np.array(partitioner._leaves)
-    if hasattr(partitioner, "_x_edges") and partitioner._x_edges is not None:
-        partitioner_data["x_edges"] = partitioner._x_edges
-        partitioner_data["y_edges"] = partitioner._y_edges
-        partitioner_data["z_edges"] = partitioner._z_edges
-    if isinstance(partitioner, part.PhysicsAwarePartitioner):
-        if partitioner._mean is not None:
-            partitioner_data["mean"] = partitioner._mean
-        if partitioner._std is not None:
-            partitioner_data["std"] = partitioner._std
-        partitioner_data["physics_params"] = {
-            "n_features": partitioner._n_features,
-            "velocity_weight": partitioner.velocity_weight,
-            "velocity_mode": partitioner.velocity_mode,
-        }
-    partitioner_data["partitioner_meta"] = {
-        "type": type(partitioner).__name__,
-        "label": partitioner.label,
-        "n_cells": partitioner.n_cells,
-    }
-
-    # Species data : P_blocks au lieu de transitionmatrix
-    species_data = {}
+    # Species data: P_blocks instead of transitionmatrix.
+    species_data: dict[str, np.ndarray] = {}
     if "matrix" in results:
         species_data["states_matrix"] = results["matrix"]
-        print(f"   📦 states_matrix à sauvegarder : {results['matrix'].shape}")
+        print(f"   📦 states_matrix to save: {results['matrix'].shape}")
 
     for species, data in results.items():
         if species == "matrix":
@@ -1524,7 +1730,7 @@ def save_inhomogeneous_results(
         species_data[f"S_matrix_{species}"] = data["S_matrix"]
         species_data[f"times_{species}"] = data["times"]
 
-    # Metadata inhomogène
+    # Inhomogeneous metadata.
     inhomogeneous_metadata = {
         "n_blocks": stats["n_blocks"],
         "n_pairs_per_block": stats["n_pairs_per_block"],
@@ -1540,16 +1746,27 @@ def save_inhomogeneous_results(
         "species_list": [k for k in results if k != "matrix"],
     }
 
-    save_experiment_to_bucket(
-        folder_name=folder_name,
-        species_data=species_data,
-        stats=stats_with_species,
-        config=asdict(config),
-        partitioner_data=partitioner_data,
-        image_data=image_data,
-        particle_diameter=config.particle_diameter,
-        inhomogeneous_metadata=inhomogeneous_metadata,
-    )
+    if data_source is not None:
+        data_source.write_experiment(
+            folder_name=folder_name,
+            stats=stats_with_species,
+            config=asdict(config),
+            species_data=species_data,
+            partitioner_data=_collect_partitioner_data(partitioner),
+            image_data=image_data,
+            inhomogeneous_metadata=inhomogeneous_metadata,
+        )
+    else:
+        save_experiment_to_bucket(
+            folder_name=folder_name,
+            species_data=species_data,
+            stats=stats_with_species,
+            config=asdict(config),
+            partitioner_data=_collect_partitioner_data(partitioner),
+            image_data=image_data,
+            particle_diameter=config.particle_diameter,
+            inhomogeneous_metadata=inhomogeneous_metadata,
+        )
 
     bucket_name = (
         "BIG"
@@ -1560,8 +1777,8 @@ def save_inhomogeneous_results(
     )
     print(
         f"   💾 Bucket: {bucket_name}/{folder_name}/ "
-        f"(inhomogène, {stats['n_blocks']} blocs, "
-        f"espèces={[k for k in results if k != 'matrix']})"
+        f"(inhomogeneous, {stats['n_blocks']} blocks, "
+        f"species={[k for k in results if k != 'matrix']})"
     )
 
 
@@ -1570,70 +1787,67 @@ def run_inhomogeneous_markov_sweep(
     configs: list[ExperimentConfig] | None = None,
     particle_diameter: float | None = None,
     base_dir: str = BASE_OUTPUT_DIR,
-) -> list[dict]:
-    """
-    Sweep Markovien inhomogène — sibling de run_markov_sweep().
+    data_source: DataSource | None = None,
+) -> list[dict[str, Any]]:
+    """Run the inhomogeneous sweep — sibling of :func:`run_markov_sweep`.
 
-    Même orchestration que run_markov_sweep() mais utilise les fonctions
-    inhomogènes pour l'exécution et la sauvegarde.
+    Args:
+        method: Partitioning method, or ``"all"``.
+        configs: Optional explicit list of configurations.
+        particle_diameter: Optional diameter filter.
+        base_dir: Local output directory (legacy parameter).
+        data_source: Optional data source; the Hugging Face bucket is used
+            by default.
+
+    Returns:
+        List of ``{"config", "stats", "success"[, "error"]}`` dictionaries.
     """
+    del base_dir  # kept for API compatibility
+
     print("=" * 70)
-    print(f"  SWEEP INHOMOGÈNE — méthode: {method.upper()}")
+    print(f"  INHOMOGENEOUS SWEEP — method: {method.upper()}")
     print("=" * 70)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"🖥️  Device: {device}")
 
-    fs = HfFileSystem()
-    print("\n📦 Chargement du fichier Parquet...")
-    timestep_dict = load_parquet_as_timestep_dict(HF_FOLDER, fs)
+    print("\n📦 Loading the parquet file...")
+    timestep_dict = _load_timestep_dict(data_source)
 
-    print("\n🔍 Échantillonnage des coordonnées pour le fit...")
+    print("\n🔍 Sampling the coordinates for the fit...")
     sample_coords, s_velocities, _all_diameters = sample_coordinates(timestep_dict)
-    print(f"   {len(sample_coords)} points échantillonnés")
+    print(f"   {len(sample_coords)} points sampled")
 
-    if method == "all":
-        methods = list(REGISTRY.keys())
-    else:
-        methods = [method]
+    methods = list(REGISTRY) if method == "all" else [method]
 
     if configs is None:
-        all_configs = []
+        all_configs: list[ExperimentConfig] = []
         for m in methods:
             for c in get_configs(m, particle_diameter=particle_diameter):
-                c.inhomogeneous = True  # Forcer le mode inhomogène
+                c.inhomogeneous = True  # force the inhomogeneous mode
                 all_configs.append(c)
     else:
         all_configs = configs
 
-    print(f"\n📋 {len(all_configs)} expériences inhomogènes à lancer:")
+    print(f"\n📋 {len(all_configs)} inhomogeneous experiments to run:")
     print("-" * 70)
 
-    results_summary = []
+    results_summary: list[dict[str, Any]] = []
+    permanent_start = PERMANENT_START * N_PARTICLES_PER_TIMESTEP
+
     for i, config in enumerate(all_configs):
         try:
             partitioner = create_partitioner(config.method, **config.method_kwargs)
-            permanent_start = 250 * 1030
-            print("   🔧 Fit partitionneur...")
+            print("   🔧 Fitting the partitioner...")
 
-            if config.method in (
-                "physics",
-                "physics_full_vel",
-                "spectral_biclustering",
-                "dbscan",
-            ):
-                partitioner.use_velocity = True
-                partitioner.dem_velocities = s_velocities[permanent_start:, :]
-                partitioner.fit(sample_coords[permanent_start:, :])
-            else:
-                partitioner.fit(sample_coords[permanent_start:, :])
+            _fit_partitioner_for_sweep(
+                partitioner, config, sample_coords, s_velocities, permanent_start
+            )
 
             if config.method in [
                 "adaptive",
                 "multizone",
-                "physics",
-                "physics_full_vel",
-                "dbscan",
+                *sorted(_METHODS_FITTED_WITH_VELOCITY),
             ]:
                 folder_name = config.output_folder(sample_coords=sample_coords)
             else:
@@ -1641,7 +1855,7 @@ def run_inhomogeneous_markov_sweep(
             print(f"\n[{i + 1}/{len(all_configs)}] {folder_name}")
 
             results, stats = run_inhomogeneous_experiment(
-                config, partitioner, timestep_dict, device
+                config, partitioner, timestep_dict, str(device)
             )
 
             save_inhomogeneous_results(
@@ -1651,38 +1865,37 @@ def run_inhomogeneous_markov_sweep(
                 stats=stats,
                 image_data=None,
                 folder_name=folder_name,
+                data_source=data_source,
             )
 
             results_summary.append(
                 {"config": asdict(config), "stats": stats, "success": True}
             )
             print(
-                f"   ✅ {stats['n_states_visited']}/{stats['n_states']} états | "
-                f"{stats['n_blocks']} blocs | "
-                f"espèces={stats['species']}"
+                f"   ✅ {stats['n_states_visited']}/{stats['n_states']} states | "
+                f"{stats['n_blocks']} blocks | "
+                f"species={stats['species']}"
             )
-        except Exception as e:
-            print(f"   ❌ Erreur: {e}")
-            import traceback
-
+        except Exception as exc:
+            print(f"   ❌ Error: {exc}")
             traceback.print_exc()
             results_summary.append(
                 {
                     "config": asdict(config),
                     "stats": None,
                     "success": False,
-                    "error": str(e),
+                    "error": str(exc),
                 }
             )
 
     print("\n" + "=" * 70)
-    print("RÉSUMÉ (inhomogène)")
+    print("SUMMARY (inhomogeneous)")
     print("=" * 70)
     ok = [r for r in results_summary if r["success"]]
     ko = [r for r in results_summary if not r["success"]]
-    print(f"\n✅ Réussies: {len(ok)}/{len(results_summary)}")
+    print(f"\n✅ Success: {len(ok)}/{len(results_summary)}")
     if ko:
-        print(f"❌ Échouées: {len(ko)}")
+        print(f"❌ Failed: {len(ko)}")
         for r in ko:
             print(f"   - {r['config']['method']}: {r.get('error', '?')}")
 
@@ -1695,17 +1908,25 @@ def run_inhomogeneous_markov_sweep(
         "inhomogeneous": True,
     }
     try:
-        save_experiment_to_bucket(
-            folder_name=f"_summary_inhomogeneous_{method}",
-            species_data={},
-            stats=summary_data,
-            config={"type": "summary", "method": method, "inhomogeneous": True},
-        )
-        print(f"\n💾 Résumé sauvegardé: _summary_inhomogeneous_{method}/")
-    except Exception as e:
-        print(f"\n⚠️  Impossible de sauvegarder le résumé: {e}")
+        if data_source is not None:
+            data_source.write_experiment(
+                folder_name=f"_summary_inhomogeneous_{method}",
+                stats=summary_data,
+                config={"type": "summary", "method": method, "inhomogeneous": True},
+                inhomogeneous_metadata=None,
+            )
+        else:
+            save_experiment_to_bucket(
+                folder_name=f"_summary_inhomogeneous_{method}",
+                species_data={},
+                stats=summary_data,
+                config={"type": "summary", "method": method, "inhomogeneous": True},
+            )
+        print(f"\n💾 Summary saved: _summary_inhomogeneous_{method}/")
+    except Exception as exc:
+        print(f"\n⚠️  Could not save the summary: {exc}")
 
-    print("✨ Terminé!")
+    print("✨ Done!")
     return results_summary
 
 
@@ -1715,38 +1936,39 @@ def run_inhomogeneous_markov_sweep(
 
 
 def main() -> None:
+    """Command-line entry point of the sweep pipelines."""
     parser = argparse.ArgumentParser(
-        description="Sweep Markovien multi-partitionnement (homogène ou inhomogène)"
+        description="Markovian sweep, multi-partitioning (homogeneous or inhomogeneous)"
     )
     parser.add_argument(
         "--method",
         type=str,
         default="cartesian",
-        choices=[*list(REGISTRY.keys()), "all"],
-        help="Type de partitionnement (default: cartesian)",
+        choices=[*list(REGISTRY), "all"],
+        help="Partitioning type (default: cartesian)",
     )
     parser.add_argument(
         "--output",
         type=str,
         default=BASE_OUTPUT_DIR,
-        help=f"Dossier de sortie (default: {BASE_OUTPUT_DIR})",
+        help=f"Output directory (default: {BASE_OUTPUT_DIR})",
     )
     parser.add_argument(
         "--diameter",
         type=float,
         choices=[0.004, 0.008],
         default=None,
-        help="Filtrer par diamètre de particule: 0.004 (SMALL), 0.008 (BIG), ou None (tous)",
+        help="Particle-diameter filter: 0.004 (SMALL), 0.008 (BIG), or None (all)",
     )
     parser.add_argument(
         "--list",
         action="store_true",
-        help="Lister les configurations sans lancer les calculs",
+        help="List the configurations without running the computations",
     )
     parser.add_argument(
         "--inhomogeneous",
         action="store_true",
-        help="Activer le mode inhomogène (une matrice P par NLT)",
+        help="Enable the inhomogeneous mode (one P matrix per NLT block)",
     )
     args = parser.parse_args()
 
@@ -1758,7 +1980,8 @@ def main() -> None:
                 for c in configs:
                     p = create_partitioner(c.method, **c.method_kwargs)
                     print(
-                        f"  {p.label} NLT={c.nlt} step={c.step} dt={c.dt} diameter={c.particle_diameter}"
+                        f"  {p.label} NLT={c.nlt} step={c.step} dt={c.dt} "
+                        f"diameter={c.particle_diameter}"
                     )
         else:
             configs = get_configs(args.method, particle_diameter=args.diameter)
@@ -1766,7 +1989,8 @@ def main() -> None:
             for c in configs:
                 p = create_partitioner(c.method, **c.method_kwargs)
                 print(
-                    f"  {p.label} NLT={c.nlt} step={c.step} dt={c.dt} diameter={c.particle_diameter}"
+                    f"  {p.label} NLT={c.nlt} step={c.step} dt={c.dt} "
+                    f"diameter={c.particle_diameter}"
                 )
         return
 

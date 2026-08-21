@@ -5,12 +5,13 @@ Tests complets pour le modèle de Markov inhomogène.
 
 Valide que :
 1. Le flag `inhomogeneous` dans ExperimentConfig modifie bien le nom du dossier
-2. `run_inhomogeneous_experiment()` construit correctement P_blocks (une matrice par NLT)
+2. `run_inhomogeneous_experiment()` construit P_blocks (une matrice par NLT)
 3. `save_inhomogeneous_results()` sauvegarde au bon format avec metadata
 4. `propagate_markov_inhomogeneous()` utilise les bonnes matrices au bon moment
 5. `prepare_species_inhomogeneous()` prépare correctement les données
 6. `load_experiment()` détecte le format inhomogène et charge P_blocks
-7. Le round-trip complet config → expérience → sauvegarde → charge → propagation est cohérent
+7. Le round-trip complet (config → expérience → sauvegarde →
+   charge → propagation) est cohérent
 8. Les cas limites (1 seule espèce, 1 seul NLT, matrices identiques, etc.) fonctionnent
 """
 
@@ -151,7 +152,9 @@ def inhomogeneous_config_single_nlt() -> ExperimentConfig:
 
 
 @pytest.fixture
-def synthetic_timestep_dict(rng: np.random.RandomState, n_particles: int, n_timesteps: int) -> dict[int, pd.DataFrame]:
+def synthetic_timestep_dict(
+    rng: np.random.RandomState, n_particles: int, n_timesteps: int
+) -> dict[int, pd.DataFrame]:
     """
     Crée un dictionnaire de timesteps synthétiques pour les tests.
 
@@ -220,7 +223,9 @@ def synthetic_timestep_dict(rng: np.random.RandomState, n_particles: int, n_time
 
 
 @pytest.fixture
-def synthetic_timestep_dict_large(rng: np.random.RandomState, n_particles: int, n_timesteps_large: int) -> dict[int, pd.DataFrame]:
+def synthetic_timestep_dict_large(
+    rng: np.random.RandomState, n_particles: int, n_timesteps_large: int
+) -> dict[int, pd.DataFrame]:
     """
     Crée un dictionnaire de timesteps synthétiques AVEC PLUS DE TIMESTEPS
     pour les tests inhomogènes qui ont besoin de NLT=3 blocs.
@@ -287,7 +292,7 @@ def synthetic_timestep_dict_large(rng: np.random.RandomState, n_particles: int, 
 
 
 @pytest.fixture
-def mock_partitioner(rng: np.random.RandomState, n_states: int) -> MockPartitioner:
+def mock_partitioner(rng: np.random.RandomState, n_states: int) -> Any:
     """
     Mock d'un partitionneur simple.
 
@@ -310,7 +315,15 @@ def mock_partitioner(rng: np.random.RandomState, n_states: int) -> MockPartition
         def fit(self, coords: np.ndarray, **kwargs: Any) -> MockPartitioner:
             return self
 
-        def compute_states(self, x: np.ndarray, y: np.ndarray, z: np.ndarray, vx: np.ndarray | None = None, vy: np.ndarray | None = None, vz: np.ndarray | None = None) -> np.ndarray:
+        def compute_states(
+            self,
+            x: np.ndarray,
+            y: np.ndarray,
+            z: np.ndarray,
+            vx: np.ndarray | None = None,
+            vy: np.ndarray | None = None,
+            vz: np.ndarray | None = None,
+        ) -> np.ndarray:
             n = len(x)
             # Distribution inégale pour créer des états visités/non visités
             states = rng.choice(n_states, size=n, p=_make_uneven_distribution(n_states))
@@ -341,7 +354,9 @@ def _make_uneven_distribution(n_states: int) -> np.ndarray:
 
 
 @pytest.fixture
-def homogeneous_transition_matrix(rng: np.random.RandomState, n_states: int) -> np.ndarray:
+def homogeneous_transition_matrix(
+    rng: np.random.RandomState, n_states: int
+) -> np.ndarray:
     """Matrice de transition homogène row-stochastic."""
     P = rng.rand(n_states, n_states)
     P /= P.sum(axis=1, keepdims=True)
@@ -377,7 +392,9 @@ def inhomogeneous_P_blocks(rng: np.random.RandomState, n_states: int) -> np.ndar
 
 
 @pytest.fixture
-def synthetic_S_matrix(rng: np.random.RandomState, n_timesteps: int, n_states: int) -> np.ndarray:
+def synthetic_S_matrix(
+    rng: np.random.RandomState, n_timesteps: int, n_states: int
+) -> np.ndarray:
     """Matrice d'états synthétique (n_timesteps, n_states)."""
     S = rng.poisson(50, size=(n_timesteps, n_states)).astype(np.float64)
     return S
@@ -409,12 +426,16 @@ class TestExperimentConfigInhomogeneous:
         )
         assert config.inhomogeneous is True
 
-    def test_output_folder_prefix_homogeneous(self, homogeneous_config: ExperimentConfig) -> None:
+    def test_output_folder_prefix_homogeneous(
+        self, homogeneous_config: ExperimentConfig
+    ) -> None:
         """Sans le flag, pas de préfixe inhomogeneous_."""
         folder = homogeneous_config.output_folder()
         assert not folder.startswith("inhomogeneous_")
 
-    def test_output_folder_prefix_inhomogeneous(self, inhomogeneous_config: ExperimentConfig) -> None:
+    def test_output_folder_prefix_inhomogeneous(
+        self, inhomogeneous_config: ExperimentConfig
+    ) -> None:
         """Avec le flag, le dossier commence par inhomogeneous_."""
         folder = inhomogeneous_config.output_folder()
         assert folder.startswith("inhomogeneous_")
@@ -426,13 +447,17 @@ class TestExperimentConfigInhomogeneous:
         folder = inhomogeneous_config_single_nlt.output_folder()
         assert folder.startswith("inhomogeneous_")
 
-    def test_output_folder_deterministic(self, inhomogeneous_config: ExperimentConfig) -> None:
+    def test_output_folder_deterministic(
+        self, inhomogeneous_config: ExperimentConfig
+    ) -> None:
         """Deux appels produisent le même nom de dossier."""
         f1 = inhomogeneous_config.output_folder()
         f2 = inhomogeneous_config.output_folder()
         assert f1 == f2
 
-    def test_asdict_contains_inhomogeneous(self, inhomogeneous_config: ExperimentConfig) -> None:
+    def test_asdict_contains_inhomogeneous(
+        self, inhomogeneous_config: ExperimentConfig
+    ) -> None:
         """asdict() doit inclure le champ inhomogeneous."""
         d = asdict(inhomogeneous_config)
         assert "inhomogeneous" in d
@@ -471,7 +496,9 @@ class TestExperimentConfigInhomogeneous:
 class TestPropagateMarkovInhomogeneous:
     """Valide la propagation markovienne avec matrices variables."""
 
-    def test_basic_shape(self, inhomogeneous_P_blocks: np.ndarray, n_states: int) -> None:
+    def test_basic_shape(
+        self, inhomogeneous_P_blocks: np.ndarray, n_states: int
+    ) -> None:
         """La propagation doit retourner (n_steps+1, n_states)."""
         S0 = np.ones(n_states) * 50
         times = np.arange(250, 500)
@@ -489,7 +516,9 @@ class TestPropagateMarkovInhomogeneous:
         assert traj.shape[1] == n_states
         assert len(t_markov) == traj.shape[0]
 
-    def test_preserves_total_particles(self, inhomogeneous_P_blocks: np.ndarray, n_states: int) -> None:
+    def test_preserves_total_particles(
+        self, inhomogeneous_P_blocks: np.ndarray, n_states: int
+    ) -> None:
         """La somme des particules doit être conservée (normalisation)."""
         S0 = np.ones(n_states) * 50
         total_init = S0.sum()
@@ -509,7 +538,9 @@ class TestPropagateMarkovInhomogeneous:
                 f"Perte de particules au pas {t}: {traj[t].sum()} != {total_init}"
             )
 
-    def test_activated_states_only(self, inhomogeneous_P_blocks: np.ndarray, n_states: int) -> None:
+    def test_activated_states_only(
+        self, inhomogeneous_P_blocks: np.ndarray, n_states: int
+    ) -> None:
         """
         Les états désactivés ne doivent pas recevoir de population INITIALE.
 
@@ -524,7 +555,8 @@ class TestPropagateMarkovInhomogeneous:
         activated[: n_states // 2] = True  # Seulement la moitié des états activés
         times = np.arange(250, 500)
 
-        # Utiliser les matrices du fixture (row-stochastic, validées par test_preserves_total_particles)
+        # Matrices du fixture (row-stochastic, validées par
+        # test_preserves_total_particles)
         P_blocks = inhomogeneous_P_blocks
 
         traj, _ = propagate_markov_inhomogeneous(
@@ -613,7 +645,9 @@ class TestPropagateMarkovInhomogeneous:
             "Blocs identiques devraient donner le même résultat qu'une seule matrice"
         )
 
-    def test_different_blocks_produce_different_trajectories(self, n_states: int) -> None:
+    def test_different_blocks_produce_different_trajectories(
+        self, n_states: int
+    ) -> None:
         """
         Des matrices différentes doivent produire des trajectoires différentes.
 
@@ -717,7 +751,9 @@ class TestPropagateMarkovInhomogeneous:
                 f"max={max_state}, min={min_state}"
             )
 
-    def test_non_negative_states(self, inhomogeneous_P_blocks: np.ndarray, n_states: int) -> None:
+    def test_non_negative_states(
+        self, inhomogeneous_P_blocks: np.ndarray, n_states: int
+    ) -> None:
         """Les populations d'états doivent toujours être non-négatives."""
         S0 = np.ones(n_states) * 50
         times = np.arange(250, 500)
@@ -758,7 +794,9 @@ class TestPropagateMarkovInhomogeneous:
                 f"Perte de particules au pas {t}"
             )
 
-    def test_zero_activation(self, inhomogeneous_P_blocks: np.ndarray, n_states: int) -> None:
+    def test_zero_activation(
+        self, inhomogeneous_P_blocks: np.ndarray, n_states: int
+    ) -> None:
         """Aucun état activé → tout reste à 0."""
         S0 = np.ones(n_states) * 50
         times = np.arange(250, 500)
@@ -785,8 +823,9 @@ class TestPropagateMarkovInhomogeneous:
 class TestComputePMatrixTorch:
     """Vérifie le calcul de la matrice de transition via PyTorch.
 
-    Note: compute_P_matrix_torch produit une matrice COLONNE-stochastique:
-    P[to, from] = P(from -> to), donc sum(P[:, from]) = 1.
+    Convention du package (ligne-stochastique): P[i, j] = P(i -> j),
+    donc sum(P[i, :]) = 1 (ou 0 si la ligne est vide). Un vecteur d'état
+    évolue comme phi_next = phi @ P.
     """
 
     def test_basic_shape(self, rng: np.random.RandomState, n_states: int) -> None:
@@ -798,19 +837,19 @@ class TestComputePMatrixTorch:
         P = compute_P_matrix_torch(prev, curr, n_states, device="cpu")
         assert P.shape == (n_states, n_states)
 
-    def test_column_stochastic(self, rng: np.random.RandomState, n_states: int) -> None:
-        """Chaque COLONNE de P doit sommer à 1 (ou 0 si colonne vide).
+    def test_row_stochastic(self, rng: np.random.RandomState, n_states: int) -> None:
+        """Chaque LIGNE de P doit sommer à 1 (ou 0 si ligne vide).
 
-        P[to, from] = probabilité de transition from -> to.
+        P[i, j] = probabilité de transition i -> j.
         """
         n = 1000
         prev = rng.choice(n_states, size=n)
         curr = rng.choice(n_states, size=n)
 
         P = compute_P_matrix_torch(prev, curr, n_states, device="cpu")
-        col_sums = P.sum(axis=0)
-        assert np.allclose(col_sums[col_sums > 0], 1.0), (
-            "Les colonnes non-vides de P doivent être stochastiques (sommer à 1)"
+        row_sums = P.sum(axis=1)
+        assert np.allclose(row_sums[row_sums > 0], 1.0), (
+            "Les lignes non-vides de P doivent être stochastiques (sommer à 1)"
         )
 
     def test_non_negative(self, rng: np.random.RandomState, n_states: int) -> None:
@@ -827,9 +866,8 @@ class TestComputePMatrixTorch:
     def test_single_transition(self, n_states: int) -> None:
         """Test simple : transition de l'état 0 vers l'état 1.
 
-        Note: compute_P_matrix_torch a un bug connu où P[denominator == 0] = 0.0
-        zéros les LIGNES au lieu des COLONNES. Pour éviter ce bug, on utilise
-        assez de particules pour que tous les états aient des transitions.
+        Convention ligne-stochastique : P[0, 1] = P(0 -> 1). Les états jamais
+        visités produisent des lignes nulles (pas de NaN).
         """
         n = n_states * 10  # Assez pour que chaque état ait des particules
         prev = np.zeros(n, dtype=int)
@@ -841,13 +879,15 @@ class TestComputePMatrixTorch:
         P = compute_P_matrix_torch(prev, curr, n_states, device="cpu")
         P_np = P.cpu().numpy()
 
-        # P[to=1, from=0] devrait être proche de 1 (toutes les particules de 0 vont à 1)
-        assert np.isclose(P_np[1, 0], 1.0, atol=1e-10), (
-            f"P[1,0] devrait être 1.0, trouvé {P_np[1, 0]}"
+        # P[from=0, to=1] devrait être proche de 1 (toutes les particules de 0 vont à 1)
+        assert np.isclose(P_np[0, 1], 1.0, atol=1e-10), (
+            f"P[0,1] devrait être 1.0, trouvé {P_np[0, 1]}"
         )
         assert P_np.shape == (n_states, n_states)
 
-    def test_two_species_equivalent(self, rng: np.random.RandomState, n_states: int) -> None:
+    def test_two_species_equivalent(
+        self, rng: np.random.RandomState, n_states: int
+    ) -> None:
         """
         compute_P_matrix_torch avec des labels d'espèces doit être équivalent
         à filtrer les états par espèce puis appeler la fonction.
@@ -892,7 +932,11 @@ class TestPrepareSpeciesInhomogeneous:
     """Vérifie la préparation des données pour la propagation inhomogène."""
 
     def create_inhomogeneous_experiment_data(
-        self, rng: np.random.RandomState, n_states: int, n_timesteps: int, n_blocks: int = 3
+        self,
+        rng: np.random.RandomState,
+        n_states: int,
+        n_timesteps: int,
+        n_blocks: int = 3,
     ) -> dict:
         """Helper pour créer un jeu de données inhomogène complet."""
         times = np.arange(250, 250 + n_timesteps)
@@ -909,6 +953,13 @@ class TestPrepareSpeciesInhomogeneous:
             "config": {
                 "tau": 50,
                 "start_index": 250,
+                # The real temporal structure of the blocks: block k starts
+                # at start_index + k * (step + tau). With step=20 and tau=50,
+                # the 4 propagation steps (250, 300, 350, 400) cross the
+                # blocks 0, 0, 1, 2 — which makes the inhomogeneous
+                # trajectory genuinely differ from the homogeneous one.
+                "step": 20,
+                "nlt": n_blocks,
             },
             "stats": {
                 "species_list": ["small", "large"],
@@ -937,7 +988,9 @@ class TestPrepareSpeciesInhomogeneous:
             },
         }
 
-    def test_uses_P_blocks(self, rng: np.random.RandomState, n_states: int, n_timesteps: int) -> None:
+    def test_uses_P_blocks(
+        self, rng: np.random.RandomState, n_states: int, n_timesteps: int
+    ) -> None:
         """prepare_species_inhomogeneous doit utiliser P_blocks."""
         exp = self.create_inhomogeneous_experiment_data(rng, n_states, n_timesteps)
         result = prepare_species_inhomogeneous(exp)
@@ -948,7 +1001,9 @@ class TestPrepareSpeciesInhomogeneous:
                 f"P_blocks doit être 3D pour '{sp}'"
             )
 
-    def test_raises_without_P_blocks(self, rng: np.random.RandomState, n_states: int, n_timesteps: int) -> None:
+    def test_raises_without_P_blocks(
+        self, rng: np.random.RandomState, n_states: int, n_timesteps: int
+    ) -> None:
         """Sans P_blocks, prepare_species_inhomogeneous doit lever une erreur."""
         exp = self.create_inhomogeneous_experiment_data(rng, n_states, n_timesteps)
         # Supprimer P_blocks d'une espèce
@@ -957,7 +1012,9 @@ class TestPrepareSpeciesInhomogeneous:
         with pytest.raises(KeyError, match="P_blocks"):
             prepare_species_inhomogeneous(exp)
 
-    def test_traj_markov_shape(self, rng: np.random.RandomState, n_states: int, n_timesteps: int) -> None:
+    def test_traj_markov_shape(
+        self, rng: np.random.RandomState, n_states: int, n_timesteps: int
+    ) -> None:
         """traj_markov doit être 2D avec le bon nombre d'états."""
         exp = self.create_inhomogeneous_experiment_data(rng, n_states, n_timesteps)
         result = prepare_species_inhomogeneous(exp)
@@ -966,7 +1023,9 @@ class TestPrepareSpeciesInhomogeneous:
             assert result[sp]["traj_markov"].ndim == 2
             assert result[sp]["traj_markov"].shape[1] == n_states
 
-    def test_compatible_with_homogeneous_keys(self, rng: np.random.RandomState, n_states: int, n_timesteps: int) -> None:
+    def test_compatible_with_homogeneous_keys(
+        self, rng: np.random.RandomState, n_states: int, n_timesteps: int
+    ) -> None:
         """
         Le résultat de prepare_species_inhomogeneous doit avoir les mêmes
         clés que prepare_species (sauf P_blocks en plus).
@@ -1362,7 +1421,10 @@ class TestRunInhomogeneousExperiment:
     """
 
     def test_returns_P_blocks_not_transitionmatrix(
-        self, inhomogeneous_config: ExperimentConfig, mock_partitioner: Any, synthetic_timestep_dict: dict[int, pd.DataFrame]
+        self,
+        inhomogeneous_config: ExperimentConfig,
+        mock_partitioner: Any,
+        synthetic_timestep_dict: dict[int, pd.DataFrame],
     ) -> None:
         """Les résultats doivent contenir P_blocks et non transitionmatrix."""
         results, _stats = run_inhomogeneous_experiment(
@@ -1378,7 +1440,10 @@ class TestRunInhomogeneousExperiment:
             )
 
     def test_P_blocks_3d_shape(
-        self, inhomogeneous_config: ExperimentConfig, mock_partitioner: Any, synthetic_timestep_dict: dict[int, pd.DataFrame]
+        self,
+        inhomogeneous_config: ExperimentConfig,
+        mock_partitioner: Any,
+        synthetic_timestep_dict: dict[int, pd.DataFrame],
     ) -> None:
         """P_blocks doit être 3D : (n_blocks, n_states, n_states)."""
         results, _stats = run_inhomogeneous_experiment(
@@ -1401,7 +1466,10 @@ class TestRunInhomogeneousExperiment:
             )
 
     def test_n_blocks_equals_nlt(
-        self, inhomogeneous_config: ExperimentConfig, mock_partitioner: Any, synthetic_timestep_dict_large: dict[int, pd.DataFrame]
+        self,
+        inhomogeneous_config: ExperimentConfig,
+        mock_partitioner: Any,
+        synthetic_timestep_dict_large: dict[int, pd.DataFrame],
     ) -> None:
         """Le nombre de blocs doit être égal à NLT."""
         _results, stats = run_inhomogeneous_experiment(
@@ -1413,7 +1481,10 @@ class TestRunInhomogeneousExperiment:
         )
 
     def test_stats_inhomogeneous_flag(
-        self, inhomogeneous_config: ExperimentConfig, mock_partitioner: Any, synthetic_timestep_dict_large: dict[int, pd.DataFrame]
+        self,
+        inhomogeneous_config: ExperimentConfig,
+        mock_partitioner: Any,
+        synthetic_timestep_dict_large: dict[int, pd.DataFrame],
     ) -> None:
         """Les stats doivent contenir inhomogeneous=True."""
         _results, stats = run_inhomogeneous_experiment(
@@ -1425,7 +1496,10 @@ class TestRunInhomogeneousExperiment:
         )
 
     def test_each_block_is_stochastic(
-        self, inhomogeneous_config: ExperimentConfig, mock_partitioner: Any, synthetic_timestep_dict_large: dict[int, pd.DataFrame]
+        self,
+        inhomogeneous_config: ExperimentConfig,
+        mock_partitioner: Any,
+        synthetic_timestep_dict_large: dict[int, pd.DataFrame],
     ) -> None:
         """Chaque matrice P_k doit être row-stochastic."""
         results, _stats = run_inhomogeneous_experiment(
@@ -1446,7 +1520,10 @@ class TestRunInhomogeneousExperiment:
                 )
 
     def test_species_have_separate_blocks(
-        self, inhomogeneous_config: ExperimentConfig, mock_partitioner: Any, synthetic_timestep_dict_large: dict[int, pd.DataFrame]
+        self,
+        inhomogeneous_config: ExperimentConfig,
+        mock_partitioner: Any,
+        synthetic_timestep_dict_large: dict[int, pd.DataFrame],
     ) -> None:
         """Chaque espèce doit avoir ses propres P_blocks."""
         results, stats = run_inhomogeneous_experiment(
@@ -1473,7 +1550,10 @@ class TestSaveInhomogeneousResults:
     """Vérifie que save_inhomogeneous_results prépare correctement les données."""
 
     def test_species_data_has_P_blocks_keys(
-        self, inhomogeneous_config: ExperimentConfig, rng: np.random.RandomState, n_states: int
+        self,
+        inhomogeneous_config: ExperimentConfig,
+        rng: np.random.RandomState,
+        n_states: int,
     ) -> None:
         """Les clés des données espèces doivent être P_blocks_{species}."""
         # Créer des résultats factices
@@ -1553,13 +1633,17 @@ class TestSaveInhomogeneousResults:
 
 class TestInhomogeneousRoundTrip:
     """
-    Test de bout en bout : configuration → expérience → sauvegarde → chargement → propagation.
+    Test de bout en bout :
+    configuration → expérience → sauvegarde → chargement → propagation.
 
     Vérifie que l'ensemble du pipeline inhomogène est cohérent.
     """
 
     def test_full_roundtrip_logical_consistency(
-        self, inhomogeneous_config_single_nlt: ExperimentConfig, rng: np.random.RandomState, n_states: int
+        self,
+        inhomogeneous_config_single_nlt: ExperimentConfig,
+        rng: np.random.RandomState,
+        n_states: int,
     ) -> None:
         """
         Round-trip logique : avec NLT=1, l'inhomogène doit se comporter
@@ -1608,7 +1692,14 @@ class TestInhomogeneousRoundTrip:
         partitioner.use_velocity = False
         partitioner.dem_velocities = None
 
-        def mock_compute_states(x: np.ndarray, y: np.ndarray, z: np.ndarray, vx: np.ndarray | None = None, vy: np.ndarray | None = None, vz: np.ndarray | None = None) -> np.ndarray:
+        def mock_compute_states(
+            x: np.ndarray,
+            y: np.ndarray,
+            z: np.ndarray,
+            vx: np.ndarray | None = None,
+            vy: np.ndarray | None = None,
+            vz: np.ndarray | None = None,
+        ) -> np.ndarray:
             n = len(x)
             return rng.choice(n_states, size=n).astype(np.int64)
 
@@ -1642,7 +1733,10 @@ class TestInhomogeneousRoundTrip:
             )
 
     def test_inhomogeneous_stats_completeness(
-        self, inhomogeneous_config: ExperimentConfig, mock_partitioner: Any, synthetic_timestep_dict: dict[int, pd.DataFrame]
+        self,
+        inhomogeneous_config: ExperimentConfig,
+        mock_partitioner: Any,
+        synthetic_timestep_dict: dict[int, pd.DataFrame],
     ) -> None:
         """Les statistiques inhomogènes doivent contenir tous les champs requis."""
         _results, stats = run_inhomogeneous_experiment(
@@ -1732,7 +1826,9 @@ class TestInhomogeneousEdgeCases:
         assert "d0008" in species
         assert "d0012" in species
 
-    def test_mock_partitioner_consistency(self, mock_partitioner: MockPartitioner, n_states: int) -> None:
+    def test_mock_partitioner_consistency(
+        self, mock_partitioner: Any, n_states: int
+    ) -> None:
         """Le mock partitionneur doit avoir les bonnes propriétés."""
         assert mock_partitioner.n_cells == n_states
         assert "mock" in mock_partitioner.label
@@ -1768,7 +1864,10 @@ class TestInhomogeneousEdgeCases:
             )
 
     def test_n_blocks_greater_than_requested_nlt(
-        self, inhomogeneous_config: ExperimentConfig, mock_partitioner: Any, synthetic_timestep_dict: dict[int, pd.DataFrame]
+        self,
+        inhomogeneous_config: ExperimentConfig,
+        mock_partitioner: Any,
+        synthetic_timestep_dict: dict[int, pd.DataFrame],
     ) -> None:
         """
         Si le nombre de blocs réels est inférieur au NLT demandé

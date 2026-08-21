@@ -1,9 +1,8 @@
-"""
-Configuration and type definitions for dem_mcm_coupling Markov chain models.
+"""Configuration, constants and shared types for :mod:`dem_mcm_coupling`.
 
-This module centralizes all type definitions, constants, and validation functions
-used across the package. It replaces the previous scattered constants and provides
-proper typing for all public APIs.
+This module centralises every type definition, constant and small helper
+used across the package, so that the public API is typed consistently and
+the Hugging Face bucket layout is described in a single place.
 """
 
 from __future__ import annotations
@@ -14,10 +13,10 @@ from typing import Any, Literal, TypedDict
 import numpy as np
 
 # =============================================================================
-# TYPE ALIASES
+# PUBLIC TYPE ALIASES
 # =============================================================================
 
-# Partitioning method identifiers
+#: Identifiers of the partitioning methods available in the registry.
 PartitioningMethod = Literal[
     "cartesian",
     "cylindrical",
@@ -25,30 +24,41 @@ PartitioningMethod = Literal[
     "quantile",
     "octree",
     "physics",
+    "physics_full_vel",
     "gmm",
     "spectral",
+    "spectral_biclustering",
     "adaptive",
     "multizone",
     "single",
     "dbscan",
 ]
 
-# Particle diameter in meters
-ParticleDiameter = Literal[0.004, 0.008]
+#: Particle diameters (in metres) used in the DEM experiments.
+#: (A plain float alias: PEP 586 Literal does not accept float values.)
+ParticleDiameter = float
 
-# Type aliases for arrays
-Array1D = np.ndarray  # Shape (n,)
-Array2D = np.ndarray  # Shape (m, n)
-Array3D = np.ndarray  # Shape (m, n, p)
+#: Array of shape ``(n,)``.
+Array1D = np.ndarray
+#: Array of shape ``(m, n)``.
+Array2D = np.ndarray
+#: Array of shape ``(m, n, p)``.
+Array3D = np.ndarray
 
-# State vector: probability/particle count per partition cell
-StateVector = Array1D
+#: Particle counts (or probabilities) per partition cell, shape ``(n_states,)``.
+StateVectorArray = Array1D
 
-# State trajectory: sequence of state vectors over time
-StateTrajectory = Array2D  # Shape (n_steps, n_states)
+#: Sequence of state vectors over time, shape ``(n_steps, n_states)``.
+StateTrajectoryArray = Array2D
 
-# Transition matrix: row-stochastic matrix
-TransitionMatrix = Array2D  # Shape (n_states, n_states)
+#: Row-stochastic transition matrix, shape ``(n_states, n_states)``.
+#
+# Convention used everywhere in this package:
+#
+# * ``P[i, j]`` is the probability to jump from state ``i`` to state ``j``;
+# * rows therefore sum to one (``P.sum(axis=1) == 1``);
+# * a state vector ``phi`` evolves as ``phi_next = phi @ P``.
+TransitionMatrix = Array2D
 
 
 # =============================================================================
@@ -58,13 +68,13 @@ TransitionMatrix = Array2D  # Shape (n_states, n_states)
 
 @dataclass(frozen=True, slots=True)
 class PartitionerConfig:
-    """Configuration for a partitioner instance.
+    """Configuration of a single partitioner instance.
 
     Attributes:
-        method: Type of partitioning method.
-        method_kwargs: Keyword arguments for the partitioner constructor.
-        n_cells: Number of partition cells (computed from method_kwargs).
-        label: Human-readable identifier for this configuration.
+        method: Identifier of the partitioning method.
+        method_kwargs: Keyword arguments forwarded to the partitioner.
+        n_cells: Number of partition cells (Markov states).
+        label: Human-readable identifier of the configuration.
     """
 
     method: PartitioningMethod
@@ -74,203 +84,181 @@ class PartitionerConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class LoadedModel:
-    """Metadata for a loaded Markov model from the bucket.
+class StateVectorData:
+    """An initial Markov state vector ``phi(0)`` and its metadata.
 
     Attributes:
-        folder_name: Unique folder name in the bucket.
-        method: Partitioning method used.
-        particle_diameter: Diameter of particles in the experiment.
-        n_states: Number of partition cells.
-        n_particles: Total number of particles.
-        nlt: Number of learning timesteps.
-        tau: Time step between snapshots.
-        fraction_visited: Fraction of cells visited during learning.
+        phi: Particle counts per partition cell, shape ``(n_states,)``.
+        timestamp: Index of the DEM timestep the vector was built from.
+        total_particles: Total number of particles represented by ``phi``.
+        description: Human-readable description of the vector.
     """
 
-    folder_name: str
-    method: PartitioningMethod
-    particle_diameter: ParticleDiameter | None
-    n_states: int
-    n_particles: int
-    nlt: int
-    tau: int
-    fraction_visited: float
+    phi: np.ndarray
+    timestamp: int
+    total_particles: int
+    description: str = ""
 
-    def is_data_loaded(self) -> bool:
-        """Check if transition matrices are loaded."""
-        return hasattr(self, "_matrices_loaded") and self._matrices_loaded
+    def validate_normalization(self, rtol: float = 1e-3) -> bool:
+        """Check that ``phi.sum()`` matches ``total_particles``.
 
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize to dictionary for API responses."""
-        return {
-            "folder_name": self.folder_name,
-            "method": self.method,
-            "particle_diameter": self.particle_diameter,
-            "n_states": self.n_states,
-            "n_particles": self.n_particles,
-            "nlt": self.nlt,
-            "tau": self.tau,
-            "fraction_visited": self.fraction_visited,
-        }
+        Args:
+            rtol: Relative tolerance used for the comparison.
+
+        Returns:
+            ``True`` when the vector is correctly normalised.
+        """
+        return bool(np.isclose(self.phi.sum(), self.total_particles, rtol=rtol))
 
 
 @dataclass(frozen=True, slots=True)
-class AppContext:
-    """Application context for session state synchronization across pages.
+class MarkovTrajectory:
+    """Trajectory produced by a Markov propagation.
 
-    This is a singleton-like context that maintains the selected models and
-    notifies pages of changes via version increments.
+    Attributes:
+        states: State vectors over time, shape ``(n_steps + 1, n_states)``.
+        times: Timestep indices, shape ``(n_steps + 1,)``.
+        times_seconds: Times in seconds (``times * TIMESTEP_TO_SECONDS``).
+        method: Partitioning method used for the simulation.
+        description: Human-readable description of the trajectory.
     """
 
-    selected_models: list[LoadedModel]
-    version: int = 0
-
-    def add_model(self, model: LoadedModel) -> None:
-        """Add a model to the selection if not already present."""
-        if model not in self.selected_models:
-            self.selected_models.append(model)
-            self.version += 1
-
-    def remove_model(self, folder_name: str) -> bool:
-        """Remove a model by folder name. Returns True if removed."""
-        for i, model in enumerate(self.selected_models):
-            if model.folder_name == folder_name:
-                self.selected_models.pop(i)
-                self.version += 1
-                return True
-        return False
-
-    def get_model(self, folder_name: str) -> LoadedModel | None:
-        """Get a model by folder name."""
-        for model in self.selected_models:
-            if model.folder_name == folder_name:
-                return model
-        return None
-
-    def clear_models(self) -> None:
-        """Clear all selected models."""
-        if self.selected_models:
-            self.selected_models.clear()
-            self.version += 1
+    states: np.ndarray
+    times: np.ndarray
+    times_seconds: np.ndarray
+    method: str
+    description: str = ""
 
 
 # =============================================================================
 # CONSTANTS
 # =============================================================================
 
-# HuggingFace bucket configuration
+#: Identifier of the Hugging Face dataset repository holding DEM simulations
+#: and pre-computed Markov results.
 BUCKET_ID: str = "ktongue/DEM_MCM"
+
+#: Bucket prefixes by particle diameter.
 BUCKET_PREFIXES: dict[ParticleDiameter | None, str] = {
     0.004: "_Good/SMALL",
     0.008: "_Good/BIG",
     None: "_Good/Experiment",
 }
 
-# Time conversion
-TIMESTEP_TO_SECONDS: float = 0.01  # 1 timestep = 0.01 seconds
+#: Conversion factor between a DEM timestep index and seconds.
+TIMESTEP_TO_SECONDS: float = 0.01
 
-# Default bucket prefix for general experiments
+#: Default bucket prefix (all particles, both diameters).
 DEFAULT_BUCKET_PREFIX: str = BUCKET_PREFIXES[None]
 
+#: Parquet file name of the complete DEM simulation inside each bucket prefix.
+SIMULATION_PARQUET_NAME: str = "simulation_complete.parquet"
 
-def get_bucket_prefix(
-    particle_diameter: ParticleDiameter | None = None,
-) -> str:
-    """Get the bucket prefix for a given particle diameter.
+
+def get_bucket_prefix(particle_diameter: ParticleDiameter | None = None) -> str:
+    """Return the bucket prefix associated to a particle diameter.
 
     Args:
-        particle_diameter: Diameter of particles (0.004, 0.008, or None).
+        particle_diameter: Particle diameter in metres (``0.004``, ``0.008``)
+            or ``None`` for experiments mixing both diameters.
 
     Returns:
-        Bucket prefix string (e.g., "_Good/SMALL", "_Good/BIG").
+        The bucket prefix, e.g. ``"_Good/SMALL"``.
     """
     return BUCKET_PREFIXES.get(particle_diameter, DEFAULT_BUCKET_PREFIX)
 
 
 # =============================================================================
-# VALIDATION FUNCTIONS
+# VALIDATION
 # =============================================================================
 
-
-def validate_partitioning_method(method: str) -> PartitioningMethod:
-    """Validate and return a partitioning method.
-
-    Args:
-        method: String identifier for the partitioning method.
-
-    Returns:
-        Validated PartitioningMethod literal.
-
-    Raises:
-        ValueError: If method is not recognized.
-    """
-    valid_methods: set[PartitioningMethod] = {
+_VALID_PARTITIONING_METHODS: frozenset[str] = frozenset(
+    {
         "cartesian",
         "cylindrical",
         "voronoi",
         "quantile",
         "octree",
         "physics",
+        "physics_full_vel",
         "gmm",
         "spectral",
+        "spectral_biclustering",
         "adaptive",
         "multizone",
         "single",
         "dbscan",
     }
+)
 
-    if method not in valid_methods:
+
+def validate_partitioning_method(method: str) -> PartitioningMethod:
+    """Validate a partitioning method identifier.
+
+    Args:
+        method: String identifier of the partitioning method.
+
+    Returns:
+        The validated method literal.
+
+    Raises:
+        ValueError: If ``method`` is not a known partitioning method.
+    """
+    if method not in _VALID_PARTITIONING_METHODS:
         raise ValueError(
-            f"Unknown partitioning method: '{method}'. "
-            f"Valid methods: {', '.join(sorted(valid_methods))}"
+            f"Unknown partitioning method: {method!r}. "
+            f"Valid methods: {', '.join(sorted(_VALID_PARTITIONING_METHODS))}"
         )
     return method  # type: ignore[return-value]
 
 
-def get_bucket_prefix(particle_diameter: ParticleDiameter | None = None) -> str:
-    """Get the bucket prefix for a given particle diameter.
-
-    Args:
-        particle_diameter: Particle diameter in meters (0.004, 0.008, or None).
-
-    Returns:
-        Bucket prefix string (e.g., "_Good/Experiment", "_Good/SMALL").
-    """
-    return BUCKET_PREFIXES.get(particle_diameter, DEFAULT_BUCKET_PREFIX)
-
-
 # =============================================================================
-# TYPED DICTS FOR COMPLEX STRUCTURES
+# TYPED DICTS (bucket I/O structures)
 # =============================================================================
 
 
 class SpeciesData(TypedDict):
-    """Data for a single particle species."""
+    """Per-species data of a homogeneous experiment.
+
+    Attributes:
+        P_raw: Row-stochastic transition matrix, shape
+            ``(n_states, n_states)``.
+        S_matrix: State trajectories, shape ``(n_timesteps, n_states)``.
+        times: Timestep indices, shape ``(n_timesteps,)``.
+    """
 
     P_raw: TransitionMatrix
-    S_matrix: StateTrajectory
+    S_matrix: StateTrajectoryArray
+    times: Array1D
+
+
+class InhomogeneousSpeciesData(TypedDict):
+    """Per-species data of an inhomogeneous experiment.
+
+    Attributes:
+        P_blocks: One transition matrix per NLT block, shape
+            ``(n_blocks, n_states, n_states)``.
+        S_matrix: State trajectories, shape ``(n_timesteps, n_states)``.
+        times: Timestep indices, shape ``(n_timesteps,)``.
+    """
+
+    P_blocks: TransitionMatrix
+    S_matrix: StateTrajectoryArray
     times: Array1D
 
 
 class ExperimentData(TypedDict):
-    """Complete experiment data loaded from bucket."""
+    """Complete experiment data loaded from a bucket.
+
+    Attributes:
+        config: Configuration dictionary of the experiment.
+        stats: Statistics dictionary of the experiment.
+        species: Mapping ``species name -> per-species data``.
+        matrix: Optional raw state matrix, shape
+            ``(n_timesteps, n_particles)``.
+    """
 
     config: dict[str, Any]
     stats: dict[str, Any]
     species: dict[str, SpeciesData]
-    matrix: StateTrajectory | None
-
-
-class InhomogeneousExperimentData(TypedDict):
-    """Inhomogeneous experiment data with multiple transition matrices (one per NLT block).
-
-    Attributes:
-        P_blocks: 3D array of transition matrices, shape (n_blocks, n_states, n_states).
-        S_matrix: State trajectory matrix, shape (n_timesteps, n_states).
-        times: Timestep indices.
-    """
-
-    P_blocks: TransitionMatrix  # (n_blocks, n_states, n_states)
-    S_matrix: StateTrajectory
-    times: Array1D
+    matrix: StateTrajectoryArray | None
