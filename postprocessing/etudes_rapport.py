@@ -295,23 +295,28 @@ def markov_rsd_series_inh(Ps_small, Ps_all, S0_small, S0_all, n_steps):
 
 
 def compute_all_states(X, V, small_p):
-    """Ajuste les 4 partitionneurs sur le régime permanent, labellise tout."""
+    """Ajuste les 4 partitionneurs sur le régime permanent, labellise tout.
+
+    Le nombre de cellules est identique pour les quatre méthodes (10 cellules,
+    soit ~100 particules par cellule) afin que la comparaison ne soit pas
+    biaisée par la résolution du maillage.
+    """
     fit_ts = np.arange(START, START + 5 * TAU, 10)  # régime permanent
     fit_pts = X[fit_ts].reshape(-1, 3)
     fit_vn = V[fit_ts].reshape(-1)
 
     parts = {}
 
-    cart = Cartesian(3, 3, 1).fit(fit_pts)
+    cart = Cartesian(5, 2, 1).fit(fit_pts)  # 10 cellules
     parts["Cartésien"] = (cart, None)
 
-    cyl = Cylindrical(3, 4, 1).fit(fit_pts)
+    cyl = Cylindrical(2, 5, 1).fit(fit_pts)  # 10 cellules
     parts["Cylindrique"] = (cyl, None)
 
-    vor = Voronoi(10).fit(fit_pts)
+    vor = Voronoi(10).fit(fit_pts)  # 10 cellules
     parts["Voronoï"] = (vor, None)
 
-    phy = Physics(10, vw=0.5)
+    phy = Physics(10, vw=0.5)  # 10 cellules
     phy.fit(fit_pts, fit_vn)
     parts["Physique"] = (phy, "vel")
 
@@ -495,7 +500,7 @@ def resultats_cylindrique(states, small_p):
         ax.set_ylabel("Cellule d'arrivée $i$")
         ax.set_title(ttl)
         fig.colorbar(im, ax=ax, label="$P_{i,j}$")
-    fig.suptitle("Matrices de transition — découpage cylindrique (12 cellules, $\\tau=157$)")
+    fig.suptitle("Matrices de transition — découpage cylindrique (10 cellules, $\\tau=157$)")
     fig.tight_layout()
     fig.savefig(FIGDIR / "matrice_cylindrique_especes.png", dpi=200)
     plt.close(fig)
