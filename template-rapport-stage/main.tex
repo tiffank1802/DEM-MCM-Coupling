@@ -395,26 +395,26 @@ où $NLT$ est le nombre d'instants d'apprentissage, $\phi_p(i,t_n)$ la fonction 
 
 \paragraph{Pourquoi moyenner les probabilités de transition ?} Une seule paire d'instants $(t_{n-1}, t_n)$ ne fournit qu'un échantillon limité de transitions : avec 1030 particules réparties dans $N$ cellules, certaines transitions rares peuvent être manquées ou au contraire sur-représentées par le hasard d'une configuration particulière. La moyenne sur les $NLT$ blocs d'apprentissage de l'équation~\eqref{eq:matrice_transition} réduit ce bruit statistique et produit une matrice plus représentative de la dynamique moyenne du régime permanent. Ce choix est étayé quantitativement par l'étude de sensibilité au paramètre $NLT$ présentée en annexe~\ref{annexe:nlt}.
 
-\paragraph{Paramètres de construction et justification.} Quatre paramètres gouvernent la construction de la matrice ; leurs valeurs retenues sont rassemblées au tableau~\ref{tab:parametres} et la figure~\ref{fig:schema_parametres} en donne la chronologie sur l'axe des instants DEM :
+\paragraph{Paramètres de construction et justification.} Quatre paramètres gouvernent la construction de la matrice ; leurs valeurs retenues sont rassemblées au tableau~\ref{tab:parametres} et la figure~\ref{fig:schema_parametres} en donne la chronologie sur l'axe du temps :
 
 \begin{itemize}[itemsep=3pt]
-  \item $\boldsymbol{\tau} = 157$ centièmes de seconde : le pas de temps de Markov est calé sur la durée d'un tour complet du tambour tournant à $\omega = \SI{4}{rad/s}$, soit $2\pi/\omega \approx \SI{1.57}{s}$. Ce choix, physiquement interprétable, garantit que les particules ont le temps de se déplacer d'une cellule à l'autre entre deux observations (justification détaillée en annexe~\ref{annexe:tau}) ;
-  \item $\boldsymbol{start} = 157$ : le premier instant utilisé pour l'apprentissage est choisi au début du régime permanent. Le début de simulation (régime transitoire) est volontairement écarté : les tout premiers instants correspondent à la mise en mouvement du lit, durant laquelle les probabilités de transition ne sont représentatives ni du mélange établi ni de la ségrégation en cours de formation ; apprendre sur cette phase biaiserait la matrice. L'étude comparative sur plusieurs valeurs de $start$ est donnée en annexe~\ref{annexe:start} ;
-  \item $\boldsymbol{step} = 157$ : lorsque plusieurs blocs d'apprentissage sont utilisés ($NLT > 1$), $step$ désigne l'écart entre les débuts de deux blocs consécutifs. Prendre $step = \tau$ fait se succéder les blocs sans recouvrement ni trou, chaque bloc correspondant à un tour de tambour supplémentaire (justification en annexe~\ref{annexe:step}) ;
+  \item $\boldsymbol{\tau} = \SI{1.57}{s}$ (soit 157 pas d'extraction DEM) : le pas de temps de Markov est calé sur la durée d'un tour complet du tambour tournant à $\omega = \SI{4}{rad/s}$, soit $2\pi/\omega \approx \SI{1.57}{s}$. Ce choix, physiquement interprétable, garantit que les particules ont le temps de se déplacer d'une cellule à l'autre entre deux observations (justification détaillée en annexe~\ref{annexe:tau}) ;
+  \item $\boldsymbol{start} = \SI{1.57}{s}$ : le premier instant utilisé pour l'apprentissage est choisi au début du régime permanent. Le début de simulation (régime transitoire) est volontairement écarté : les tout premiers instants correspondent à la mise en mouvement du lit, durant laquelle les probabilités de transition ne sont représentatives ni du mélange établi ni de la ségrégation en cours de formation ; apprendre sur cette phase biaiserait la matrice. L'étude comparative sur plusieurs valeurs de $start$ est donnée en annexe~\ref{annexe:start} ;
+  \item $\boldsymbol{step} = \SI{1.57}{s}$ : lorsque plusieurs blocs d'apprentissage sont utilisés ($NLT > 1$), $step$ désigne l'écart entre les débuts de deux blocs consécutifs. Prendre $step = \tau$ fait se succéder les blocs sans recouvrement ni trou, chaque bloc correspondant à un tour de tambour supplémentaire (justification en annexe~\ref{annexe:step}) ;
   \item $\boldsymbol{dt}$ : à l'intérieur d'un bloc, les paires d'instants $(t,\, t+\tau)$ sont échantillonnées tous les $dt$ pas de temps DEM. Cette stratégie de raffinage temporel entre les pas de temps démultiplie le nombre de paires observées : elle assure que chaque cellule source est visitée suffisamment souvent au cours de l'apprentissage, ce qui évite les colonnes vides --- donc les divisions par zéro et les \textit{NaN} --- dans la matrice de transition.
 \end{itemize}
 
 \begin{table}[H]
   \centering
-  \caption{Paramètres de construction du modèle de Markov et valeurs retenues (en centièmes de seconde pour les paramètres temporels). Les justifications quantitatives sont données en annexe~\ref{annexe:parametres}.}
+  \caption{Paramètres de construction du modèle de Markov et valeurs retenues. Les justifications quantitatives sont données en annexe~\ref{annexe:parametres}.}
   \label{tab:parametres}
   \begin{tabular}{llll}
     \toprule
     Paramètre & Valeur & Signification & Justification\\
     \midrule
-    $\tau$ & 157 & pas de temps de Markov & un tour de tambour (annexe~\ref{annexe:tau})\\
-    $start$ & 157 & début de l'apprentissage & début du régime permanent (annexe~\ref{annexe:start})\\
-    $step$ & 157 & écart entre blocs & blocs contigus, un tour chacun (annexe~\ref{annexe:step})\\
+    $\tau$ & \SI{1.57}{s} & pas de temps de Markov & un tour de tambour (annexe~\ref{annexe:tau})\\
+    $start$ & \SI{1.57}{s} & début de l'apprentissage & début du régime permanent (annexe~\ref{annexe:start})\\
+    $step$ & \SI{1.57}{s} & écart entre blocs & blocs contigus, un tour chacun (annexe~\ref{annexe:step})\\
     $NLT$ & 1 à 50 & nombre de blocs & étude de sensibilité (annexe~\ref{annexe:nlt})\\
     $dt$ & $\max(1, step/100)$ & raffinage temporel & éviter les NaN dans $\mathbf{P}$\\
     \bottomrule
@@ -746,12 +746,12 @@ Le découpage cylindrique remédie à ce défaut en épousant la géométrie du 
   \label{fig:cylindrique_resolutions}
 \end{figure}
 
-Les matrices de transition construites par espèce pour un découpage cylindrique à 10 cellules ($n_r = 2$, $n_\theta = 5$, mode à aire constante, $\tau = 157$) --- même nombre de cellules que les autres méthodes afin de permettre une comparaison à résolution égale --- sont données à la figure~\ref{fig:matrice_cylindrique}. La structure en blocs, alignée sur la numérotation radiale $\to$ angulaire, traduit la physique de l'écoulement : les transitions dominantes relient des cellules angulairement voisines --- signature de l'entraînement en rotation solide dans la zone passive ---, tandis que les cellules radialement internes échangent avec les cellules externes via l'écoulement de surface. Certaines colonnes concentrent une forte probabilité sur une seule cellule d'arrivée (jusqu'à $\approx 0{,}6$) : elles correspondent aux cellules du cœur du lit, dont les particules sont transportées en bloc vers une destination quasi déterministe en un tour de tambour. La comparaison des deux espèces retrouve l'asymétrie déjà observée : les petites particules répartissent leurs probabilités sur davantage de cellules d'arrivée que les grandes. À l'inverse du découpage cartésien, aucune colonne vide n'apparaît : chaque cellule est visitée durant l'apprentissage, et la condition de stochasticité en colonne~\eqref{eq:stochastique} est vérifiée sur l'ensemble de la matrice.
+Les matrices de transition construites par espèce pour un découpage cylindrique à 10 cellules ($n_r = 2$, $n_\theta = 5$, mode à aire constante, $\tau = \SI{1.57}{s}$) --- même nombre de cellules que les autres méthodes afin de permettre une comparaison à résolution égale --- sont données à la figure~\ref{fig:matrice_cylindrique}. La structure en blocs, alignée sur la numérotation radiale $\to$ angulaire, traduit la physique de l'écoulement : les transitions dominantes relient des cellules angulairement voisines --- signature de l'entraînement en rotation solide dans la zone passive ---, tandis que les cellules radialement internes échangent avec les cellules externes via l'écoulement de surface. Certaines colonnes concentrent une forte probabilité sur une seule cellule d'arrivée (jusqu'à $\approx 0{,}6$) : elles correspondent aux cellules du cœur du lit, dont les particules sont transportées en bloc vers une destination quasi déterministe en un tour de tambour. La comparaison des deux espèces retrouve l'asymétrie déjà observée : les petites particules répartissent leurs probabilités sur davantage de cellules d'arrivée que les grandes. À l'inverse du découpage cartésien, aucune colonne vide n'apparaît : chaque cellule est visitée durant l'apprentissage, et la condition de stochasticité en colonne~\eqref{eq:stochastique} est vérifiée sur l'ensemble de la matrice.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/matrice_cylindrique_especes.png}
-  \caption{Matrices de transition construites à partir des données DEM pour le découpage cylindrique (10 cellules, $n_r = 2$, $n_\theta = 5$, mode à aire constante, $\tau = 157$), séparément pour chaque espèce. La structure en blocs suit la numérotation radiale $\to$ angulaire ; la condition de stochasticité en colonne est vérifiée sur toutes les colonnes.}
+  \caption{Matrices de transition construites à partir des données DEM pour le découpage cylindrique (10 cellules, $n_r = 2$, $n_\theta = 5$, mode à aire constante, $\tau = \SI{1.57}{s}$), séparément pour chaque espèce. La structure en blocs suit la numérotation radiale $\to$ angulaire ; la condition de stochasticité en colonne est vérifiée sur toutes les colonnes.}
   \label{fig:matrice_cylindrique}
 \end{figure}
 
@@ -760,7 +760,7 @@ La confrontation de la prédiction markovienne à la référence DEM (figure~\re
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.85\textwidth]{figures/rsd_cylindrique.png}
-  \caption{Découpage cylindrique : RSD de la teneur en petites particules, DEM (trait continu) vs prédictions markoviennes homogène et inhomogène ($\tau = 157$, données DEM réelles).}
+  \caption{Découpage cylindrique : RSD de la teneur en petites particules, DEM (trait continu) vs prédictions markoviennes homogène et inhomogène ($\tau = \SI{1.57}{s}$, données DEM réelles).}
   \label{fig:rsd_cylindrique}
 \end{figure}
 
@@ -845,18 +845,18 @@ En intégrant la norme de la vitesse dans le critère de partitionnement, les ce
 \subsubsection{Comparaison des méthodes}
 \label{subsec:comparaison_methodes}
 
-La figure~\ref{fig:comparaison_methodes_rsd} confronte, pour les quatre méthodes de découpage à \textbf{nombre de cellules identique} (10 cellules chacune : cartésien $5 \times 2 \times 1$, cylindrique $n_r = 2$, $n_\theta = 5$, Voronoï et physique $K = 10$) et à paramètres d'apprentissage identiques ($\tau = 157$, deux blocs), le RSD de la teneur en petites particules prédit par la chaîne homogène à la référence DEM. Cette égalité de résolution garantit que les écarts observés proviennent bien de la \textit{forme} des cellules --- c'est-à-dire de la méthode de découpage --- et non d'une différence de finesse de maillage, chaque cellule contenant en moyenne une centaine de particules dans les quatre cas. L'écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur toute la fenêtre de prédiction est reporté dans chaque cadran et synthétisé au tableau~\ref{tab:ecart_rsd_methodes}. La hiérarchie est nette : le découpage physique (écart moyen de 0{,}064) et le découpage de Voronoï (0{,}102) suivent correctement le niveau d'homogénéisation atteint par la DEM, tandis que les maillages géométriques --- cartésien (0{,}214) et cylindrique (0{,}267) --- s'en écartent durablement, leurs cellules moyennant des zones de dynamiques hétérogènes.
+La figure~\ref{fig:comparaison_methodes_rsd} confronte, pour les quatre méthodes de découpage à \textbf{nombre de cellules identique} (10 cellules chacune : cartésien $5 \times 2 \times 1$, cylindrique $n_r = 2$, $n_\theta = 5$, Voronoï et physique $K = 10$) et à paramètres d'apprentissage identiques ($\tau = \SI{1.57}{s}$, deux blocs), le RSD de la teneur en petites particules prédit par la chaîne homogène à la référence DEM. Cette égalité de résolution garantit que les écarts observés proviennent bien de la \textit{forme} des cellules --- c'est-à-dire de la méthode de découpage --- et non d'une différence de finesse de maillage, chaque cellule contenant en moyenne une centaine de particules dans les quatre cas. L'écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur toute la fenêtre de prédiction est reporté dans chaque cadran et synthétisé au tableau~\ref{tab:ecart_rsd_methodes}. La hiérarchie est nette : le découpage physique (écart moyen de 0{,}064) et le découpage de Voronoï (0{,}102) suivent correctement le niveau d'homogénéisation atteint par la DEM, tandis que les maillages géométriques --- cartésien (0{,}214) et cylindrique (0{,}267) --- s'en écartent durablement, leurs cellules moyennant des zones de dynamiques hétérogènes.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/comparaison_methodes_rsd.png}
-  \caption{Influence de la méthode de découpage sur la prédiction (données DEM réelles) : RSD DEM vs prédiction markovienne homogène pour les quatre méthodes, à nombre de cellules identique (10 cellules) et à paramètres identiques ($\tau = 157$, deux blocs d'apprentissage). L'écart moyen est indiqué dans le titre de chaque cadran.}
+  \caption{Influence de la méthode de découpage sur la prédiction (données DEM réelles) : RSD DEM vs prédiction markovienne homogène pour les quatre méthodes, à nombre de cellules identique (10 cellules) et à paramètres identiques ($\tau = \SI{1.57}{s}$, deux blocs d'apprentissage). L'écart moyen est indiqué dans le titre de chaque cadran.}
   \label{fig:comparaison_methodes_rsd}
 \end{figure}
 
 \begin{table}[H]
   \centering
-  \caption{Écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ (adimensionnel) sur la fenêtre de prédiction, par méthode de découpage à nombre de cellules identique (10 cellules, chaîne homogène, $\tau = 157$).}
+  \caption{Écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ (adimensionnel) sur la fenêtre de prédiction, par méthode de découpage à nombre de cellules identique (10 cellules, chaîne homogène, $\tau = \SI{1.57}{s}$).}
   \label{tab:ecart_rsd_methodes}
   \begin{tabular}{lcccc}
     \toprule
@@ -982,10 +982,10 @@ Plusieurs axes de prolongement se dessinent. Une question ouverte, directement i
 \section{Justification des paramètres du modèle de Markov}
 \label{annexe:parametres}
 
-Cette annexe rassemble les études comparatives qui justifient les valeurs des paramètres de construction du modèle (tableau~\ref{tab:parametres} du corps du texte) : le pas de temps de Markov $\tau$ (\S\ref{annexe:tau}), le nombre de blocs d'apprentissage $NLT$ (\S\ref{annexe:nlt}), l'instant de départ $start$ (\S\ref{annexe:start}) et l'écart entre blocs $step$ (\S\ref{annexe:step}). Sauf mention contraire, tous les temps sont exprimés en centièmes de seconde (pas d'extraction DEM).
+Cette annexe rassemble les études comparatives qui justifient les valeurs des paramètres de construction du modèle (tableau~\ref{tab:parametres} du corps du texte) : le pas de temps de Markov $\tau$ (\S\ref{annexe:tau}), le nombre de blocs d'apprentissage $NLT$ (\S\ref{annexe:nlt}), l'instant de départ $start$ (\S\ref{annexe:start}) et l'écart entre blocs $step$ (\S\ref{annexe:step}). Tous les temps sont exprimés en secondes ; on rappelle que le pas d'extraction DEM vaut \SI{0.01}{s}, si bien que $\SI{1.57}{s}$ correspond à 157 pas DEM.
 
 % ------------------------------------------------------------
-\subsection{Choix du pas de temps de Markov \texorpdfstring{$\tau = 157$}{tau = 157}}
+\subsection{Choix du pas de temps de Markov \texorpdfstring{$\tau = \SI{1.57}{s}$}{tau = 1,57 s}}
 \label{annexe:tau}
 
 Le pas de temps de Markov est calé sur la durée d'un tour complet du tambour. Pour une vitesse de rotation $\omega = \SI{4}{rad/s}$, la période de rotation vaut :
@@ -1004,12 +1004,12 @@ soit 157 pas d'extraction DEM ($\Delta t_{\mathrm{DEM}} = \SI{0.01}{s}$). La fig
   \label{fig:schema_tau}
 \end{figure}
 
-Ce choix répond à un double impératif. D'une part, $\tau$ doit être suffisamment grand pour que les particules aient le temps de changer de cellule entre deux observations : un $\tau$ trop court produit des matrices quasi identitaires (fortes diagonales artificielles) qui figent la prédiction. D'autre part, $\tau$ doit rester suffisamment court pour résoudre la dynamique du phénomène : un $\tau$ trop long saute des étapes de la cinétique et lisse artificiellement les courbes de RSD. L'étude paramétrique de la figure~\ref{fig:etude_tau}, menée sur les données DEM pour des valeurs de $\tau$ allant de 10 à 1000 (découpage physique, 10 cellules, RSD de la teneur en petites particules), illustre ce compromis : les très petites valeurs ($\tau = 10$, $25$) figent le RSD prédit à un niveau élevé --- entre deux observations si rapprochées, les particules n'ont pas quitté leur cellule et la matrice, quasi identitaire, n'encode presque aucun échange ---, tandis que les grandes valeurs ($\tau = 500$, $1000$) dégradent la résolution temporelle de la prédiction (segments anguleux, peu de points). Le choix $\tau = 157$ (courbe épaisse), en plus de sa signification physique --- un tour de tambour ---, se situe dans la gamme intermédiaire qui suit correctement la descente initiale du RSD DEM et son niveau de palier.
+Ce choix répond à un double impératif. D'une part, $\tau$ doit être suffisamment grand pour que les particules aient le temps de changer de cellule entre deux observations : un $\tau$ trop court produit des matrices quasi identitaires (fortes diagonales artificielles) qui figent la prédiction. D'autre part, $\tau$ doit rester suffisamment court pour résoudre la dynamique du phénomène : un $\tau$ trop long saute des étapes de la cinétique et lisse artificiellement les courbes de RSD. L'étude paramétrique de la figure~\ref{fig:etude_tau}, menée sur les données DEM pour des valeurs de $\tau$ allant de \SI{0.1}{s} à \SI{10}{s} (découpage physique, 10 cellules, RSD de la teneur en petites particules), illustre ce compromis : les très petites valeurs ($\tau = \SI{0.1}{s}$, \SI{0.25}{s}) figent le RSD prédit à un niveau élevé --- entre deux observations si rapprochées, les particules n'ont pas quitté leur cellule et la matrice, quasi identitaire, n'encode presque aucun échange ---, tandis que les grandes valeurs ($\tau = \SI{5}{s}$, \SI{10}{s}) dégradent la résolution temporelle de la prédiction (segments anguleux, peu de points). Le choix $\tau = \SI{1.57}{s}$ (courbe épaisse), en plus de sa signification physique --- un tour de tambour ---, se situe dans la gamme intermédiaire qui suit correctement la descente initiale du RSD DEM et son niveau de palier.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/etude_tau_rsd.png}
-  \caption{Influence du pas de temps de Markov $\tau$ sur la cinétique de mélange prédite, calculée sur les données DEM (découpage physique, 10 cellules) : RSD DEM de la teneur en petites particules (noir) et prédictions markoviennes homogènes pour $\tau$ de 10 à 1000 centièmes de seconde. La courbe épaisse correspond à la valeur retenue $\tau = 157$.}
+  \caption{Influence du pas de temps de Markov $\tau$ sur la cinétique de mélange prédite, calculée sur les données DEM (découpage physique, 10 cellules) : RSD DEM de la teneur en petites particules (noir) et prédictions markoviennes homogènes pour $\tau$ de \SI{0.1}{s} à \SI{10}{s}. La courbe épaisse correspond à la valeur retenue $\tau = \SI{1.57}{s}$.}
   \label{fig:etude_tau}
 \end{figure}
 
@@ -1029,7 +1029,7 @@ Ce choix répond à un double impératif. D'une part, $\tau$ doit être suffisam
     \includegraphics[width=0.8\linewidth]{figures/etude_tau_petites.png}
     \subcaption*{(b) Petites particules}
   \end{minipage}
-  \caption{Étude complémentaire de l'influence de $\tau$ (découpage physique, 30 cellules) : RSD de la DEM (noir) et prédictions markoviennes pour $\tau$ de 10 à 1000 centièmes de seconde.}
+  \caption{Étude complémentaire de l'influence de $\tau$ (découpage physique, 30 cellules) : RSD de la DEM (noir) et prédictions markoviennes pour $\tau$ de \SI{0.1}{s} à \SI{10}{s}.}
   \label{fig:etude_tau_30}
 \end{figure}
 
@@ -1039,12 +1039,12 @@ Ce choix répond à un double impératif. D'une part, $\tau$ doit être suffisam
 
 Le paramètre $NLT$ contrôle le nombre de blocs d'apprentissage sur lesquels les probabilités de transition sont observées, puis moyennées (chaîne homogène) ou conservées séparément (chaîne inhomogène).
 
-L'étude de sensibilité menée sur les données DEM (figure~\ref{fig:etude_nlt_courbe}) balaie $NLT$ de 1 à 18 (découpage physique, 10 cellules, $\tau = step = 157$) et mesure pour chaque valeur l'erreur moyenne $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur toute la fenêtre de prédiction. Deux régimes apparaissent : pour les petites valeurs ($NLT = 2$ à $5$), l'erreur fluctue entre 0{,}060 et 0{,}066 --- chaque bloc supplémentaire modifie sensiblement la matrice moyenne, signe que la statistique n'est pas encore stabilisée --- puis, à partir de $NLT \gtrsim 8$, l'erreur décroît de façon monotone (0{,}056 à $NLT = 8$, 0{,}047 à $NLT = 18$) : la moyenne sur de nombreux blocs gomme le bruit statistique de l'apprentissage et la matrice converge vers la dynamique moyenne du régime permanent. On note que $NLT = 1$ peut ponctuellement donner une erreur faible : la matrice épouse alors la configuration particulière de son unique tour d'apprentissage, mais sans garantie de robustesse --- ce résultat dépend fortement du tour choisi, comme le confirme la sensibilité au paramètre $start$ (annexe~\ref{annexe:start}).
+L'étude de sensibilité menée sur les données DEM (figure~\ref{fig:etude_nlt_courbe}) balaie $NLT$ de 1 à 18 (découpage physique, 10 cellules, $\tau = step = \SI{1.57}{s}$) et mesure pour chaque valeur l'erreur moyenne $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur toute la fenêtre de prédiction. Deux régimes apparaissent : pour les petites valeurs ($NLT = 2$ à $5$), l'erreur fluctue entre 0{,}060 et 0{,}066 --- chaque bloc supplémentaire modifie sensiblement la matrice moyenne, signe que la statistique n'est pas encore stabilisée --- puis, à partir de $NLT \gtrsim 8$, l'erreur décroît de façon monotone (0{,}056 à $NLT = 8$, 0{,}047 à $NLT = 18$) : la moyenne sur de nombreux blocs gomme le bruit statistique de l'apprentissage et la matrice converge vers la dynamique moyenne du régime permanent. On note que $NLT = 1$ peut ponctuellement donner une erreur faible : la matrice épouse alors la configuration particulière de son unique tour d'apprentissage, mais sans garantie de robustesse --- ce résultat dépend fortement du tour choisi, comme le confirme la sensibilité au paramètre $start$ (annexe~\ref{annexe:start}).
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.78\textwidth]{figures/etude_nlt_erreur.png}
-  \caption{Étude de sensibilité au nombre de blocs d'apprentissage $NLT$, calculée sur les données DEM (découpage physique, 10 cellules, $\tau = step = 157$) : erreur moyenne $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur la fenêtre de prédiction.}
+  \caption{Étude de sensibilité au nombre de blocs d'apprentissage $NLT$, calculée sur les données DEM (découpage physique, 10 cellules, $\tau = step = \SI{1.57}{s}$) : erreur moyenne $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur la fenêtre de prédiction.}
   \label{fig:etude_nlt_courbe}
 \end{figure}
 
@@ -1066,7 +1066,7 @@ En contrepartie, augmenter $NLT$ allonge la fenêtre temporelle mobilisée par l
     \includegraphics[width=0.95\linewidth]{figures/ecart_physique_nlt50_grandes.png}
     \subcaption*{(b) $NLT = 50$ --- grandes particules (chaîne inhomogène)}
   \end{minipage}
-  \caption{Influence du nombre de blocs d'apprentissage $NLT$ sur la qualité du modèle (découpage physique, 10 cellules, $\tau = 157$) : écart temporel RMS $|\text{Markov}-\text{DEM}|$ (gauche) et carte des écarts absolus par cellule (droite).}
+  \caption{Influence du nombre de blocs d'apprentissage $NLT$ sur la qualité du modèle (découpage physique, 10 cellules, $\tau = \SI{1.57}{s}$) : écart temporel RMS $|\text{Markov}-\text{DEM}|$ (gauche) et carte des écarts absolus par cellule (droite) (axes de ces figures d'archive en centièmes de seconde).}
   \label{fig:etude_nlt_ecart}
 \end{figure}
 
@@ -1089,25 +1089,27 @@ En contrepartie, augmenter $NLT$ allonge la fenêtre temporelle mobilisée par l
 \end{figure}
 
 % ------------------------------------------------------------
-\subsection{Choix de l'instant de départ \texorpdfstring{$start = 157$}{start = 157}}
+\subsection{Choix de l'instant de départ \texorpdfstring{$start = \SI{1.57}{s}$}{start = 1,57 s}}
 \label{annexe:start}
 
-Le paramètre $start$ fixe le premier instant DEM utilisé pour la phase d'apprentissage --- et, par voie de conséquence, l'instant initial de la prédiction. Le début de simulation correspond au régime transitoire de mise en mouvement du lit. La figure~\ref{fig:etude_start_rsd}, calculée sur les données DEM, montre le RSD de la teneur en petites particules durant les 12 premières secondes pour les quatre méthodes de découpage : quelle que soit la méthode, le RSD part de valeurs très élevées (0{,}9 à 1{,}1, configuration initiale séparée), culmine durant la mise en mouvement du lit (jusqu'à 1{,}2 pour les maillages géométriques), puis amorce sa décroissance vers le palier du régime établi. La ligne verticale $start = 157$ --- un tour de tambour --- marque la fin de cette phase transitoire : au-delà, la décroissance du RSD est engagée pour les quatre découpages et les probabilités de transition observées deviennent représentatives du mélange établi. Apprendre les probabilités sur la zone grisée (régime transitoire) biaiserait la matrice, qui encoderait une dynamique de démarrage non représentative. Le tableau~\ref{tab:etude_start_rsd} donne les valeurs du RSD à quelques instants clefs.
+Le paramètre $start$ fixe le premier instant DEM utilisé pour la phase d'apprentissage de la matrice de transition. La prédiction, elle, est systématiquement propagée depuis l'instant initial $t = \SI{0}{s}$ : la question posée par le choix du $start$ est donc de savoir sur quelle portion de la simulation les probabilités de transition doivent être apprises pour que cette prédiction soit fidèle.
+
+La figure~\ref{fig:etude_start_rsd} y répond en confrontant, pour chacune des quatre méthodes de découpage, le RSD DEM de la teneur en petites particules à deux prédictions markoviennes homogènes propagées depuis $t = \SI{0}{s}$ : l'une dont la matrice est apprise en incluant le régime transitoire ($start = \SI{0}{s}$, courbe grise), l'autre dont la matrice est apprise sur le régime permanent ($start = \SI{1.57}{s}$, soit un tour de tambour, courbe colorée). La zone grisée matérialise le régime transitoire de mise en mouvement du lit ($t < \SI{1.57}{s}$), durant lequel le RSD DEM part de valeurs très élevées (0{,}9 à 1{,}1, configuration initiale séparée) et culmine jusqu'à 1{,}2 pour les maillages géométriques ; le tableau~\ref{tab:etude_start_rsd} donne les valeurs du RSD DEM à quelques instants clefs.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/etude_start_rsd.png}
-  \caption{Justification du choix $start = 157$ : RSD DEM de la teneur en petites particules durant les 12 premières secondes, pour les quatre méthodes de découpage. La zone grisée matérialise le régime transitoire de mise en mouvement du lit ; la ligne pointillée marque $start = 157$ (un tour de tambour).}
+  \caption{Justification du choix de $start$ : RSD DEM de la teneur en petites particules et prédictions markoviennes homogènes propagées depuis $t = \SI{0}{s}$, dont la matrice est apprise soit en incluant le régime transitoire ($start = \SI{0}{s}$, gris), soit sur le régime permanent ($start = \SI{1.57}{s}$, couleur), pour les quatre méthodes de découpage. La zone grisée matérialise le régime transitoire ; l'écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ est indiqué dans chaque légende.}
   \label{fig:etude_start_rsd}
 \end{figure}
 
 \begin{table}[H]
   \centering
-  \caption{RSD DEM de la teneur en petites particules (adimensionnel) à quelques instants (centièmes de seconde), par méthode de découpage : le régime transitoire ($t < 157$) présente des valeurs hautes et erratiques ; la décroissance s'installe au-delà.}
+  \caption{RSD DEM de la teneur en petites particules (adimensionnel) à quelques instants, par méthode de découpage : le régime transitoire ($t < \SI{1.57}{s}$) présente des valeurs hautes et erratiques ; la décroissance s'installe au-delà.}
   \label{tab:etude_start_rsd}
   \begin{tabular}{lccccccc}
     \toprule
-    $t$ (cs) & 0 & 50 & 100 & \textbf{157} & 300 & 600 & 1000\\
+    $t$ (s) & 0 & 0{,}50 & 1{,}00 & \textbf{1{,}57} & 3{,}00 & 6{,}00 & 10{,}00\\
     \midrule
     Cartésien   & 0{,}872 & 1{,}010 & 0{,}877 & \textbf{0{,}657} & 1{,}108 & 0{,}360 & 0{,}208\\
     Cylindrique & 1{,}073 & 0{,}963 & 1{,}198 & \textbf{0{,}660} & 0{,}657 & 0{,}889 & 0{,}762\\
@@ -1117,30 +1119,32 @@ Le paramètre $start$ fixe le premier instant DEM utilisé pour la phase d'appre
   \end{tabular}
 \end{table}
 
-L'étude comparative est complétée par trois valeurs de $start$ --- 157 (un tour), 314 (deux tours) et 1570 (dix tours) --- pour le découpage de Voronoï à 10 cellules, l'espèce des grandes particules et des paramètres par ailleurs identiques ($NLT = 1$, $\tau = step = 157$). La figure~\ref{fig:etude_start} montre l'écart $|\text{Markov} - \text{DEM}|$ pour les trois valeurs, et le tableau~\ref{tab:etude_start} en synthétise les niveaux d'écart RMS en régime établi.
+Deux constats se dégagent de cette confrontation. D'abord, l'effet du $start$ est le plus marqué pour le découpage le plus performant : sur le maillage physique, l'écart moyen passe de 0{,}103 (apprentissage incluant le transitoire) à 0{,}072 (apprentissage sur le régime permanent), soit une réduction de 30\,\% --- la matrice apprise sur le transitoire encode une dynamique de démarrage (chute brutale du RSD) qui n'est plus représentative du mélange établi et dégrade toute la suite de la prédiction. Sur le découpage cartésien, l'effet s'inverse légèrement (0{,}214 contre 0{,}220) et il reste marginal sur le cylindrique et le Voronoï : lorsque le maillage lui-même moyenne des zones hétérogènes, le biais d'apprentissage du transitoire est noyé dans l'erreur de discrétisation. Ensuite, quelle que soit la méthode, la trajectoire prédite traverse le régime transitoire (descente initiale du RSD) puis rejoint son palier : c'est bien la qualité de ce palier, comparé au niveau DEM en régime établi, qui départage les apprentissages --- et celui-ci est systématiquement mieux placé lorsque la matrice est apprise à partir de $start = \SI{1.57}{s}$ sur les maillages statistiques. La valeur $start = \SI{1.57}{s}$ --- un tour de tambour, cohérente avec $\tau$ --- est donc retenue.
+
+L'étude comparative est complétée par trois valeurs de $start$ --- \SI{1.57}{s} (un tour), \SI{3.14}{s} (deux tours) et \SI{15.7}{s} (dix tours) --- pour le découpage de Voronoï à 10 cellules, l'espèce des grandes particules et des paramètres par ailleurs identiques ($NLT = 1$, $\tau = step = \SI{1.57}{s}$). La figure~\ref{fig:etude_start} montre l'écart $|\text{Markov} - \text{DEM}|$ pour les trois valeurs, et le tableau~\ref{tab:etude_start} en synthétise les niveaux d'écart RMS en régime établi.
 
 \begin{figure}[H]
   \centering
   \begin{minipage}{\textwidth}
     \centering
     \includegraphics[width=0.95\linewidth]{figures/ecart_voronoi_start157.png}
-    \subcaption*{(a) $start = 157$}
+    \subcaption*{(a) $start = \SI{1.57}{s}$}
   \end{minipage}
 
   \vspace{0.25cm}
   \begin{minipage}{\textwidth}
     \centering
     \includegraphics[width=0.95\linewidth]{figures/ecart_voronoi_start314.png}
-    \subcaption*{(b) $start = 314$}
+    \subcaption*{(b) $start = \SI{3.14}{s}$}
   \end{minipage}
 
   \vspace{0.25cm}
   \begin{minipage}{\textwidth}
     \centering
     \includegraphics[width=0.95\linewidth]{figures/ecart_voronoi_start1570.png}
-    \subcaption*{(c) $start = 1570$}
+    \subcaption*{(c) $start = \SI{15.7}{s}$}
   \end{minipage}
-  \caption{Étude d'influence du paramètre $start$ (découpage de Voronoï, 10 cellules, grandes particules, $NLT = 1$, $\tau = step = 157$) : écart temporel RMS et carte des écarts absolus par cellule pour $start = 157$, $314$ et $1570$.}
+  \caption{Étude d'influence du paramètre $start$ (découpage de Voronoï, 10 cellules, grandes particules, $NLT = 1$, $\tau = step = \SI{1.57}{s}$) : écart temporel RMS et carte des écarts absolus par cellule pour $start = \SI{1.57}{s}$, \SI{3.14}{s} et \SI{15.7}{s} (axes de ces figures d'archive en centièmes de seconde).}
   \label{fig:etude_start}
 \end{figure}
 
@@ -1150,20 +1154,20 @@ L'étude comparative est complétée par trois valeurs de $start$ --- 157 (un to
   \label{tab:etude_start}
   \begin{tabular}{lccc}
     \toprule
-    & $start = 157$ & $start = 314$ & $start = 1570$\\
+    & $start = \SI{1.57}{s}$ & $start = \SI{3.14}{s}$ & $start = \SI{15.7}{s}$\\
     \midrule
     Nombre de tours écoulés & 1 & 2 & 10\\
     Pic initial d'écart RMS & $\approx 21$ & $\approx 22$ & $\approx 22$\\
     Écart RMS en régime établi & 3 à 5 & 3 à 5 & 3 à 5\\
-    Fenêtre de prédiction restante & maximale & $-157$ pas & $-1413$ pas\\
+    Fenêtre de prédiction restante & maximale & $-\SI{1.57}{s}$ & $-\SI{14.13}{s}$\\
     \bottomrule
   \end{tabular}
 \end{table}
 
-Deux constats se dégagent. D'une part, les trois valeurs de $start$ conduisent à des niveaux d'écart quasi identiques en régime établi : dès $start = 157$, le système a atteint son régime permanent et les probabilités apprises sont stables --- retarder davantage le départ n'apporte aucun gain de précision. D'autre part, retarder le $start$ ampute d'autant la fenêtre de prédiction et rapproche l'apprentissage de la fin de la simulation. La valeur $start = 157$ --- un tour de tambour, cohérente avec le pas de temps $\tau$ --- est donc retenue : elle marque le début du régime permanent tout en préservant la plus longue fenêtre de validation possible.
+Deux constats se dégagent. D'une part, les trois valeurs de $start$ conduisent à des niveaux d'écart quasi identiques en régime établi : dès $start = \SI{1.57}{s}$, le système a atteint son régime permanent et les probabilités apprises sont stables --- retarder davantage le départ n'apporte aucun gain de précision. D'autre part, retarder le $start$ ampute d'autant la fenêtre d'apprentissage exploitable et rapproche celle-ci de la fin de la simulation. Ces observations confirment le choix $start = \SI{1.57}{s}$ établi par la confrontation des prédictions de la figure~\ref{fig:etude_start_rsd}.
 
 % ------------------------------------------------------------
-\subsection{Choix de l'écart entre blocs \texorpdfstring{$step = 157$}{step = 157}}
+\subsection{Choix de l'écart entre blocs \texorpdfstring{$step = \SI{1.57}{s}$}{step = 1,57 s}}
 \label{annexe:step}
 
 Lorsque plusieurs blocs d'apprentissage sont utilisés ($NLT > 1$), le paramètre $step$ définit l'écart entre les débuts de deux blocs consécutifs : le bloc $k$ démarre à l'instant $start + k\,(step + \tau)$ (cf.\ figure~\ref{fig:schema_parametres} du corps du texte). Ce paramètre contrôle donc la manière dont les blocs pavent l'axe temporel :
@@ -1171,19 +1175,19 @@ Lorsque plusieurs blocs d'apprentissage sont utilisés ($NLT > 1$), le paramètr
 \begin{itemize}[itemsep=2pt]
   \item $step < \tau$ ferait se chevaucher les fenêtres d'observation de deux blocs successifs : les mêmes transitions seraient comptées plusieurs fois, introduisant une corrélation artificielle entre blocs qui affaiblit l'intérêt de la moyenne de l'équation~\eqref{eq:matrice_transition} ;
   \item $step \gg \tau$ espacerait excessivement les blocs : à $NLT$ fixé, la fenêtre totale d'apprentissage $NLT \times (step + \tau)$ s'étendrait au point d'empiéter sur la fin de la simulation, réduisant la fenêtre de validation, sans gain statistique notable puisque le régime permanent est stationnaire ;
-  \item $step = \tau = 157$ fait se succéder les blocs de manière contiguë et sans recouvrement : chaque bloc correspond exactement à un tour de tambour supplémentaire, chaque transition observée est comptée une seule fois, et la fenêtre d'apprentissage reste compacte.
+  \item $step = \tau = \SI{1.57}{s}$ fait se succéder les blocs de manière contiguë et sans recouvrement : chaque bloc correspond exactement à un tour de tambour supplémentaire, chaque transition observée est comptée une seule fois, et la fenêtre d'apprentissage reste compacte.
 \end{itemize}
 
-L'étude de sensibilité menée sur les données DEM (figure~\ref{fig:etude_step_courbe}) balaie $step$ de 40 à 471 (découpage physique, 10 cellules, $NLT = 3$, $\tau = 157$) et mesure l'erreur moyenne $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$. On observe que les valeurs intermédiaires non commensurables avec la période du tambour ($step = 80$) dégradent l'erreur (0{,}086) : les blocs échantillonnent alors des phases de rotation différentes, et leur moyenne mélange des configurations angulaires hétérogènes. Les valeurs commensurables avec la période ($step = 157$, $314$) ramènent l'erreur autour de 0{,}06, chaque bloc couvrant un nombre entier de tours ; au-delà ($step = 471$), l'erreur remonte, la fenêtre totale d'apprentissage s'étirant sans gain statistique. La petite valeur $step = 40$ donne l'erreur la plus basse sur ce cas particulier, mais au prix d'un recouvrement partiel des fenêtres d'observation des blocs, qui corrèle les blocs entre eux et fragilise l'interprétation de la moyenne --- et, pour les chaînes inhomogènes, désynchronise les matrices de la période physique.
+L'étude de sensibilité menée sur les données DEM (figure~\ref{fig:etude_step_courbe}) balaie $step$ de \SI{0.40}{s} à \SI{4.71}{s} (découpage physique, 10 cellules, $NLT = 3$, $\tau = \SI{1.57}{s}$) et mesure l'erreur moyenne $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$. On observe que les valeurs intermédiaires non commensurables avec la période du tambour ($step = \SI{0.80}{s}$) dégradent l'erreur (0{,}086) : les blocs échantillonnent alors des phases de rotation différentes, et leur moyenne mélange des configurations angulaires hétérogènes. Les valeurs commensurables avec la période ($step = \SI{1.57}{s}$, \SI{3.14}{s}) ramènent l'erreur autour de 0{,}06, chaque bloc couvrant un nombre entier de tours ; au-delà ($step = \SI{4.71}{s}$), l'erreur remonte, la fenêtre totale d'apprentissage s'étirant sans gain statistique. La petite valeur $step = \SI{0.40}{s}$ donne l'erreur la plus basse sur ce cas particulier, mais au prix d'un recouvrement partiel des fenêtres d'observation des blocs, qui corrèle les blocs entre eux et fragilise l'interprétation de la moyenne --- et, pour les chaînes inhomogènes, désynchronise les matrices de la période physique.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.78\textwidth]{figures/etude_step_erreur.png}
-  \caption{Étude de sensibilité à l'écart entre blocs $step$, calculée sur les données DEM (découpage physique, 10 cellules, $NLT = 3$, $\tau = 157$) : erreur moyenne $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur la fenêtre de prédiction. La ligne pointillée marque la valeur retenue $step = \tau = 157$.}
+  \caption{Étude de sensibilité à l'écart entre blocs $step$, calculée sur les données DEM (découpage physique, 10 cellules, $NLT = 3$, $\tau = \SI{1.57}{s}$) : erreur moyenne $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur la fenêtre de prédiction. La ligne pointillée marque la valeur retenue $step = \tau = \SI{1.57}{s}$.}
   \label{fig:etude_step_courbe}
 \end{figure}
 
-Pour les chaînes inhomogènes, le choix $step = \tau$ prend une signification supplémentaire : la matrice $\mathbf{P}^{(k)}$ du bloc $k$ est exactement la matrice du $k$-ième tour de tambour suivant le départ, ce qui rend la séquence de matrices directement interprétable --- et synchronisée avec la prédiction de l'équation~\eqref{eq:prediction_inhomogene}, chaque pas de prédiction consommant la matrice du bloc correspondant. La valeur $step = 157$ est donc adoptée pour tous les modèles multi-blocs du mémoire, la cohérence $\tau = step = start = 157$ alignant l'ensemble de la chronologie d'apprentissage sur la période physique du tambour.
+Pour les chaînes inhomogènes, le choix $step = \tau$ prend une signification supplémentaire : la matrice $\mathbf{P}^{(k)}$ du bloc $k$ est exactement la matrice du $k$-ième tour de tambour suivant le départ, ce qui rend la séquence de matrices directement interprétable --- et synchronisée avec la prédiction de l'équation~\eqref{eq:prediction_inhomogene}, chaque pas de prédiction consommant la matrice du bloc correspondant. La valeur $step = \SI{1.57}{s}$ est donc adoptée pour tous les modèles multi-blocs du mémoire, la cohérence $\tau = step = start = \SI{1.57}{s}$ alignant l'ensemble de la chronologie d'apprentissage sur la période physique du tambour.
 
 % ------------------------------------------------------------
 \subsection{Justification des matrices distinctes par espèce}

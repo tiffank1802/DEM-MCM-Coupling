@@ -382,14 +382,14 @@ def schema_parametres_temporels():
     # axe des temps
     ax.annotate("", xy=(tmax + 60, 0), xytext=(-40, 0),
                 arrowprops=dict(arrowstyle="-|>", color="k", lw=1.6))
-    ax.text(tmax + 65, -0.05, "instant DEM\n($\\times$ 0,01 s)", fontsize=10)
+    ax.text(tmax + 65, -0.05, "temps (s)", fontsize=10)
 
     # regime transitoire
     ax.axvspan(0, start, ymin=0.42, ymax=0.58, color="#dddddd")
     ax.text(start / 2, 0.28, "régime\ntransitoire", ha="center", fontsize=10,
             color=GRIS)
     ax.axvline(start, color=ROUGE, lw=2)
-    ax.text(start, -0.32, "start = 157\n(début du régime permanent)",
+    ax.text(start, -0.32, "start = 1,57 s\n(début du régime permanent)",
             ha="center", fontsize=10, color=ROUGE)
 
     # blocs d'apprentissage
@@ -406,7 +406,7 @@ def schema_parametres_temporels():
                         xytext=(t0, y - 0.13 - 0.05 * i),
                         arrowprops=dict(arrowstyle="-|>", color=BLEU,
                                         lw=1.2, alpha=0.8))
-        ax.text(b0 + step + tau / 2, y - 0.48, r"$\tau = 157$", fontsize=10,
+        ax.text(b0 + step + tau / 2, y - 0.48, r"$\tau = 1{,}57$ s", fontsize=10,
                 color=BLEU, ha="center")
 
     # step entre deux blocs
@@ -455,8 +455,8 @@ def schema_tau_tour():
     ax.text(
         0, -1.72,
         r"$\tau \;=\; \dfrac{2\pi}{\omega} \;=\; \dfrac{2\pi}{4}"
-        r" \;\approx\; 1{,}57\ \mathrm{s} \;=\; 157$ pas DEM"
-        r" $(\Delta t_{\mathrm{DEM}} = 0{,}01\ \mathrm{s})$",
+        r" \;\approx\; 1{,}57\ \mathrm{s}$ (soit 157 pas DEM"
+        r" de $\Delta t_{\mathrm{DEM}} = 0{,}01\ \mathrm{s}$)",
         fontsize=13, ha="center",
     )
     ax.set_xlim(-1.9, 1.9)

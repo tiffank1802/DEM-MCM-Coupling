@@ -346,38 +346,68 @@ COLORS = {
 
 
 def etude_start(states, small_p):
-    """RSD DEM au début de simulation pour chaque méthode + ligne start=157."""
-    times = np.arange(0, 1200, 5)
-    fig, ax = plt.subplots(figsize=(10, 5.6))
-    for name, (st, n) in states.items():
-        r = dem_rsd_series(st, small_p, n, times)
-        ax.plot(times, r, label=name, color=COLORS[name], lw=1.6)
-    ax.axvline(START, color="k", ls="--", lw=2)
-    ax.text(START + 12, ax.get_ylim()[1] * 0.92,
-            "start = 157\n(un tour de tambour)", fontsize=10)
-    ax.axvspan(0, START, color="0.85", alpha=0.5)
-    ax.text(START / 2, ax.get_ylim()[1] * 0.05, "régime\ntransitoire",
-            ha="center", fontsize=9, color="0.35")
-    ax.set_xlabel("Temps (centièmes de seconde)")
-    ax.set_ylabel("RSD de la teneur en petites particules (–)")
-    ax.set_title(
-        "Détermination du début du régime permanent : RSD DEM pour les "
-        "quatre méthodes de découpage"
+    """Justification du start : RSD Markov vs DEM, prédiction depuis t = 0 s.
+
+    Pour chaque méthode de découpage, deux chaînes homogènes sont comparées :
+    l'une apprise en incluant le régime transitoire (start = 0 s), l'autre
+    apprise sur le régime permanent (start = 1,57 s). Les deux prédictions
+    sont propagées depuis l'instant initial t = 0 s, ce qui rend visible le
+    biais introduit par un apprentissage sur le régime transitoire.
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(12.5, 8.6), sharex=True)
+    n_steps = (N_T - 1) // TAU
+    t_probe = (np.arange(n_steps + 1) * TAU).clip(max=N_T - 1)
+    for ax, (name, (st, n)) in zip(axes.flat, states.items()):
+        st_small = st[:, small_p]
+        # apprentissage incluant le régime transitoire (start = 0)
+        P_all_tr, _ = learn_P(st, 0, TAU, TAU, 2, 8, n)
+        P_small_tr, _ = learn_P(st_small, 0, TAU, TAU, 2, 8, n)
+        # apprentissage sur le régime permanent (start = 157)
+        P_all_pm, _ = learn_P(st, START, TAU, TAU, 2, 8, n)
+        P_small_pm, _ = learn_P(st_small, START, TAU, TAU, 2, 8, n)
+        # prédiction propagée depuis l'instant initial t = 0 s
+        S0_all = counts(st[0], n)
+        S0_small = counts(st[0], n, small_p)
+        r_tr = markov_rsd_series(P_small_tr, P_all_tr, S0_small, S0_all, n_steps)
+        r_pm = markov_rsd_series(P_small_pm, P_all_pm, S0_small, S0_all, n_steps)
+        t_mk = np.arange(n_steps + 1) * TAU / 100  # secondes
+        t_dem = np.arange(0, N_T, 20)
+        r_dem = dem_rsd_series(st, small_p, n, t_dem)
+        r_dem_probe = dem_rsd_series(st, small_p, n, t_probe)
+        e_tr = np.mean(np.abs(r_tr - r_dem_probe))
+        e_pm = np.mean(np.abs(r_pm - r_dem_probe))
+        ax.plot(t_dem / 100, r_dem, "k-", lw=0.9, alpha=0.7, label="DEM")
+        ax.plot(t_mk, r_tr, "s--", color="0.55", ms=4,
+                label=f"Markov, start = 0 s (écart {e_tr:.3f})")
+        ax.plot(t_mk, r_pm, "o--", color=COLORS[name], ms=4,
+                label=f"Markov, start = 1,57 s (écart {e_pm:.3f})")
+        ax.axvspan(0, START / 100, color="0.85", alpha=0.8, zorder=0)
+        ax.axvline(START / 100, color="k", ls="--", lw=1.2)
+        ax.set_title(name)
+        ax.grid(alpha=0.3)
+        ax.legend(fontsize=8.5)
+        ax.text(START / 200, ax.get_ylim()[1] * 0.55, "régime\ntransitoire",
+                ha="center", fontsize=8, color="0.35", rotation=90)
+    for ax in axes[-1]:
+        ax.set_xlabel("Temps (s)")
+    for ax in axes[:, 0]:
+        ax.set_ylabel("RSD teneur petites (–)")
+    fig.suptitle(
+        "Justification du choix de start : RSD DEM vs prédictions markoviennes "
+        "(propagées depuis $t = 0$ s) apprises avec ou sans le régime transitoire"
     )
-    ax.legend()
-    ax.grid(alpha=0.3)
     fig.tight_layout()
     fig.savefig(FIGDIR / "etude_start_rsd.png", dpi=200)
     plt.close(fig)
 
-    # tableau des valeurs
+    # tableau des valeurs du RSD DEM (temps en secondes)
     rows = []
     probe = [0, 50, 100, 157, 300, 600, 1000]
     for name, (st, n) in states.items():
         r = dem_rsd_series(st, small_p, n, probe)
         rows.append((name, r))
     with open(FIGDIR / "etude_start_table.txt", "w") as f:
-        f.write("t(cs)   " + "  ".join(f"{t:>6d}" for t in probe) + "\n")
+        f.write("t(s)    " + "  ".join(f"{t / 100:>6.2f}" for t in probe) + "\n")
         for name, r in rows:
             f.write(f"{name:<12}" + "  ".join(f"{x:6.3f}" for x in r) + "\n")
     print("start ok")
@@ -405,7 +435,8 @@ def etude_tau(states, small_p):
         t_mk = (START + np.arange(n_steps + 1) * tau) / 100
         lw = 2.6 if tau == TAU else 1.4
         ax.plot(t_mk, r_mk, color=cmap(i / len(taus)), lw=lw,
-                label=f"Markov $\\tau$={tau}" + (" (retenu)" if tau == TAU else ""))
+                label=f"Markov $\\tau$={tau / 100:g} s"
+                + (" (retenu)" if tau == TAU else ""))
     ax.set_xlabel("Temps (s)")
     ax.set_ylabel("RSD (–)")
     ax.set_title(
@@ -450,7 +481,7 @@ def etude_nlt(states, small_p):
     ax.set_ylabel(r"Erreur moyenne $|\mathrm{RSD}_{Markov} - \mathrm{RSD}_{DEM}|$ (–)")
     ax.set_title(
         "Influence de $NLT$ sur la qualité du modèle "
-        "(découpage physique, 10 cellules, $\\tau = step = 157$)"
+        "(découpage physique, 10 cellules, $\\tau = step = 1{,}57$ s)"
     )
     ax.grid(alpha=0.3)
     fig.tight_layout()
@@ -467,15 +498,16 @@ def etude_step(states, small_p):
         e, nb = _erreur_pred(st, small_p, n, 3, s)
         errs.append(e)
         print(f"  step={s} ({nb} blocs) -> {e:.2f}")
+    steps_s = [s / 100 for s in steps]
     fig, ax = plt.subplots(figsize=(8.6, 5))
-    ax.plot(steps, errs, "s-", color="#1f77b4", lw=2)
-    ax.axvline(157, color="k", ls="--", lw=1.5)
-    ax.text(165, max(errs) * 0.97, "step = $\\tau$ = 157", fontsize=10)
-    ax.set_xlabel("Écart entre blocs $step$ (centièmes de seconde)")
+    ax.plot(steps_s, errs, "s-", color="#1f77b4", lw=2)
+    ax.axvline(1.57, color="k", ls="--", lw=1.5)
+    ax.text(1.65, max(errs) * 0.97, "step = $\\tau$ = 1,57 s", fontsize=10)
+    ax.set_xlabel("Écart entre blocs $step$ (s)")
     ax.set_ylabel(r"Erreur moyenne $|\mathrm{RSD}_{Markov} - \mathrm{RSD}_{DEM}|$ (–)")
     ax.set_title(
         "Influence de $step$ sur la qualité du modèle "
-        "(découpage physique, 10 cellules, $NLT = 3$, $\\tau = 157$)"
+        "(découpage physique, 10 cellules, $NLT = 3$, $\\tau = 1{,}57$ s)"
     )
     ax.grid(alpha=0.3)
     fig.tight_layout()
@@ -500,7 +532,7 @@ def resultats_cylindrique(states, small_p):
         ax.set_ylabel("Cellule d'arrivée $i$")
         ax.set_title(ttl)
         fig.colorbar(im, ax=ax, label="$P_{i,j}$")
-    fig.suptitle("Matrices de transition — découpage cylindrique (10 cellules, $\\tau=157$)")
+    fig.suptitle("Matrices de transition — découpage cylindrique (10 cellules, $\\tau = 1{,}57$ s)")
     fig.tight_layout()
     fig.savefig(FIGDIR / "matrice_cylindrique_especes.png", dpi=200)
     plt.close(fig)
@@ -570,7 +602,7 @@ def comparaison_methodes(states, small_p):
         ax.set_ylabel("RSD teneur petites (–)")
     fig.suptitle(
         "Influence de la méthode de découpage : RSD DEM vs prédiction "
-        "markovienne homogène ($\\tau = 157$, 2 blocs d'apprentissage)"
+        "markovienne homogène ($\\tau = 1{,}57$ s, 2 blocs d'apprentissage)"
     )
     fig.tight_layout()
     fig.savefig(FIGDIR / "comparaison_methodes_rsd.png", dpi=200)
