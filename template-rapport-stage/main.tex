@@ -746,13 +746,22 @@ Le découpage cylindrique remédie à ce défaut en épousant la géométrie du 
   \label{fig:cylindrique_resolutions}
 \end{figure}
 
-La matrice de transition obtenue pour un découpage cylindrique à 24 cellules ($n_r = 3$, $n_\theta = 8$) est donnée à la figure~\ref{fig:matrice_cylindrique}. La structure en blocs, alignée sur la numérotation radiale $\to$ angulaire, traduit la physique de l'écoulement : les transitions dominantes relient des cellules angulairement voisines --- signature de l'entraînement en rotation solide dans la zone passive ---, tandis que les cellules radialement internes échangent avec les cellules externes via l'écoulement de surface. On note également des colonnes à forte probabilité concentrée : elles correspondent aux cellules du cœur du lit, dont les particules sont transportées en bloc vers une destination quasi déterministe en un tour de tambour. À l'inverse du découpage cartésien, aucune colonne vide n'apparaît : chaque cellule est visitée durant l'apprentissage, et la condition de stochasticité en colonne~\eqref{eq:stochastique} est vérifiée sur l'ensemble de la matrice.
+Les matrices de transition construites par espèce pour un découpage cylindrique à 12 cellules ($n_r = 3$, $n_\theta = 4$, mode à aire constante, $\tau = 157$) sont données à la figure~\ref{fig:matrice_cylindrique}. La structure en blocs, alignée sur la numérotation radiale $\to$ angulaire, traduit la physique de l'écoulement : les transitions dominantes relient des cellules angulairement voisines --- signature de l'entraînement en rotation solide dans la zone passive ---, tandis que les cellules radialement internes échangent avec les cellules externes via l'écoulement de surface. Certaines colonnes concentrent une forte probabilité sur une seule cellule d'arrivée (jusqu'à $\approx 0{,}6$) : elles correspondent aux cellules du cœur du lit, dont les particules sont transportées en bloc vers une destination quasi déterministe en un tour de tambour. La comparaison des deux espèces retrouve l'asymétrie déjà observée : les petites particules répartissent leurs probabilités sur davantage de cellules d'arrivée que les grandes. À l'inverse du découpage cartésien, aucune colonne vide n'apparaît : chaque cellule est visitée durant l'apprentissage, et la condition de stochasticité en colonne~\eqref{eq:stochastique} est vérifiée sur l'ensemble de la matrice.
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=0.7\textwidth]{figures/matrice_cylindrique.png}
-  \caption{Matrice de transition obtenue pour le découpage cylindrique (24 cellules, $n_r = 3$, $n_\theta = 8$, mode à aire constante). La structure en blocs suit la numérotation radiale $\to$ angulaire ; la condition de stochasticité en colonne est vérifiée sur toutes les colonnes.}
+  \includegraphics[width=\linewidth]{figures/matrice_cylindrique_especes.png}
+  \caption{Matrices de transition construites à partir des données DEM pour le découpage cylindrique (12 cellules, $n_r = 3$, $n_\theta = 4$, mode à aire constante, $\tau = 157$), séparément pour chaque espèce. La structure en blocs suit la numérotation radiale $\to$ angulaire ; la condition de stochasticité en colonne est vérifiée sur toutes les colonnes.}
   \label{fig:matrice_cylindrique}
+\end{figure}
+
+La confrontation de la prédiction markovienne à la référence DEM (figure~\ref{fig:rsd_cylindrique}) révèle toutefois la limite de ce maillage pour l'étude de la ségrégation : le RSD de la teneur en petites particules prédit par la chaîne homogène se fige rapidement autour de sa valeur de point fixe, sans suivre les fluctuations de la DEM, et la chaîne inhomogène, si elle réintroduit de la variabilité, reste au-dessus de la trajectoire de référence. La raison est géométrique : les cellules cylindriques, solidaires de la symétrie de révolution, tournent « avec » l'écoulement moyen et ne séparent ni la zone active de la zone passive, ni les zones enrichies des zones appauvries en petites particules --- l'information de ségrégation est moyennée à l'intérieur de chaque cellule. Ce constat, quantifié à la section~\ref{subsec:comparaison_methodes}, illustre que le respect de la géométrie de l'enceinte ne suffit pas : c'est l'adéquation du maillage à la structure de l'écoulement qui gouverne la qualité du modèle.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{figures/rsd_cylindrique.png}
+  \caption{Découpage cylindrique : RSD de la teneur en petites particules, DEM (trait continu) vs prédictions markoviennes homogène et inhomogène ($\tau = 157$, données DEM réelles).}
+  \label{fig:rsd_cylindrique}
 \end{figure}
 
 \subsubsection{Découpage de Voronoï}
@@ -834,8 +843,31 @@ En intégrant la norme de la vitesse dans le critère de partitionnement, les ce
 \end{figure}
 
 \subsubsection{Comparaison des méthodes}
+\label{subsec:comparaison_methodes}
 
-Le tableau~\ref{tab:erreur_methodes} rassemble, pour les trois méthodes statistiquement les plus contrastées, l'écart temporel moyen $|\text{Markov}-\text{DEM}|$, l'écart absolu toutes cellules confondues et l'erreur RMS.
+La figure~\ref{fig:comparaison_methodes_rsd} confronte, pour les quatre méthodes de découpage et à paramètres identiques ($\tau = 157$, deux blocs d'apprentissage), le RSD de la teneur en petites particules prédit par la chaîne homogène à la référence DEM ; l'écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur toute la fenêtre de prédiction est reporté dans chaque cadran et synthétisé au tableau~\ref{tab:ecart_rsd_methodes}. La hiérarchie est nette : le découpage physique (6,4 points d'écart) et le découpage de Voronoï (10,2 points) suivent correctement le niveau d'homogénéisation atteint par la DEM, tandis que les maillages géométriques --- cartésien (20,7 points) et cylindrique (27,7 points) --- s'en écartent durablement, leurs cellules moyennant des zones de dynamiques hétérogènes.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/comparaison_methodes_rsd.png}
+  \caption{Influence de la méthode de découpage sur la prédiction (données DEM réelles) : RSD DEM vs prédiction markovienne homogène pour les quatre méthodes, à paramètres identiques ($\tau = 157$, deux blocs d'apprentissage). L'écart moyen est indiqué dans le titre de chaque cadran.}
+  \label{fig:comparaison_methodes_rsd}
+\end{figure}
+
+\begin{table}[H]
+  \centering
+  \caption{Écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ (en points de \%) sur la fenêtre de prédiction, par méthode de découpage (chaîne homogène, $\tau = 157$).}
+  \label{tab:ecart_rsd_methodes}
+  \begin{tabular}{lcccc}
+    \toprule
+    & Cartésien & Cylindrique & Voronoï & Physique\\
+    \midrule
+    Écart moyen (pts) & 20{,}7 & 27{,}7 & 10{,}2 & \textbf{6{,}4}\\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Le tableau~\ref{tab:erreur_methodes} complète cette analyse en rassemblant, pour les trois méthodes statistiquement les plus contrastées, l'écart temporel moyen $|\text{Markov}-\text{DEM}|$, l'écart absolu toutes cellules confondues et l'erreur RMS.
 
 \begin{table}[H]
   \centering
@@ -860,7 +892,7 @@ Le tableau~\ref{tab:erreur_methodes} rassemble, pour les trois méthodes statist
   \end{tabular}
 \end{table}
 
-La comparaison des trois rangées révèle des différences substantielles tant en amplitude qu'en morphologie de l'erreur. Le modèle de Markov est donc fortement conditionné par la manière dont l'espace est partitionné : la robustesse de la prédiction ne dépend pas uniquement de la physique du mélange, mais aussi --- et peut-être surtout --- du choix de maillage. Les méthodes statistiques, qui adaptent les cellules à l'occupation réelle du mélangeur, réduisent l'erreur par rapport à la référence cartésienne ; le découpage cylindrique, sans atteindre la finesse des méthodes statistiques, corrige déjà l'essentiel des défauts du cartésien en respectant la géométrie de l'enceinte.
+La comparaison des trois rangées révèle des différences substantielles tant en amplitude qu'en morphologie de l'erreur. Le modèle de Markov est donc fortement conditionné par la manière dont l'espace est partitionné : la robustesse de la prédiction ne dépend pas uniquement de la physique du mélange, mais aussi --- et peut-être surtout --- du choix de maillage. Les méthodes statistiques, qui adaptent les cellules à l'occupation réelle du mélangeur, réduisent nettement l'erreur par rapport aux références géométriques. Le cas du découpage cylindrique est instructif : bien qu'il respecte la géométrie de l'enceinte et élimine les cellules vides du cartésien, il produit le plus grand écart de RSD (tableau~\ref{tab:ecart_rsd_methodes}) --- ses cellules, solidaires de la symétrie de révolution, moyennent les zones enrichies et appauvries en petites particules. Respecter la géométrie du contenant ne suffit donc pas : c'est la structure de l'écoulement, et non celle de l'enceinte, que le maillage doit épouser.
 
 % ------------------------------------------------------------
 \subsection{Apport des chaînes inhomogènes}
@@ -904,7 +936,7 @@ Trois enseignements principaux se dégagent de l'ensemble de ces résultats.
 
 \paragraph{Dualité de comportement entre espèces.} Les matrices de transition, quelle que soit la méthode de maillage, montrent systématiquement que les grandes particules restent plus longtemps dans leur cellule d'origine tandis que les petites se redistribuent plus rapidement. Cette asymétrie, cohérente avec les mécanismes de percolation et de convection dans un tambour tournant, justifie pleinement la construction de matrices séparées.
 
-\paragraph{Rôle déterminant de la discrétisation.} Un maillage purement géométrique, bien que simple à mettre en œuvre, peut produire des cellules peu représentatives de la distribution effective des grains : le découpage cartésien crée des cellules de coin vides, quand le découpage cylindrique, en épousant l'enceinte, garantit déjà des cellules toutes physiquement pertinentes. Les approches statistiques --- Voronoï, physique --- vont plus loin en adaptant les partitions à la configuration réelle du lit et réduisent l'erreur de prédiction, comme en témoigne le tableau~\ref{tab:erreur_methodes}.
+\paragraph{Rôle déterminant de la discrétisation.} Un maillage purement géométrique, bien que simple à mettre en œuvre, peut produire des cellules peu représentatives de la distribution effective des grains : le découpage cartésien crée des cellules de coin vides, et le découpage cylindrique, s'il épouse l'enceinte et garantit des cellules toutes physiquement pertinentes, moyenne les zones enrichies et appauvries en petites particules à l'intérieur de ses cellules de révolution --- au point de produire le plus grand écart de RSD des quatre méthodes (tableau~\ref{tab:ecart_rsd_methodes}). Les approches statistiques --- Voronoï, physique --- adaptent les partitions à la configuration réelle du lit et à la structure de l'écoulement, et réduisent l'erreur de prédiction, comme en témoignent la figure~\ref{fig:comparaison_methodes_rsd} et le tableau~\ref{tab:erreur_methodes}.
 
 \paragraph{Pertinence de la variable d'état.} Le comptage par cellule décrit l'occupation globale mais masque la ségrégation. La teneur locale en petites particules, en revanche, fait apparaître des hétérogénéités marquées (cellules 9 et 4, par exemple) et offre un indicateur directement relié au phénomène physique étudié.
 
@@ -920,7 +952,7 @@ Ce mémoire a proposé et évalué une modélisation stochastique par chaînes d
 
 \begin{itemize}
   \item La construction de matrices de transition distinctes par espèce met en évidence des dynamiques contrastées entre petites et grandes particules.
-  \item Le choix de la discrétisation spatiale conditionne fortement la fidélité du modèle : les maillages statistiques (Voronoï, physique) surpassent les maillages géométriques en termes d'erreur de prédiction, et le découpage cylindrique corrige les défauts géométriques du cartésien.
+  \item Le choix de la discrétisation spatiale conditionne fortement la fidélité du modèle : les maillages statistiques (Voronoï, physique) surpassent nettement les maillages géométriques en termes d'erreur de prédiction (6,4 et 10,2 points d'écart de RSD contre 20,7 pour le cartésien et 27,7 pour le cylindrique) ; le cas cylindrique montre que le respect de la géométrie de l'enceinte ne garantit pas la pertinence du maillage vis-à-vis de la ségrégation.
   \item Un vecteur d'état fondé sur la teneur locale en petites particules discrimine la ségrégation bien mieux qu'un simple comptage.
   \item Les chaînes inhomogènes, en actualisant les probabilités à chaque pas, suivent plus fidèlement l'évolution DEM que les chaînes homogènes, en particulier durant les régimes transitoires.
 \end{itemize}
@@ -972,7 +1004,16 @@ soit 157 pas d'extraction DEM ($\Delta t_{\mathrm{DEM}} = \SI{0.01}{s}$). La fig
   \label{fig:schema_tau}
 \end{figure}
 
-Ce choix répond à un double impératif. D'une part, $\tau$ doit être suffisamment grand pour que les particules aient le temps de changer de cellule entre deux observations : un $\tau$ trop court produit des matrices quasi identitaires (fortes diagonales artificielles) qui sous-estiment la cinétique du mélange. D'autre part, $\tau$ doit rester suffisamment court pour résoudre la dynamique du phénomène : un $\tau$ trop long saute des étapes de la cinétique et lisse artificiellement les courbes de RSD. L'étude paramétrique de la figure~\ref{fig:etude_tau}, menée pour des valeurs de $\tau$ allant de 10 à 1000 sur le découpage physique, illustre ce compromis : les petites valeurs de $\tau$ précipitent la convergence du RSD markovien vers zéro (sur-estimation de la vitesse de mélange), tandis que les grandes valeurs dégradent la résolution temporelle de la prédiction (courbes anguleuses, peu de points). Le choix $\tau = 157$, en plus de sa signification physique --- un tour de tambour ---, se situe dans la gamme intermédiaire qui préserve à la fois la cinétique et la résolution.
+Ce choix répond à un double impératif. D'une part, $\tau$ doit être suffisamment grand pour que les particules aient le temps de changer de cellule entre deux observations : un $\tau$ trop court produit des matrices quasi identitaires (fortes diagonales artificielles) qui figent la prédiction. D'autre part, $\tau$ doit rester suffisamment court pour résoudre la dynamique du phénomène : un $\tau$ trop long saute des étapes de la cinétique et lisse artificiellement les courbes de RSD. L'étude paramétrique de la figure~\ref{fig:etude_tau}, menée sur les données DEM pour des valeurs de $\tau$ allant de 10 à 1000 (découpage physique, 10 cellules, RSD de la teneur en petites particules), illustre ce compromis : les très petites valeurs ($\tau = 10$, $25$) figent le RSD prédit à un niveau élevé --- entre deux observations si rapprochées, les particules n'ont pas quitté leur cellule et la matrice, quasi identitaire, n'encode presque aucun échange ---, tandis que les grandes valeurs ($\tau = 500$, $1000$) dégradent la résolution temporelle de la prédiction (segments anguleux, peu de points). Le choix $\tau = 157$ (courbe épaisse), en plus de sa signification physique --- un tour de tambour ---, se situe dans la gamme intermédiaire qui suit correctement la descente initiale du RSD DEM et son niveau de palier.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/etude_tau_rsd.png}
+  \caption{Influence du pas de temps de Markov $\tau$ sur la cinétique de mélange prédite, calculée sur les données DEM (découpage physique, 10 cellules) : RSD DEM de la teneur en petites particules (noir) et prédictions markoviennes homogènes pour $\tau$ de 10 à 1000 centièmes de seconde. La courbe épaisse correspond à la valeur retenue $\tau = 157$.}
+  \label{fig:etude_tau}
+\end{figure}
+
+À titre de complément, l'étude menée durant le stage sur un maillage plus fin (découpage physique, 30 cellules, RSD par espèce) conduit au même constat (figure~\ref{fig:etude_tau_30}).
 
 \begin{figure}[H]
   \centering
@@ -988,17 +1029,26 @@ Ce choix répond à un double impératif. D'une part, $\tau$ doit être suffisam
     \includegraphics[width=0.8\linewidth]{figures/etude_tau_petites.png}
     \subcaption*{(b) Petites particules}
   \end{minipage}
-  \caption{Influence du pas de temps de Markov $\tau$ sur la cinétique de mélange prédite (découpage physique, 30 cellules) : RSD de la DEM (noir) et prédictions markoviennes pour $\tau$ de 10 à 1000 centièmes de seconde.}
-  \label{fig:etude_tau}
+  \caption{Étude complémentaire de l'influence de $\tau$ (découpage physique, 30 cellules) : RSD de la DEM (noir) et prédictions markoviennes pour $\tau$ de 10 à 1000 centièmes de seconde.}
+  \label{fig:etude_tau_30}
 \end{figure}
 
 % ------------------------------------------------------------
 \subsection{Choix du nombre de blocs d'apprentissage \texorpdfstring{$NLT$}{NLT}}
 \label{annexe:nlt}
 
-Le paramètre $NLT$ contrôle le nombre de blocs d'apprentissage sur lesquels les probabilités de transition sont observées, puis moyennées (chaîne homogène) ou conservées séparément (chaîne inhomogène). L'étude de sensibilité compare des modèles construits avec $NLT = 1$ (un seul tour d'apprentissage) et $NLT = 50$, toutes choses égales par ailleurs (découpage physique, 10 cellules, $\tau = step = start = 157$).
+Le paramètre $NLT$ contrôle le nombre de blocs d'apprentissage sur lesquels les probabilités de transition sont observées, puis moyennées (chaîne homogène) ou conservées séparément (chaîne inhomogène).
 
-La figure~\ref{fig:etude_nlt_ecart} montre l'écart $|\text{Markov} - \text{DEM}|$ dans les deux cas. Avec $NLT = 1$, l'écart RMS sur les petites particules plafonne autour de 5 à 10 particules avec des cellules durablement mal prédites (bandes rouges persistantes sur la carte des écarts) : la matrice apprise sur un unique tour reste tributaire de la configuration particulière de ce tour. Avec $NLT = 50$, l'écart RMS retombe dans la gamme 2 à 5, et les erreurs résiduelles se concentrent sur des épisodes courts plutôt que sur des cellules entières : la moyenne sur de nombreux blocs a gommé le bruit statistique de l'apprentissage. La figure~\ref{fig:etude_nlt_teneur} confirme ce constat sur l'évolution de la teneur en petites particules : la prédiction $NLT = 50$ (chaîne inhomogène) suit sensiblement mieux les trajectoires DEM, cellule par cellule, que la prédiction $NLT = 1$.
+L'étude de sensibilité menée sur les données DEM (figure~\ref{fig:etude_nlt_courbe}) balaie $NLT$ de 1 à 18 (découpage physique, 10 cellules, $\tau = step = 157$) et mesure pour chaque valeur l'erreur moyenne $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur toute la fenêtre de prédiction. Deux régimes apparaissent : pour les petites valeurs ($NLT = 2$ à $5$), l'erreur fluctue entre 6 et 6,6 points --- chaque bloc supplémentaire modifie sensiblement la matrice moyenne, signe que la statistique n'est pas encore stabilisée --- puis, à partir de $NLT \gtrsim 8$, l'erreur décroît de façon monotone (5,6 points à $NLT = 8$, 4,7 points à $NLT = 18$) : la moyenne sur de nombreux blocs gomme le bruit statistique de l'apprentissage et la matrice converge vers la dynamique moyenne du régime permanent. On note que $NLT = 1$ peut ponctuellement donner une erreur faible : la matrice épouse alors la configuration particulière de son unique tour d'apprentissage, mais sans garantie de robustesse --- ce résultat dépend fortement du tour choisi, comme le confirme la sensibilité au paramètre $start$ (annexe~\ref{annexe:start}).
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\textwidth]{figures/etude_nlt_erreur.png}
+  \caption{Étude de sensibilité au nombre de blocs d'apprentissage $NLT$, calculée sur les données DEM (découpage physique, 10 cellules, $\tau = step = 157$) : erreur moyenne $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur la fenêtre de prédiction.}
+  \label{fig:etude_nlt_courbe}
+\end{figure}
+
+La comparaison détaillée des cas extrêmes $NLT = 1$ et $NLT = 50$ (figures~\ref{fig:etude_nlt_ecart} et~\ref{fig:etude_nlt_teneur}) illustre ces deux régimes cellule par cellule. Avec $NLT = 1$, l'écart RMS sur les petites particules plafonne autour de 5 à 10 particules avec des cellules durablement mal prédites (bandes rouges persistantes sur la carte des écarts). Avec $NLT = 50$, l'écart RMS retombe dans la gamme 2 à 5, et les erreurs résiduelles se concentrent sur des épisodes courts plutôt que sur des cellules entières ; la prédiction suit sensiblement mieux les trajectoires DEM de teneur, cellule par cellule.
 
 En contrepartie, augmenter $NLT$ allonge la fenêtre temporelle mobilisée par l'apprentissage ($NLT \times (step + \tau)$ pas DEM) et accroît le coût de construction. La valeur retenue résulte donc d'un compromis entre robustesse statistique et étendue de la fenêtre d'apprentissage ; pour les chaînes inhomogènes, un $NLT$ élevé est en outre nécessaire pour disposer d'une matrice par intervalle sur toute la durée de prédiction.
 
@@ -1042,9 +1092,32 @@ En contrepartie, augmenter $NLT$ allonge la fenêtre temporelle mobilisée par l
 \subsection{Choix de l'instant de départ \texorpdfstring{$start = 157$}{start = 157}}
 \label{annexe:start}
 
-Le paramètre $start$ fixe le premier instant DEM utilisé pour la phase d'apprentissage --- et, par voie de conséquence, l'instant initial de la prédiction. Le début de simulation correspond au régime transitoire de mise en mouvement du lit : le RSD de la concentration en petites particules y chute brutalement depuis sa valeur initiale (configuration séparée) avant de fluctuer autour d'un palier, atteint après environ un tour de tambour. Apprendre les probabilités de transition sur cette phase transitoire biaiserait la matrice, qui encoderait une dynamique non représentative du mélange établi.
+Le paramètre $start$ fixe le premier instant DEM utilisé pour la phase d'apprentissage --- et, par voie de conséquence, l'instant initial de la prédiction. Le début de simulation correspond au régime transitoire de mise en mouvement du lit. La figure~\ref{fig:etude_start_rsd}, calculée sur les données DEM, montre le RSD de la teneur en petites particules durant les 12 premières secondes pour les quatre méthodes de découpage : quelle que soit la méthode, le RSD part de valeurs très élevées (90 à 110 \%, configuration initiale séparée), culmine durant la mise en mouvement du lit (jusqu'à 120 \% pour les maillages géométriques), puis amorce sa décroissance vers le palier du régime établi. La ligne verticale $start = 157$ --- un tour de tambour --- marque la fin de cette phase transitoire : au-delà, la décroissance du RSD est engagée pour les quatre découpages et les probabilités de transition observées deviennent représentatives du mélange établi. Apprendre les probabilités sur la zone grisée (régime transitoire) biaiserait la matrice, qui encoderait une dynamique de démarrage non représentative. Le tableau~\ref{tab:etude_start_rsd} donne les valeurs du RSD à quelques instants clefs.
 
-L'étude comparative porte sur trois valeurs de $start$ --- 157 (un tour), 314 (deux tours) et 1570 (dix tours) --- pour le découpage de Voronoï à 10 cellules, l'espèce des grandes particules et des paramètres par ailleurs identiques ($NLT = 1$, $\tau = step = 157$). La figure~\ref{fig:etude_start} montre l'écart $|\text{Markov} - \text{DEM}|$ pour les trois valeurs, et le tableau~\ref{tab:etude_start} en synthétise les niveaux d'écart RMS en régime établi.
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/etude_start_rsd.png}
+  \caption{Justification du choix $start = 157$ : RSD DEM de la teneur en petites particules durant les 12 premières secondes, pour les quatre méthodes de découpage. La zone grisée matérialise le régime transitoire de mise en mouvement du lit ; la ligne pointillée marque $start = 157$ (un tour de tambour).}
+  \label{fig:etude_start_rsd}
+\end{figure}
+
+\begin{table}[H]
+  \centering
+  \caption{RSD DEM de la teneur en petites particules (\%) à quelques instants (centièmes de seconde), par méthode de découpage : le régime transitoire ($t < 157$) présente des valeurs hautes et erratiques ; la décroissance s'installe au-delà.}
+  \label{tab:etude_start_rsd}
+  \begin{tabular}{lccccccc}
+    \toprule
+    $t$ (cs) & 0 & 50 & 100 & \textbf{157} & 300 & 600 & 1000\\
+    \midrule
+    Cartésien   & 91{,}1 & 92{,}4 & 104{,}3 & \textbf{76{,}7} & 34{,}1 & 38{,}4 & 75{,}5\\
+    Cylindrique & 97{,}6 & 95{,}1 & 95{,}6  & \textbf{62{,}8} & 85{,}2 & 23{,}5 & 40{,}0\\
+    Voronoï     & 62{,}1 & 89{,}5 & 29{,}7  & \textbf{61{,}7} & 23{,}9 &  9{,}1 & 19{,}6\\
+    Physique    & 107{,}1 & 90{,}4 & 88{,}6 & \textbf{68{,}3} & 31{,}6 & 15{,}1 & 12{,}3\\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+L'étude comparative est complétée par trois valeurs de $start$ --- 157 (un tour), 314 (deux tours) et 1570 (dix tours) --- pour le découpage de Voronoï à 10 cellules, l'espèce des grandes particules et des paramètres par ailleurs identiques ($NLT = 1$, $\tau = step = 157$). La figure~\ref{fig:etude_start} montre l'écart $|\text{Markov} - \text{DEM}|$ pour les trois valeurs, et le tableau~\ref{tab:etude_start} en synthétise les niveaux d'écart RMS en régime établi.
 
 \begin{figure}[H]
   \centering
@@ -1101,7 +1174,16 @@ Lorsque plusieurs blocs d'apprentissage sont utilisés ($NLT > 1$), le paramètr
   \item $step = \tau = 157$ fait se succéder les blocs de manière contiguë et sans recouvrement : chaque bloc correspond exactement à un tour de tambour supplémentaire, chaque transition observée est comptée une seule fois, et la fenêtre d'apprentissage reste compacte.
 \end{itemize}
 
-Pour les chaînes inhomogènes, ce choix prend une signification supplémentaire : la matrice $\mathbf{P}^{(k)}$ du bloc $k$ est exactement la matrice du $k$-ième tour de tambour suivant le départ, ce qui rend la séquence de matrices directement interprétable --- et synchronisée avec la prédiction de l'équation~\eqref{eq:prediction_inhomogene}, chaque pas de prédiction consommant la matrice du bloc correspondant. La valeur $step = 157$ est donc adoptée pour tous les modèles multi-blocs du mémoire, la cohérence $\tau = step = start = 157$ alignant l'ensemble de la chronologie d'apprentissage sur la période physique du tambour.
+L'étude de sensibilité menée sur les données DEM (figure~\ref{fig:etude_step_courbe}) balaie $step$ de 40 à 471 (découpage physique, 10 cellules, $NLT = 3$, $\tau = 157$) et mesure l'erreur moyenne $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$. On observe que les valeurs intermédiaires non commensurables avec la période du tambour ($step = 80$) dégradent l'erreur (8,6 points) : les blocs échantillonnent alors des phases de rotation différentes, et leur moyenne mélange des configurations angulaires hétérogènes. Les valeurs commensurables avec la période ($step = 157$, $314$) ramènent l'erreur autour de 6 points, chaque bloc couvrant un nombre entier de tours ; au-delà ($step = 471$), l'erreur remonte, la fenêtre totale d'apprentissage s'étirant sans gain statistique. La petite valeur $step = 40$ donne l'erreur la plus basse sur ce cas particulier, mais au prix d'un recouvrement partiel des fenêtres d'observation des blocs, qui corrèle les blocs entre eux et fragilise l'interprétation de la moyenne --- et, pour les chaînes inhomogènes, désynchronise les matrices de la période physique.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\textwidth]{figures/etude_step_erreur.png}
+  \caption{Étude de sensibilité à l'écart entre blocs $step$, calculée sur les données DEM (découpage physique, 10 cellules, $NLT = 3$, $\tau = 157$) : erreur moyenne $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur la fenêtre de prédiction. La ligne pointillée marque la valeur retenue $step = \tau = 157$.}
+  \label{fig:etude_step_courbe}
+\end{figure}
+
+Pour les chaînes inhomogènes, le choix $step = \tau$ prend une signification supplémentaire : la matrice $\mathbf{P}^{(k)}$ du bloc $k$ est exactement la matrice du $k$-ième tour de tambour suivant le départ, ce qui rend la séquence de matrices directement interprétable --- et synchronisée avec la prédiction de l'équation~\eqref{eq:prediction_inhomogene}, chaque pas de prédiction consommant la matrice du bloc correspondant. La valeur $step = 157$ est donc adoptée pour tous les modèles multi-blocs du mémoire, la cohérence $\tau = step = start = 157$ alignant l'ensemble de la chronologie d'apprentissage sur la période physique du tambour.
 
 % ------------------------------------------------------------
 \subsection{Justification des matrices distinctes par espèce}
