@@ -1,0 +1,15 @@
+\babel@toc {french}{}\relax 
+\contentsline {figure}{\numberline {1}{\ignorespaces Principe de la simulation DEM}}{3}{figure.caption.2}%
+\contentsline {figure}{\numberline {2}{\ignorespaces Principe de la discrétisation spatiale : le tambour est partitionné en cellules au sein desquelles la dynamique particulaire est agrégée.}}{4}{figure.caption.3}%
+\contentsline {figure}{\numberline {3}{\ignorespaces Construction de la matrice de transition à partir des déplacements inter-cellules observés dans le mélangeur discrétisé.}}{5}{figure.caption.6}%
+\contentsline {figure}{\numberline {4}{\ignorespaces Principe de la chaîne inhomogène : une matrice de transition distincte est associée à chaque intervalle de temps.}}{5}{figure.caption.7}%
+\contentsline {figure}{\numberline {5}{\ignorespaces Attribution des particules aux cellules de Voronoï : à l'issue de la phase d'apprentissage, chaque grain est affecté à la partition dont le centre $\boldsymbol {\mu }_k$ est le plus proche au sens de la distance euclidienne (équation~\ref {eq:affectation_kmeans}).}}{8}{figure.caption.10}%
+\contentsline {figure}{\numberline {6}{\ignorespaces Application des découpages de Voronoï et physique aux positions issues de la simulation DEM.}}{9}{figure.caption.13}%
+\contentsline {figure}{\numberline {7}{\ignorespaces Matrices de transition (découpage cartésien) construites séparément pour chaque espèce.}}{10}{figure.caption.14}%
+\contentsline {figure}{\numberline {8}{\ignorespaces Matrices de transition (découpage de Voronoï) pour chaque espèce.}}{11}{figure.caption.15}%
+\contentsline {figure}{\numberline {9}{\ignorespaces Évolution temporelle du nombre de particules par cellule (vecteur d'état de type comptage).}}{11}{figure.caption.17}%
+\contentsline {figure}{\numberline {10}{\ignorespaces Évolution de la teneur locale en petites particules (vecteur d'état de type ségrégation).}}{12}{figure.caption.19}%
+\contentsline {figure}{\numberline {11}{\ignorespaces RSD de la concentration en petites particules : comparaison DEM / prédiction markovienne (découpage de Voronoï).}}{12}{figure.caption.21}%
+\contentsline {figure}{\numberline {12}{\ignorespaces Matrices de transition (découpage physique) pour chaque espèce.}}{13}{figure.caption.22}%
+\contentsline {figure}{\numberline {13}{\ignorespaces Évolution de la teneur en petites particules : découpage physique, chaîne inhomogène.}}{13}{figure.caption.23}%
+\contentsline {figure}{\numberline {14}{\ignorespaces RSD de la concentration en petites particules : DEM vs.\ Markov homogène et inhomogène (découpage physique).}}{14}{figure.caption.24}%

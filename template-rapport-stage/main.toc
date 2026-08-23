@@ -1,0 +1,33 @@
+\babel@toc {french}{}\relax 
+\contentsline {section}{\numberline {1}Introduction}{1}{section.1}%
+\contentsline {section}{\numberline {2}Contexte et état de l'art}{1}{section.2}%
+\contentsline {section}{\numberline {3}Matériel et méthodes}{2}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Données Matériau de référence}{2}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Principe de la simulation DEM}{2}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}Du déterminisme particulaire au formalisme markovien}{3}{subsection.3.3}%
+\contentsline {subsection}{\numberline {3.4}Construction de la matrice de transition}{4}{subsection.3.4}%
+\contentsline {paragraph}{Chaîne homogène.}{4}{paragraph*.4}%
+\contentsline {paragraph}{Chaîne inhomogène.}{4}{paragraph*.5}%
+\contentsline {section}{\numberline {4}Méthodes de discrétisation}{5}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Découpage cartésien}{6}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Découpage cylindrique}{6}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}Découpage de Voronoï par algorithme des k-moyennes}{6}{subsection.4.3}%
+\contentsline {paragraph}{Initialisation des centres.}{7}{paragraph*.8}%
+\contentsline {paragraph}{Étape d'affectation.}{7}{paragraph*.9}%
+\contentsline {paragraph}{Étape de mise à jour.}{8}{paragraph*.11}%
+\contentsline {paragraph}{Convergence et critère d'arrêt.}{8}{paragraph*.12}%
+\contentsline {subsection}{\numberline {4.4}Découpage physique}{9}{subsection.4.4}%
+\contentsline {section}{\numberline {5}Résultats}{10}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Découpage cartésien}{10}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Découpage de Voronoï}{10}{subsection.5.2}%
+\contentsline {paragraph}{Vecteur d'état par comptage.}{11}{paragraph*.16}%
+\contentsline {paragraph}{Vecteur d'état par teneur locale.}{11}{paragraph*.18}%
+\contentsline {paragraph}{Validation par le RSD.}{12}{paragraph*.20}%
+\contentsline {subsection}{\numberline {5.3}Découpage physique et chaînes inhomogènes}{12}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}Influence du choix de la discrétisation}{14}{subsection.5.4}%
+\contentsline {section}{\numberline {6}Discussion}{14}{section.6}%
+\contentsline {paragraph}{Dualité de comportement entre espèces.}{15}{paragraph*.26}%
+\contentsline {paragraph}{Rôle déterminant de la discrétisation.}{15}{paragraph*.27}%
+\contentsline {paragraph}{Pertinence de la variable d'état.}{15}{paragraph*.28}%
+\contentsline {section}{\numberline {7}Conclusion et perspectives}{15}{section.7}%
+\contentsline {section}{Références bibliographiques}{16}{section*.29}%

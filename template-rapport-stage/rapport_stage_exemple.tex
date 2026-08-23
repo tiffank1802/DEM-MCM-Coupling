@@ -1,0 +1,267 @@
+% ============================================================
+% memoire.tex — Mémoire de MASTER Mécanique
+% Sujet : Modélisation stochastique de la ségrégation granulaire
+%         par chaînes de Markov à partir de simulations DEM
+%
+% Compilation : xelatex memoire.tex (x2 pour la table des matières)
+% ============================================================
+\documentclass{MemoireMaster}
+
+% ------------------------------------------------------------
+% MÉTADONNÉES — À COMPLÉTER / VÉRIFIER
+% ------------------------------------------------------------
+\titre{Modélisation stochastique de la ségrégation granulaire par chaînes de Markov à partir de simulations DEM} % À COMPLÉTER : confirmer le titre exact
+\auteur{Kevin TONGUE} % À COMPLÉTER : vérifier nom/prénom exact
+\parcoursmaster{Parcours : Mécanique Numérique des Solides (MNS)} % À COMPLÉTER : confirmer le parcours
+\ecole{Centrale Lyon -- ENISE}
+\laboratoire{À COMPLÉTER (nom et adresse du laboratoire d'accueil)}
+\entreprise{À COMPLÉTER (le cas échéant, nom et adresse de l'entreprise)}
+\tuteurLabo{À COMPLÉTER} % encadrant(e) laboratoire ou entreprise
+\tuteurEco{À COMPLÉTER} % encadrant(e) école
+\dateSoutenance{17 septembre 2026}
+\jury{
+  M./Mme \hspace{4cm} Président(e)\\[0.3cm]
+  M./Mme \hspace{4cm} \\[0.3cm]
+  M./Mme \hspace{4cm}
+} % À COMPLÉTER : composition du jury diffusée le 3 septembre 2026
+
+\begin{document}
+
+% ============================================================
+% PAGE DE GARDE
+% ============================================================
+\fairepagedegarde
+
+% ============================================================
+% PAGINATION FRONT MATTER (non comptée dans les 35 pages)
+% ============================================================
+\pagenumbering{roman}
+
+% ============================================================
+% RÉSUMÉ (français) — 1 page maxi, inséré en 3e de couverture
+% ============================================================
+\begin{resumefr}
+Les milieux granulaires interviennent dans de nombreux procédés industriels (pharmaceutique, nucléaire, construction, agroalimentaire), où la compréhension des phénomènes de ségrégation et de mélange est essentielle pour optimiser la qualité des produits et l'efficacité énergétique des procédés. La simulation par éléments discrets (\emph{Discrete Element Method}, DEM) permet de reproduire fidèlement la dynamique des particules, mais son coût de calcul --- lié à des pas de temps très faibles (de l'ordre de $10^{-6}$~s) --- la rend difficilement applicable à l'échelle industrielle, où des milliards de particules interagissent.
+
+L'objectif de ce stage est de proposer un modèle stochastique, fondé sur les chaînes de Markov, capable de reproduire les phénomènes de ségrégation observés en DEM tout en réduisant drastiquement les ressources de calcul nécessaires. L'approche s'appuie sur des simulations DEM de référence portant sur 1030 particules bidisperses (4 et 8~mm) au sein d'un tambour tournant à 4~rad/s, sur une durée de 60~secondes.
+
+La démarche adoptée consiste à discrétiser le mélangeur en partitions, puis à construire, à partir des données DEM, un vecteur d'état (nombre de particules ou teneur en une espèce par partition) et une matrice de transition markovienne, homogène ou inhomogène selon l'hypothèse de stationnarité retenue. Plusieurs méthodes de discrétisation ont été développées et comparées : des méthodes géométriques (découpage cartésien, cylindrique) et des méthodes statistiques fondées sur l'apprentissage (voronoï/k-means, découpage physique intégrant la norme de la vitesse, gaussian mixture, spectral clustering, etc.).
+
+Les résultats montrent que les grandes et les petites particules présentent des dynamiques de transition distinctes, et que la construction de matrices de transition séparées par espèce améliore la représentativité du modèle. La comparaison entre chaînes homogènes et inhomogènes indique que la prise en compte de la non-stationnarité du régime transitoire réduit sensiblement l'écart entre la prédiction markovienne et la référence DEM. Ces premiers résultats confirment la faisabilité d'une prédiction markovienne de la ségrégation à partir d'un temps d'apprentissage fini, ouvrant la voie à une réduction significative du coût de calcul par rapport à la DEM.
+\end{resumefr}
+
+% ============================================================
+% ABSTRACT (anglais) — 1 page maxi, inséré en 4e de couverture
+% ============================================================
+\begin{resumeen}
+Granular media are involved in numerous industrial processes (pharmaceutical, nuclear, construction, food processing), where understanding segregation and mixing phenomena is essential to optimise product quality and process energy efficiency. The Discrete Element Method (DEM) reproduces particle dynamics with high fidelity, but its computational cost --- driven by very small time steps (of the order of $10^{-6}$~s) --- makes it hardly applicable at industrial scale, where billions of particles interact.
+
+The aim of this internship is to propose a stochastic model, based on Markov chains, able to reproduce the segregation phenomena observed in DEM while drastically reducing the required computational resources. The approach relies on reference DEM simulations of 1030 bidisperse particles (4 and 8~mm) in a rotating drum operating at 4~rad/s, over a duration of 60~seconds.
+
+The methodology consists in discretising the mixer into partitions, then building, from the DEM data, a state vector (particle count or species content per partition) and a Markovian transition matrix, either homogeneous or inhomogeneous depending on the stationarity assumption. Several discretisation methods were developed and compared: geometric methods (Cartesian, cylindrical partitioning) and statistical, learning-based methods (Voronoi/k-means, physics-based partitioning including velocity magnitude, Gaussian mixture, spectral clustering, etc.).
+
+Results show that large and small particles exhibit distinct transition dynamics, and that building separate transition matrices per species improves model representativeness. The comparison between homogeneous and inhomogeneous chains indicates that accounting for the non-stationarity of the transient regime significantly reduces the discrepancy between the Markovian prediction and the DEM reference. These first results confirm the feasibility of a Markov-based prediction of segregation from a finite learning time, paving the way for a significant reduction of computational cost compared to DEM.
+\end{resumeen}
+
+% ============================================================
+% TABLE DES MATIÈRES
+% ============================================================
+\tabledematieres
+
+% ============================================================
+% REMERCIEMENTS
+% ============================================================
+\fairemerciements{
+À COMPLÉTER : remerciements à l'encadrant(e) laboratoire/entreprise, à l'encadrant(e) école, et aux membres du laboratoire d'accueil.
+}
+
+% ============================================================
+% LISTE DES FIGURES ET DES TABLEAUX
+% ============================================================
+\listefiguresdoc
+\listetableauxdoc
+
+% ============================================================
+% DÉBUT DU CORPS DU MÉMOIRE — PAGE 1 (35 pages maximum à partir d'ici)
+% ============================================================
+\pagenumbering{arabic}
+\debutcorpsmemoire
+
+\section{Introduction}
+
+\subsection{Contexte scientifique et industriel}
+Les milieux granulaires sont présents dans de nombreuses applications industrielles, notamment pharmaceutique, nucléaire, dans la construction et l'agroalimentaire. La compréhension des mécanismes à l'origine des phénomènes de ségrégation et de mélange est essentielle pour construire des indicateurs macroscopiques fiables permettant l'optimisation de la qualité des produits et de l'efficacité énergétique des procédés.
+
+\subsection{Problématique scientifique}
+La simulation par éléments discrets (Discrete Element Method, DEM) constitue une approche numérique déterministe fiable pour décrire la dynamique de tels systèmes, en calculant les accélérations, vitesses puis positions des particules par intégrations successives des équations du mouvement, à partir du bilan des actions mécaniques d'interaction entre particules et entre particules et parois \cite{tjakra2013}. Toutefois, la nécessité de résoudre finement les interactions de contact impose un pas de temps de simulation très faible (de l'ordre de $10^{-6}$~s), ce qui rend la méthode difficilement applicable à l'échelle industrielle, où des milliards de particules sont en interaction.
+
+La problématique scientifique de ce stage s'inscrit dans la continuité d'une thèse visant à confirmer que la connaissance des positions de particules issues de la DEM sur un nombre fini de pas de temps permet une prédiction ultérieure de l'état du système au moyen d'une chaîne de Markov. L'enjeu est donc de proposer un modèle stochastique capable de reproduire les phénomènes de ségrégation observés en DEM, à un coût de calcul largement réduit.
+
+\subsection{Positionnement bibliographique}
+L'utilisation des chaînes de Markov pour décrire la cinétique de mélange de particules à l'échelle de cellules ou partitions, plutôt qu'à l'échelle individuelle des particules, est une approche documentée dans la littérature. Doucet et al. (2008) ont ainsi proposé un cadre de construction d'une matrice de transition stationnaire à partir de simulations DEM pour décrire le mélange de particules monodisperses \cite{doucet2008}. Plus récemment, Hu et Liu (2021) ont étendu ce type d'approche à la prédiction du mélange granulaire dans des tambours tournants sous différentes vitesses de rotation \cite{hu2021}. Le présent travail se positionne dans la continuité de ces approches, en les étendant au cas bidisperse et en explorant plusieurs méthodes de discrétisation du mélangeur (géométriques et statistiques), ainsi que la question de l'homogénéité temporelle de la matrice de transition.
+
+\subsection{Objectifs du stage}
+Les objectifs spécifiques de ce travail sont :
+\begin{itemize}
+\item construire, à partir de résultats de simulation DEM, un modèle stochastique markovien capable de reproduire la cinétique de ségrégation d'un mélange granulaire bidisperse ;
+\item développer et comparer plusieurs méthodes de discrétisation (maillage) du mélangeur, géométriques et statistiques ;
+\item évaluer la pertinence de chaînes de Markov homogènes et inhomogènes pour la prédiction du mélange ;
+\item quantifier l'écart entre la prédiction markovienne et la référence DEM à l'aide de métriques dédiées.
+\end{itemize}
+
+\section{Matériels et méthodes}
+
+\subsection{Simulation DEM de référence}
+Les simulations DEM sur lesquelles se base ce travail sont issues d'une thèse portant sur la dynamique de particules bidisperses au sein d'un mélangeur de type tambour tournant, représentant physiquement un mélange de semoule et de blé. Le système comporte 1030 particules bidisperses de diamètres 4~mm et 8~mm (Tableau~\ref{tab:particules}), au sein d'un tambour tournant à une vitesse de rotation de 4~rad/s. Les positions des particules sont extraites de la simulation toutes les centièmes de seconde, sur une durée totale de 6000 centièmes de seconde, soit 60 secondes.
+
+\begin{table}[ht]
+\centering
+\caption{Composition du mélange granulaire bidisperse simulé en DEM}
+\label{tab:particules}
+\begin{tabular}{|l|c|c|}
+\hline
+Tailles & 4~mm & 8~mm \\
+\hline
+Nombre de particules & 350 & 680 \\
+\hline
+\end{tabular}
+\end{table}
+
+La DEM permet, au moyen du bilan des actions mécaniques issues des interactions particule-particule et particule-paroi, de calculer les accélérations, puis les vitesses et enfin les positions des particules par intégrations successives \cite{tjakra2013} :
+\begin{equation}
+m_i \frac{d\mathbf{v}_i}{dt} = \sum_{i,j=0}^{n} \left( \mathbf{F}_{ij}^n + \mathbf{F}_{ij}^s + m_i \mathbf{g} \right)
+\end{equation}
+\begin{equation}
+I_i \frac{d\theta_i}{dt} = \sum_{i,j=0}^{n} \mathbf{R}_i \times \mathbf{F}_{ij}^s - \mu_r R_i \left| \mathbf{F}_{ij}^n \right| \bar{\theta}_i
+\end{equation}
+
+avec : $m_i$ la masse de la particule $i$ ; $R_i$ son rayon ; $I_i$ son moment d'inertie ; $\mathbf{v}_i$ sa vitesse de translation ; $\theta_i$ sa vitesse angulaire ; $\bar{\theta}_i$ le vecteur unitaire associé à la vitesse angulaire ; $\mathbf{R}_i$ le vecteur rayon de contact ; $\mathbf{F}_{ij}^n$ et $\mathbf{F}_{ij}^s$ les forces normale et tangentielle de contact ; $\mathbf{g}$ le vecteur accélération de la pesanteur ; $\mu_r$ le coefficient de frottement de roulement.
+
+Pour capturer finement ces interactions, le pas de temps de simulation DEM doit être très faible (de l'ordre de $10^{-6}$~s), ce qui rend cette approche numériquement coûteuse dès que le nombre de particules devient représentatif de l'échelle industrielle.
+
+\subsection{Construction de la chaîne de Markov homogène}
+L'approche stochostique proposée vise à prédire la cinétique du mélange non plus à l'échelle de la particule, mais à l'échelle de partitions (ou cellules) obtenues par discrétisation du mélangeur. Ce changement d'échelle permet d'augmenter le pas de temps de prédiction et de réduire ainsi les ressources de calcul nécessaires. Le modèle markovien doit alors apprendre, sur un temps dit \emph{temps d'apprentissage}, la matrice de transition et le vecteur d'état initial du système.
+
+La construction du modèle se déroule selon les étapes suivantes.
+
+\paragraph{Discrétisation du mélangeur.} La partie utile du mélangeur --- c'est-à-dire la zone concentrant la quasi-totalité des particules, à l'exclusion du « ciel » où peu de particules circulent --- est maillée en $N$ partitions. La méthode de maillage retenue conditionne fortement la robustesse du modèle obtenu ; plusieurs méthodes sont présentées et comparées en section~\ref{sec:discretisation}.
+
+\paragraph{Construction du vecteur d'état initial.} Pour un découpage en $N$ partitions de la partie utile du mélangeur $\Omega$, le vecteur d'état de taille $N$ est un vecteur colonne dont les composantes sont soit le nombre de particules, soit la teneur en une espèce par partition :
+\begin{equation}
+S = [S_0, S_1, \ldots, S_N]
+\end{equation}
+Le vecteur d'état construit à partir du nombre de particules par partition permet d'apprécier l'homogénéité du mélange, tandis que celui construit à partir de la teneur en une espèce par partition (nombre de particules d'une espèce rapporté au nombre total de particules de la partition) permet d'apprécier l'état de ségrégation.
+
+\paragraph{Construction de la matrice de transition.} La matrice de transition est construite en observant, entre deux instants, le déplacement des particules d'une partition source $j$ vers une partition d'arrivée $i$. Les colonnes de la matrice correspondent ainsi aux cellules sources, et les lignes aux cellules d'arrivée. Selon la formulation de Doucet et al. (2008) \cite{doucet2008} :
+\begin{equation}
+P_{i,j} = \frac{1}{NLT} \sum_{n=1}^{NLT} \frac{1}{\phi(i,t_n)} \sum_{p=1}^{N_p} \phi_p(i,t_n)\,\phi_p(j,t_{n-1})
+\end{equation}
+où $\phi_p(i,t_n) = 1$ si la particule $p$ appartient à la partition $i$ à l'instant $t_n$, et $0$ sinon ; $\phi(i,t_n) = \sum_{p=1}^{N_p} \phi_p(i,t_n)$ est le nombre de particules présentes dans la partition $i$ à l'instant $t_n$ ; $NLT$ est le nombre de pas de temps de la phase d'apprentissage (\emph{learning time}).
+
+Deux conditions doivent être vérifiées pour chaque matrice de transition construite :
+\begin{itemize}
+\item \textbf{positivité} de tous les termes, l'espace considéré étant probabilisé : $P_{i,j} \in [0,1]$ ;
+\item \textbf{stochasticité en colonne} : la somme des termes de chaque colonne doit être égale à un, ce qui traduit le fait qu'à l'instant de départ, toutes les particules quittent la partition source $j$. Cette condition impose d'attendre, lors de la phase d'apprentissage, un temps suffisant pour observer effectivement des transitions de particules entre partitions, sous peine de valeurs indéterminées (NaN) dans la matrice.
+\end{itemize}
+
+Une fois la discrétisation effectuée, chaque particule reçoit, à chaque pas de temps, un label représentatif de sa partition d'appartenance, via un objet partitionneur commun à l'ensemble des pas de temps. Ces labels constituent la base de comparaison entre le modèle DEM et la prédiction markovienne, obtenue par projection du vecteur d'état sur la matrice de transition :
+\begin{equation}
+S_n = P\,S_{n-1}
+\end{equation}
+La matrice de transition étant supposée homogène --- c'est-à-dire constante au cours du temps --- la prédiction de l'état du système à l'instant $n$ correspond à la projection $n$ fois du vecteur d'état initial :
+\begin{equation}
+S_n = P^n S_0
+\end{equation}
+
+\subsection{Construction de la chaîne de Markov inhomogène}
+La chaîne inhomogène est construite selon les mêmes étapes que la chaîne homogène, à la différence que plusieurs matrices de transition $P_k$ sont construites successivement le long de la simulation DEM, chacune sur une fenêtre temporelle $[\mathrm{start}_k, \mathrm{end}_k]$ de durée $\tau$. La prédiction est alors obtenue par projection de la matrice $P_k$ correspondante sur le vecteur d'état, pour les instants $t \in [\tau_{k-1}, \tau_k[$. Cette approche permet de prendre en compte une éventuelle non-stationnarité de la dynamique du mélange, notamment durant le régime transitoire.
+
+\subsection{Méthodes de discrétisation du mélangeur}
+\label{sec:discretisation}
+Plusieurs méthodes de maillage du mélangeur ont été développées et comparées au cours du stage. On distingue les méthodes dites \emph{géométriques}, fondées sur la géométrie du mélangeur, et les méthodes dites \emph{statistiques}, fondées sur la répartition des particules et des grandeurs physiques associées, nécessitant une phase d'apprentissage sur les données DEM :
+\begin{itemize}
+\item méthodes géométriques : découpage cartésien, découpage cylindrique ;
+\item méthodes statistiques : découpage par quantiles, découpage de Voronoï, découpage physique, découpage adaptatif, mélange gaussien (\emph{Gaussian Mixture}), \emph{spectral clustering}, découpage multizone, découpage par \emph{octree}.
+\end{itemize}
+Ces méthodes procèdent toutes à une phase d'ajustement (\emph{fit}) permettant de déterminer les limites réelles du mélangeur à partir des coordonnées des particules sur l'ensemble de la simulation DEM en régime permanent, afin d'éviter de discrétiser des zones vides. Le découpage consiste ensuite à attribuer, à chaque particule et à chaque instant, un label correspondant à sa partition d'appartenance.
+
+\paragraph{Découpage cartésien.} Chaque particule est affectée à une partition selon sa position relative $(x,y,z)$, normalisée par l'intervalle $[x_{min}, x_{max}]$ pour un nombre de partitions donné sur chaque axe. La numérotation locale des partitions est effectuée dans le sens de chaque axe à partir du centre du repère, puis la numérotation globale est réalisée successivement selon les directions $x$, $y$ et $z$.
+
+\paragraph{Découpage cylindrique.} Un changement de coordonnées du repère cartésien vers le repère cylindrique $(r, \theta, z)$ est effectué, avec :
+\begin{equation}
+r = \sqrt{x^2+y^2}, \qquad \theta = \arctan\left(\frac{x}{y}\right)
+\end{equation}
+La labellisation est ensuite réalisée dans ce nouveau système de coordonnées. Les partitions sont numérotées localement par ordre croissant de distance au centre du mélangeur, puis globalement selon la direction radiale, puis angulaire, puis selon $z$.
+
+\paragraph{Découpage de Voronoï.} Cette méthode s'appuie sur un algorithme de type k-means, algorithme inductif apprenant sur un ensemble d'exemples et de variables puis prédisant sur des données non apprises grâce à la fonction d'interpolation issue de l'apprentissage. L'algorithme construit des partitions de taille comparable en minimisant la variance des positions des particules autour de centres initialisés aléatoirement et itérés jusqu'à convergence :
+\begin{equation}
+\sum_{i=1}^{N_p} \min_j \left( \left\| x_i^j - \mu^j \right\| \right) \quad \forall j \in [1, N_f]
+\end{equation}
+où $N_p$ est le nombre d'échantillons de particules, $x_i^j$ le $i$-ème échantillon de la $j$-ème caractéristique, $\mu^j$ la moyenne des échantillons de la $j$-ème caractéristique, et $N_f$ le nombre de caractéristiques ($N_f=3$ pour les coordonnées spatiales). Dans le cadre de ce travail, le modèle est appris en régime permanent du mélange, à partir de 250 centièmes de seconde, pour l'ensemble des particules, soit $N_p = 1030 \times (6000-250) = 5\,922\,500$ échantillons d'apprentissage, et une prédiction réalisée sur un total de 6\,180\,000 particules.
+
+\paragraph{Découpage physique.} Cette méthode reprend l'algorithme k-means du découpage de Voronoï, en ajoutant une variable supplémentaire représentative de la physique du mélange, à savoir la norme du vecteur vitesse des particules ($N_f = 4$ : trois coordonnées spatiales et la norme de la vitesse).
+
+\subsection{Métriques d'évaluation}
+La qualité du modèle markovien est évaluée à l'aide de plusieurs métriques : l'évolution temporelle du vecteur d'état (nombre de particules ou teneur en une espèce par cellule), comparée entre la référence DEM et la prédiction markovienne ; l'écart temporel moyen (RMS) entre les deux prédictions par cellule ; et l'écart absolu entre les deux prédictions pour l'ensemble des cellules au cours du temps.
+
+\section{Résultats}
+
+\subsection{Découpage selon le modèle cartésien}
+La construction d'un modèle de Markov à partir d'un découpage cartésien est une approche répandue dans la littérature pour capturer les phénomènes de mélange \cite{doucet2008}. Les matrices de transition obtenues pour les grandes et les petites particules présentent des cartographies distinctes : les grandes particules ont tendance à rester dans la cellule où elles se trouvaient à l'instant précédent, contrairement aux petites particules, qui se déplacent davantage entre deux instants successifs. L'évolution du nombre total de particules par cellule au cours du temps révèle par ailleurs la présence de zones plus concentrées que d'autres, ainsi que des zones quasi vides, ce qui traduit une appréciation limitée du mélange et de la ségrégation par cette seule métrique.
+
+\subsection{Découpage selon le modèle de Voronoï}
+Le pas de temps de Markov retenu pour cette étude est de 157 centièmes de seconde, correspondant à un tour complet du tambour pour une vitesse de rotation de 4~rad/s. Deux matrices de transition distinctes ont été construites, par application d'un masque sur les labels afin de ne comptabiliser que les particules d'une espèce donnée. Les modèles ainsi obtenus confirment la distinction de dynamique entre espèces : la probabilité maximale de transition d'une cellule à une autre atteint 0,5 pour les grandes particules contre 0,35 pour les petites, tandis que la probabilité pour les petites particules de demeurer dans leur cellule d'un instant à l'autre est plus faible que pour les grandes particules.
+
+Le nombre moyen de particules par cellule (environ 100) traduit une distribution homogène en nombre de particules, mais cette métrique ne permet pas d'apprécier le phénomène de ségrégation, défini par la formation de zones enrichies en l'une ou l'autre des espèces. Le vecteur d'état construit à partir de la teneur en petites particules par cellule met en évidence des différences marquées et stables entre cellules : la cellule située contre la paroi du mélangeur présente une teneur en petites particules supérieure à la moyenne, tandis qu'une cellule plus centrale présente une teneur inférieure à la moyenne, confirmant la présence d'une ségrégation radiale dans le milieu granulaire.
+
+\subsection{Découpage selon le modèle physique}
+L'introduction de la norme de la vitesse comme variable supplémentaire de partitionnement permet, comme pour le découpage de Voronoï, de distinguer les dynamiques de transition des grandes et des petites particules, avec des écarts entre prédiction markovienne et référence DEM comparables à ceux observés pour les autres méthodes statistiques.
+
+\subsection{Chaînes homogènes et inhomogènes}
+La comparaison entre les chaînes homogène et inhomogène, sur la base du découpage physique, montre que l'erreur $L_1$ (somme des écarts absolus entre teneurs prédites et teneurs DEM) de la chaîne inhomogène converge plus rapidement vers un régime stabilisé de faible amplitude que celle de la chaîne homogène, en particulier durant le régime transitoire de début de simulation. Les chaînes homogènes permettent néanmoins de suivre correctement la dynamique DEM une fois le régime permanent atteint.
+
+\section{Discussion}
+Les résultats obtenus mettent en évidence une différence de comportement marquée entre les grandes et les petites particules, visible à la fois sur la cartographie des matrices de transition et sur l'évolution temporelle des teneurs par cellule. Les grandes particules ont tendance à rester dans les cellules où elles se trouvent, contrairement aux petites particules, sur l'échelle de temps d'un tour de rotation du tambour --- ce qui est cohérent avec le phénomène classiquement observé de remontée des grosses particules en surface dans les mélangeurs granulaires bidisperses. Sur la diagonale de la matrice de transition, les partitions situées dans les zones dites passives présentent une probabilité de rester plus élevée que celles des zones actives, ce qui traduit un phénomène de piégeage des particules dans ces zones peu agitées.
+
+La construction de matrices de transition distinctes par espèce, plutôt qu'une matrice unique, apparaît nécessaire pour rendre compte fidèlement de ces dynamiques différenciées. De même, la prise en compte de l'inhomogénéité temporelle de la matrice de transition améliore la représentativité du modèle durant le régime transitoire, sans remettre en cause la pertinence des chaînes homogènes en régime permanent.
+
+\section{Conclusion et perspectives}
+Ce travail a permis de proposer et d'évaluer un modèle stochastique markovien capable de reproduire les phénomènes de ségrégation d'un mélange granulaire bidisperse, à partir de données de référence issues de simulations DEM. Plusieurs méthodes de discrétisation du mélangeur --- géométriques et statistiques --- ont été développées et comparées, et la construction de chaînes de Markov homogènes et inhomogènes a permis de mettre en évidence l'intérêt de matrices de transition différenciées par espèce ainsi que la prise en compte de la non-stationnarité du régime transitoire.
+
+À COMPLÉTER : les perspectives de ce travail portent notamment sur (i) l'extension de la comparaison quantitative à l'ensemble des méthodes de discrétisation statistiques présentées (gaussian mixture, spectral clustering, multizone, octree), (ii) l'optimisation du choix du pas de temps d'apprentissage et du pas de temps de prédiction markovien, et (iii) la validation du modèle sur des configurations de mélangeur et des régimes de rotation supplémentaires.
+
+% ============================================================
+% BIBLIOGRAPHIE (non comptée dans les 35 pages)
+% ============================================================
+\newpage
+\begin{thebibliography}{9}
+
+\bibitem{doucet2008}
+Doucet, J., Hudon, N., Bertrand, F., \& Chaouki, J. (2008).
+Modeling of the mixing of monodisperse particles using a stationary DEM-based Markov process.
+\textit{Computers \& Chemical Engineering}, 32(6), 1334--1341.
+\url{https://doi.org/10.1016/j.compchemeng.2007.06.017}
+
+\bibitem{hu2021}
+Hu, Z., \& Liu, X. (2021).
+A novel Markov chain method for predicting granular mixing process in rotary drums under different rotation speeds.
+\textit{Powder Technology}, 386, 40--50.
+\url{https://doi.org/10.1016/j.powtec.2021.03.041}
+
+\bibitem{tjakra2013}
+Tjakra, J. D., Bao, J., Hudon, N., \& Yang, R. (2013).
+Analysis of collective dynamics of particulate systems modeled by Markov chains.
+\textit{Powder Technology}, 235, 228--237.
+\url{https://doi.org/10.1016/j.powtec.2012.10.012}
+
+\end{thebibliography}
+
+% ============================================================
+% ANNEXES (non comptées dans les 35 pages)
+% ============================================================
+\newpage
+\appendix
+\section{Annexe --- À COMPLÉTER}
+À COMPLÉTER si des annexes sont nécessaires (détails de maillage, données d'entrée, code, etc.).
+
+\end{document}
