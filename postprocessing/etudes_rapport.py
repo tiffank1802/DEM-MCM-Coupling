@@ -351,7 +351,7 @@ def etude_start(states, small_p):
     fig, ax = plt.subplots(figsize=(10, 5.6))
     for name, (st, n) in states.items():
         r = dem_rsd_series(st, small_p, n, times)
-        ax.plot(times, 100 * r, label=name, color=COLORS[name], lw=1.6)
+        ax.plot(times, r, label=name, color=COLORS[name], lw=1.6)
     ax.axvline(START, color="k", ls="--", lw=2)
     ax.text(START + 12, ax.get_ylim()[1] * 0.92,
             "start = 157\n(un tour de tambour)", fontsize=10)
@@ -359,7 +359,7 @@ def etude_start(states, small_p):
     ax.text(START / 2, ax.get_ylim()[1] * 0.05, "régime\ntransitoire",
             ha="center", fontsize=9, color="0.35")
     ax.set_xlabel("Temps (centièmes de seconde)")
-    ax.set_ylabel("RSD de la teneur en petites particules (%)")
+    ax.set_ylabel("RSD de la teneur en petites particules (–)")
     ax.set_title(
         "Détermination du début du régime permanent : RSD DEM pour les "
         "quatre méthodes de découpage"
@@ -379,7 +379,7 @@ def etude_start(states, small_p):
     with open(FIGDIR / "etude_start_table.txt", "w") as f:
         f.write("t(cs)   " + "  ".join(f"{t:>6d}" for t in probe) + "\n")
         for name, r in rows:
-            f.write(f"{name:<12}" + "  ".join(f"{100*x:6.1f}" for x in r) + "\n")
+            f.write(f"{name:<12}" + "  ".join(f"{x:6.3f}" for x in r) + "\n")
     print("start ok")
 
 
@@ -390,7 +390,7 @@ def etude_tau(states, small_p):
     r_dem = dem_rsd_series(st, small_p, n, times)
 
     fig, ax = plt.subplots(figsize=(10, 5.6))
-    ax.plot(times / 100, 100 * r_dem, "k.-", ms=3, lw=1, label="RSD DEM (réel)")
+    ax.plot(times / 100, r_dem, "k.-", ms=3, lw=1, label="RSD DEM (réel)")
     cmap = plt.get_cmap("viridis")
     taus = [10, 25, 50, 100, 157, 300, 500, 1000]
     for i, tau in enumerate(taus):
@@ -404,10 +404,10 @@ def etude_tau(states, small_p):
         r_mk = markov_rsd_series(P_small, P_s, S0_small, S0_all, n_steps)
         t_mk = (START + np.arange(n_steps + 1) * tau) / 100
         lw = 2.6 if tau == TAU else 1.4
-        ax.plot(t_mk, 100 * r_mk, color=cmap(i / len(taus)), lw=lw,
+        ax.plot(t_mk, r_mk, color=cmap(i / len(taus)), lw=lw,
                 label=f"Markov $\\tau$={tau}" + (" (retenu)" if tau == TAU else ""))
     ax.set_xlabel("Temps (s)")
-    ax.set_ylabel("RSD (%)")
+    ax.set_ylabel("RSD (–)")
     ax.set_title(
         "Influence du pas de temps de Markov $\\tau$ sur la cinétique prédite "
         "(découpage physique, 10 cellules, teneur en petites)"
@@ -433,7 +433,7 @@ def _erreur_pred(st, small_p, n, nlt, step, dt=8):
     times = times[times < N_T]
     r_dem = dem_rsd_series(st, small_p, n, times)
     m = min(len(r_mk), len(r_dem))
-    return np.mean(np.abs(r_mk[:m] - r_dem[:m])) * 100, nb
+    return np.mean(np.abs(r_mk[:m] - r_dem[:m])), nb
 
 
 def etude_nlt(states, small_p):
@@ -447,7 +447,7 @@ def etude_nlt(states, small_p):
     fig, ax = plt.subplots(figsize=(8.6, 5))
     ax.plot(nlts, errs, "o-", color="#d62728", lw=2)
     ax.set_xlabel("Nombre de blocs d'apprentissage $NLT$")
-    ax.set_ylabel(r"Erreur moyenne $|\mathrm{RSD}_{Markov} - \mathrm{RSD}_{DEM}|$ (points de %)")
+    ax.set_ylabel(r"Erreur moyenne $|\mathrm{RSD}_{Markov} - \mathrm{RSD}_{DEM}|$ (–)")
     ax.set_title(
         "Influence de $NLT$ sur la qualité du modèle "
         "(découpage physique, 10 cellules, $\\tau = step = 157$)"
@@ -472,7 +472,7 @@ def etude_step(states, small_p):
     ax.axvline(157, color="k", ls="--", lw=1.5)
     ax.text(165, max(errs) * 0.97, "step = $\\tau$ = 157", fontsize=10)
     ax.set_xlabel("Écart entre blocs $step$ (centièmes de seconde)")
-    ax.set_ylabel(r"Erreur moyenne $|\mathrm{RSD}_{Markov} - \mathrm{RSD}_{DEM}|$ (points de %)")
+    ax.set_ylabel(r"Erreur moyenne $|\mathrm{RSD}_{Markov} - \mathrm{RSD}_{DEM}|$ (–)")
     ax.set_title(
         "Influence de $step$ sur la qualité du modèle "
         "(découpage physique, 10 cellules, $NLT = 3$, $\\tau = 157$)"
@@ -522,13 +522,13 @@ def resultats_cylindrique(states, small_p):
     r_dem = dem_rsd_series(st, small_p, n, times_dem)
 
     fig, ax = plt.subplots(figsize=(10, 5.6))
-    ax.plot(times_dem / 100, 100 * r_dem, "k-", lw=1, alpha=0.7, label="DEM")
-    ax.plot(times_mk / 100, 100 * r_h, "o--", color="#1f77b4", ms=4,
+    ax.plot(times_dem / 100, r_dem, "k-", lw=1, alpha=0.7, label="DEM")
+    ax.plot(times_mk / 100, r_h, "o--", color="#1f77b4", ms=4,
             label="Markov homogène")
-    ax.plot(times_mk / 100, 100 * r_i, "s--", color="#d62728", ms=4,
+    ax.plot(times_mk / 100, r_i, "s--", color="#d62728", ms=4,
             label="Markov inhomogène")
     ax.set_xlabel("Temps (s)")
-    ax.set_ylabel("RSD de la teneur en petites particules (%)")
+    ax.set_ylabel("RSD de la teneur en petites particules (–)")
     ax.set_title("Découpage cylindrique : RSD DEM vs prédictions markoviennes")
     ax.legend()
     ax.grid(alpha=0.3)
@@ -556,18 +556,18 @@ def comparaison_methodes(states, small_p):
         r_dem_mk = dem_rsd_series(st, small_p, n,
                                   (START + np.arange(n_steps + 1) * TAU)
                                   .clip(max=N_T - 1))
-        err = np.mean(np.abs(r_mk - r_dem_mk)) * 100
+        err = np.mean(np.abs(r_mk - r_dem_mk))
         err_summary[name] = err
-        ax.plot(t_dem / 100, 100 * r_dem, "k-", lw=0.9, alpha=0.7, label="DEM")
-        ax.plot(t_mk, 100 * r_mk, "o--", color=COLORS[name], ms=4,
+        ax.plot(t_dem / 100, r_dem, "k-", lw=0.9, alpha=0.7, label="DEM")
+        ax.plot(t_mk, r_mk, "o--", color=COLORS[name], ms=4,
                 label="Markov homogène")
-        ax.set_title(f"{name} — écart moyen {err:.1f} pts")
+        ax.set_title(f"{name} — écart moyen {err:.3f}")
         ax.grid(alpha=0.3)
         ax.legend(fontsize=9)
     for ax in axes[-1]:
         ax.set_xlabel("Temps (s)")
     for ax in axes[:, 0]:
-        ax.set_ylabel("RSD teneur petites (%)")
+        ax.set_ylabel("RSD teneur petites (–)")
     fig.suptitle(
         "Influence de la méthode de découpage : RSD DEM vs prédiction "
         "markovienne homogène ($\\tau = 157$, 2 blocs d'apprentissage)"
@@ -577,7 +577,7 @@ def comparaison_methodes(states, small_p):
     plt.close(fig)
     with open(FIGDIR / "comparaison_methodes_table.txt", "w") as f:
         for k, v in err_summary.items():
-            f.write(f"{k:<12} {v:6.2f} pts\n")
+            f.write(f"{k:<12} {v:8.4f}\n")
     print("comparaison ok", err_summary)
 
 

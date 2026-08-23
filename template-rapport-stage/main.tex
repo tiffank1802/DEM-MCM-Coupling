@@ -755,7 +755,7 @@ Les matrices de transition construites par espèce pour un découpage cylindriqu
   \label{fig:matrice_cylindrique}
 \end{figure}
 
-La confrontation de la prédiction markovienne à la référence DEM (figure~\ref{fig:rsd_cylindrique}) révèle toutefois la limite de ce maillage pour l'étude de la ségrégation : le RSD de la teneur en petites particules prédit par la chaîne homogène se fige dès les premiers pas autour de sa valeur de point fixe ($\approx 49\,\%$), et la chaîne inhomogène, si elle réintroduit une légère variabilité en début de prédiction, converge elle aussi vers un palier ($\approx 53\,\%$) : aucune des deux ne restitue le niveau moyen élevé ni les larges fluctuations du RSD DEM (60 à 100\,\%). La raison est géométrique : les cellules cylindriques, solidaires de la symétrie de révolution, tournent « avec » l'écoulement moyen et ne séparent ni la zone active de la zone passive, ni les zones enrichies des zones appauvries en petites particules --- l'information de ségrégation est moyennée à l'intérieur de chaque cellule, et la projection markovienne lisse d'autant plus vite les contrastes résiduels. Ce constat, quantifié à la section~\ref{subsec:comparaison_methodes}, illustre que le respect de la géométrie de l'enceinte ne suffit pas : c'est l'adéquation du maillage à la structure de l'écoulement qui gouverne la qualité du modèle.
+La confrontation de la prédiction markovienne à la référence DEM (figure~\ref{fig:rsd_cylindrique}) révèle toutefois la limite de ce maillage pour l'étude de la ségrégation : le RSD de la teneur en petites particules prédit par la chaîne homogène se fige dès les premiers pas autour de sa valeur de point fixe ($\approx 0{,}49$), et la chaîne inhomogène, si elle réintroduit une légère variabilité en début de prédiction, converge elle aussi vers un palier ($\approx 0{,}53$) : aucune des deux ne restitue le niveau moyen élevé ni les larges fluctuations du RSD DEM (0{,}6 à 1{,}0). La raison est géométrique : les cellules cylindriques, solidaires de la symétrie de révolution, tournent « avec » l'écoulement moyen et ne séparent ni la zone active de la zone passive, ni les zones enrichies des zones appauvries en petites particules --- l'information de ségrégation est moyennée à l'intérieur de chaque cellule, et la projection markovienne lisse d'autant plus vite les contrastes résiduels. Ce constat, quantifié à la section~\ref{subsec:comparaison_methodes}, illustre que le respect de la géométrie de l'enceinte ne suffit pas : c'est l'adéquation du maillage à la structure de l'écoulement qui gouverne la qualité du modèle.
 
 \begin{figure}[H]
   \centering
@@ -845,7 +845,7 @@ En intégrant la norme de la vitesse dans le critère de partitionnement, les ce
 \subsubsection{Comparaison des méthodes}
 \label{subsec:comparaison_methodes}
 
-La figure~\ref{fig:comparaison_methodes_rsd} confronte, pour les quatre méthodes de découpage à \textbf{nombre de cellules identique} (10 cellules chacune : cartésien $5 \times 2 \times 1$, cylindrique $n_r = 2$, $n_\theta = 5$, Voronoï et physique $K = 10$) et à paramètres d'apprentissage identiques ($\tau = 157$, deux blocs), le RSD de la teneur en petites particules prédit par la chaîne homogène à la référence DEM. Cette égalité de résolution garantit que les écarts observés proviennent bien de la \textit{forme} des cellules --- c'est-à-dire de la méthode de découpage --- et non d'une différence de finesse de maillage, chaque cellule contenant en moyenne une centaine de particules dans les quatre cas. L'écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur toute la fenêtre de prédiction est reporté dans chaque cadran et synthétisé au tableau~\ref{tab:ecart_rsd_methodes}. La hiérarchie est nette : le découpage physique (6,4 points d'écart) et le découpage de Voronoï (10,2 points) suivent correctement le niveau d'homogénéisation atteint par la DEM, tandis que les maillages géométriques --- cartésien (21,4 points) et cylindrique (26,7 points) --- s'en écartent durablement, leurs cellules moyennant des zones de dynamiques hétérogènes.
+La figure~\ref{fig:comparaison_methodes_rsd} confronte, pour les quatre méthodes de découpage à \textbf{nombre de cellules identique} (10 cellules chacune : cartésien $5 \times 2 \times 1$, cylindrique $n_r = 2$, $n_\theta = 5$, Voronoï et physique $K = 10$) et à paramètres d'apprentissage identiques ($\tau = 157$, deux blocs), le RSD de la teneur en petites particules prédit par la chaîne homogène à la référence DEM. Cette égalité de résolution garantit que les écarts observés proviennent bien de la \textit{forme} des cellules --- c'est-à-dire de la méthode de découpage --- et non d'une différence de finesse de maillage, chaque cellule contenant en moyenne une centaine de particules dans les quatre cas. L'écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur toute la fenêtre de prédiction est reporté dans chaque cadran et synthétisé au tableau~\ref{tab:ecart_rsd_methodes}. La hiérarchie est nette : le découpage physique (écart moyen de 0{,}064) et le découpage de Voronoï (0{,}102) suivent correctement le niveau d'homogénéisation atteint par la DEM, tandis que les maillages géométriques --- cartésien (0{,}214) et cylindrique (0{,}267) --- s'en écartent durablement, leurs cellules moyennant des zones de dynamiques hétérogènes.
 
 \begin{figure}[H]
   \centering
@@ -856,13 +856,13 @@ La figure~\ref{fig:comparaison_methodes_rsd} confronte, pour les quatre méthode
 
 \begin{table}[H]
   \centering
-  \caption{Écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ (en points de \%) sur la fenêtre de prédiction, par méthode de découpage à nombre de cellules identique (10 cellules, chaîne homogène, $\tau = 157$).}
+  \caption{Écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ (adimensionnel) sur la fenêtre de prédiction, par méthode de découpage à nombre de cellules identique (10 cellules, chaîne homogène, $\tau = 157$).}
   \label{tab:ecart_rsd_methodes}
   \begin{tabular}{lcccc}
     \toprule
     & Cartésien & Cylindrique & Voronoï & Physique\\
     \midrule
-    Écart moyen (pts) & 21{,}4 & 26{,}7 & 10{,}2 & \textbf{6{,}4}\\
+    Écart moyen (--) & 0{,}214 & 0{,}267 & 0{,}102 & \textbf{0{,}064}\\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -952,7 +952,7 @@ Ce mémoire a proposé et évalué une modélisation stochastique par chaînes d
 
 \begin{itemize}
   \item La construction de matrices de transition distinctes par espèce met en évidence des dynamiques contrastées entre petites et grandes particules.
-  \item Le choix de la discrétisation spatiale conditionne fortement la fidélité du modèle : à nombre de cellules identique, les maillages statistiques (Voronoï, physique) surpassent nettement les maillages géométriques en termes d'erreur de prédiction (6,4 et 10,2 points d'écart de RSD contre 21,4 pour le cartésien et 26,7 pour le cylindrique) ; le cas cylindrique montre que le respect de la géométrie de l'enceinte ne garantit pas la pertinence du maillage vis-à-vis de la ségrégation.
+  \item Le choix de la discrétisation spatiale conditionne fortement la fidélité du modèle : à nombre de cellules identique, les maillages statistiques (Voronoï, physique) surpassent nettement les maillages géométriques en termes d'erreur de prédiction (écarts moyens de RSD de 0{,}064 et 0{,}102 contre 0{,}214 pour le cartésien et 0{,}267 pour le cylindrique) ; le cas cylindrique montre que le respect de la géométrie de l'enceinte ne garantit pas la pertinence du maillage vis-à-vis de la ségrégation.
   \item Un vecteur d'état fondé sur la teneur locale en petites particules discrimine la ségrégation bien mieux qu'un simple comptage.
   \item Les chaînes inhomogènes, en actualisant les probabilités à chaque pas, suivent plus fidèlement l'évolution DEM que les chaînes homogènes, en particulier durant les régimes transitoires.
 \end{itemize}
@@ -1039,7 +1039,7 @@ Ce choix répond à un double impératif. D'une part, $\tau$ doit être suffisam
 
 Le paramètre $NLT$ contrôle le nombre de blocs d'apprentissage sur lesquels les probabilités de transition sont observées, puis moyennées (chaîne homogène) ou conservées séparément (chaîne inhomogène).
 
-L'étude de sensibilité menée sur les données DEM (figure~\ref{fig:etude_nlt_courbe}) balaie $NLT$ de 1 à 18 (découpage physique, 10 cellules, $\tau = step = 157$) et mesure pour chaque valeur l'erreur moyenne $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur toute la fenêtre de prédiction. Deux régimes apparaissent : pour les petites valeurs ($NLT = 2$ à $5$), l'erreur fluctue entre 6 et 6,6 points --- chaque bloc supplémentaire modifie sensiblement la matrice moyenne, signe que la statistique n'est pas encore stabilisée --- puis, à partir de $NLT \gtrsim 8$, l'erreur décroît de façon monotone (5,6 points à $NLT = 8$, 4,7 points à $NLT = 18$) : la moyenne sur de nombreux blocs gomme le bruit statistique de l'apprentissage et la matrice converge vers la dynamique moyenne du régime permanent. On note que $NLT = 1$ peut ponctuellement donner une erreur faible : la matrice épouse alors la configuration particulière de son unique tour d'apprentissage, mais sans garantie de robustesse --- ce résultat dépend fortement du tour choisi, comme le confirme la sensibilité au paramètre $start$ (annexe~\ref{annexe:start}).
+L'étude de sensibilité menée sur les données DEM (figure~\ref{fig:etude_nlt_courbe}) balaie $NLT$ de 1 à 18 (découpage physique, 10 cellules, $\tau = step = 157$) et mesure pour chaque valeur l'erreur moyenne $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur toute la fenêtre de prédiction. Deux régimes apparaissent : pour les petites valeurs ($NLT = 2$ à $5$), l'erreur fluctue entre 0{,}060 et 0{,}066 --- chaque bloc supplémentaire modifie sensiblement la matrice moyenne, signe que la statistique n'est pas encore stabilisée --- puis, à partir de $NLT \gtrsim 8$, l'erreur décroît de façon monotone (0{,}056 à $NLT = 8$, 0{,}047 à $NLT = 18$) : la moyenne sur de nombreux blocs gomme le bruit statistique de l'apprentissage et la matrice converge vers la dynamique moyenne du régime permanent. On note que $NLT = 1$ peut ponctuellement donner une erreur faible : la matrice épouse alors la configuration particulière de son unique tour d'apprentissage, mais sans garantie de robustesse --- ce résultat dépend fortement du tour choisi, comme le confirme la sensibilité au paramètre $start$ (annexe~\ref{annexe:start}).
 
 \begin{figure}[H]
   \centering
@@ -1092,7 +1092,7 @@ En contrepartie, augmenter $NLT$ allonge la fenêtre temporelle mobilisée par l
 \subsection{Choix de l'instant de départ \texorpdfstring{$start = 157$}{start = 157}}
 \label{annexe:start}
 
-Le paramètre $start$ fixe le premier instant DEM utilisé pour la phase d'apprentissage --- et, par voie de conséquence, l'instant initial de la prédiction. Le début de simulation correspond au régime transitoire de mise en mouvement du lit. La figure~\ref{fig:etude_start_rsd}, calculée sur les données DEM, montre le RSD de la teneur en petites particules durant les 12 premières secondes pour les quatre méthodes de découpage : quelle que soit la méthode, le RSD part de valeurs très élevées (90 à 110 \%, configuration initiale séparée), culmine durant la mise en mouvement du lit (jusqu'à 120 \% pour les maillages géométriques), puis amorce sa décroissance vers le palier du régime établi. La ligne verticale $start = 157$ --- un tour de tambour --- marque la fin de cette phase transitoire : au-delà, la décroissance du RSD est engagée pour les quatre découpages et les probabilités de transition observées deviennent représentatives du mélange établi. Apprendre les probabilités sur la zone grisée (régime transitoire) biaiserait la matrice, qui encoderait une dynamique de démarrage non représentative. Le tableau~\ref{tab:etude_start_rsd} donne les valeurs du RSD à quelques instants clefs.
+Le paramètre $start$ fixe le premier instant DEM utilisé pour la phase d'apprentissage --- et, par voie de conséquence, l'instant initial de la prédiction. Le début de simulation correspond au régime transitoire de mise en mouvement du lit. La figure~\ref{fig:etude_start_rsd}, calculée sur les données DEM, montre le RSD de la teneur en petites particules durant les 12 premières secondes pour les quatre méthodes de découpage : quelle que soit la méthode, le RSD part de valeurs très élevées (0{,}9 à 1{,}1, configuration initiale séparée), culmine durant la mise en mouvement du lit (jusqu'à 1{,}2 pour les maillages géométriques), puis amorce sa décroissance vers le palier du régime établi. La ligne verticale $start = 157$ --- un tour de tambour --- marque la fin de cette phase transitoire : au-delà, la décroissance du RSD est engagée pour les quatre découpages et les probabilités de transition observées deviennent représentatives du mélange établi. Apprendre les probabilités sur la zone grisée (régime transitoire) biaiserait la matrice, qui encoderait une dynamique de démarrage non représentative. Le tableau~\ref{tab:etude_start_rsd} donne les valeurs du RSD à quelques instants clefs.
 
 \begin{figure}[H]
   \centering
@@ -1103,16 +1103,16 @@ Le paramètre $start$ fixe le premier instant DEM utilisé pour la phase d'appre
 
 \begin{table}[H]
   \centering
-  \caption{RSD DEM de la teneur en petites particules (\%) à quelques instants (centièmes de seconde), par méthode de découpage : le régime transitoire ($t < 157$) présente des valeurs hautes et erratiques ; la décroissance s'installe au-delà.}
+  \caption{RSD DEM de la teneur en petites particules (adimensionnel) à quelques instants (centièmes de seconde), par méthode de découpage : le régime transitoire ($t < 157$) présente des valeurs hautes et erratiques ; la décroissance s'installe au-delà.}
   \label{tab:etude_start_rsd}
   \begin{tabular}{lccccccc}
     \toprule
     $t$ (cs) & 0 & 50 & 100 & \textbf{157} & 300 & 600 & 1000\\
     \midrule
-    Cartésien   & 87{,}2 & 101{,}0 & 87{,}7 & \textbf{65{,}7} & 110{,}8 & 36{,}0 & 20{,}8\\
-    Cylindrique & 107{,}3 & 96{,}3 & 119{,}8 & \textbf{66{,}0} & 65{,}7 & 88{,}9 & 76{,}2\\
-    Voronoï     & 62{,}1 & 89{,}5 & 29{,}7  & \textbf{61{,}7} & 23{,}9 &  9{,}1 & 19{,}6\\
-    Physique    & 107{,}1 & 90{,}4 & 88{,}6 & \textbf{68{,}3} & 31{,}6 & 15{,}1 & 12{,}3\\
+    Cartésien   & 0{,}872 & 1{,}010 & 0{,}877 & \textbf{0{,}657} & 1{,}108 & 0{,}360 & 0{,}208\\
+    Cylindrique & 1{,}073 & 0{,}963 & 1{,}198 & \textbf{0{,}660} & 0{,}657 & 0{,}889 & 0{,}762\\
+    Voronoï     & 0{,}621 & 0{,}895 & 0{,}297 & \textbf{0{,}617} & 0{,}239 & 0{,}091 & 0{,}196\\
+    Physique    & 1{,}071 & 0{,}904 & 0{,}886 & \textbf{0{,}683} & 0{,}316 & 0{,}151 & 0{,}123\\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -1174,7 +1174,7 @@ Lorsque plusieurs blocs d'apprentissage sont utilisés ($NLT > 1$), le paramètr
   \item $step = \tau = 157$ fait se succéder les blocs de manière contiguë et sans recouvrement : chaque bloc correspond exactement à un tour de tambour supplémentaire, chaque transition observée est comptée une seule fois, et la fenêtre d'apprentissage reste compacte.
 \end{itemize}
 
-L'étude de sensibilité menée sur les données DEM (figure~\ref{fig:etude_step_courbe}) balaie $step$ de 40 à 471 (découpage physique, 10 cellules, $NLT = 3$, $\tau = 157$) et mesure l'erreur moyenne $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$. On observe que les valeurs intermédiaires non commensurables avec la période du tambour ($step = 80$) dégradent l'erreur (8,6 points) : les blocs échantillonnent alors des phases de rotation différentes, et leur moyenne mélange des configurations angulaires hétérogènes. Les valeurs commensurables avec la période ($step = 157$, $314$) ramènent l'erreur autour de 6 points, chaque bloc couvrant un nombre entier de tours ; au-delà ($step = 471$), l'erreur remonte, la fenêtre totale d'apprentissage s'étirant sans gain statistique. La petite valeur $step = 40$ donne l'erreur la plus basse sur ce cas particulier, mais au prix d'un recouvrement partiel des fenêtres d'observation des blocs, qui corrèle les blocs entre eux et fragilise l'interprétation de la moyenne --- et, pour les chaînes inhomogènes, désynchronise les matrices de la période physique.
+L'étude de sensibilité menée sur les données DEM (figure~\ref{fig:etude_step_courbe}) balaie $step$ de 40 à 471 (découpage physique, 10 cellules, $NLT = 3$, $\tau = 157$) et mesure l'erreur moyenne $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$. On observe que les valeurs intermédiaires non commensurables avec la période du tambour ($step = 80$) dégradent l'erreur (0{,}086) : les blocs échantillonnent alors des phases de rotation différentes, et leur moyenne mélange des configurations angulaires hétérogènes. Les valeurs commensurables avec la période ($step = 157$, $314$) ramènent l'erreur autour de 0{,}06, chaque bloc couvrant un nombre entier de tours ; au-delà ($step = 471$), l'erreur remonte, la fenêtre totale d'apprentissage s'étirant sans gain statistique. La petite valeur $step = 40$ donne l'erreur la plus basse sur ce cas particulier, mais au prix d'un recouvrement partiel des fenêtres d'observation des blocs, qui corrèle les blocs entre eux et fragilise l'interprétation de la moyenne --- et, pour les chaînes inhomogènes, désynchronise les matrices de la période physique.
 
 \begin{figure}[H]
   \centering

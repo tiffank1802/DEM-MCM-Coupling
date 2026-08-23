@@ -1,4 +1,4 @@
-Cartésien     21.35 pts
-Cylindrique   26.71 pts
-Voronoï       10.19 pts
-Physique       6.44 pts
+Cartésien      0.2135
+Cylindrique    0.2671
+Voronoï        0.1019
+Physique       0.0644
