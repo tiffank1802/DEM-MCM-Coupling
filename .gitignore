@@ -32,3 +32,11 @@ env/
 *.log
 outputs/
 RaffinageTemporel/
+
+# Large data files
+simulation_complete.parquet
+simulation_complete.parquet.gz
+
+# Large data files
+simulation_complete.parquet
+simulation_complete.parquet.gz
