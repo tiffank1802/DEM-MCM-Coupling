@@ -1,0 +1,145 @@
+% $ biblatex auxiliary file $
+% $ biblatex bbl format version 3.2 $
+% Do not modify the above lines!
+%
+% This is an auxiliary file used by the 'biblatex' package.
+% This file may safely be deleted. It will be recreated by
+% biber as required.
+%
+\begingroup
+\makeatletter
+\@ifundefined{ver@biblatex.sty}
+  {\@latex@error
+     {Missing 'biblatex' package}
+     {The bibliography requires the 'biblatex' package.}
+      \aftergroup\endinput}
+  {}
+\endgroup
+
+
+\refsection{0}
+  \datalist[entry]{none/global//global/global}
+    \entry{doucet2008}{article}{}
+      \name{author}{4}{}{%
+        {{hash=59d38c59136bf0b8b82eb3d4bb09fb4e}{%
+           family={Doucet},
+           familyi={D\bibinitperiod},
+           given={J.},
+           giveni={J\bibinitperiod}}}%
+        {{hash=771d763ddf2add9ad754db872270a387}{%
+           family={Hudon},
+           familyi={H\bibinitperiod},
+           given={N.},
+           giveni={N\bibinitperiod}}}%
+        {{hash=f0aeb2765af9347ad6676de8c9cf2781}{%
+           family={Bertrand},
+           familyi={B\bibinitperiod},
+           given={F.},
+           giveni={F\bibinitperiod}}}%
+        {{hash=3fbf9c0f6560cc2211b7819b58a2eec9}{%
+           family={Chaouki},
+           familyi={C\bibinitperiod},
+           given={J.},
+           giveni={J\bibinitperiod}}}%
+      }
+      \strng{namehash}{aa1bd6e9f389bbea6d39c19a4c765eba}
+      \strng{fullhash}{5d0aad53cf8164a268f5959c4ff22948}
+      \strng{bibnamehash}{aa1bd6e9f389bbea6d39c19a4c765eba}
+      \strng{authorbibnamehash}{aa1bd6e9f389bbea6d39c19a4c765eba}
+      \strng{authornamehash}{aa1bd6e9f389bbea6d39c19a4c765eba}
+      \strng{authorfullhash}{5d0aad53cf8164a268f5959c4ff22948}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Computers {\&} Chemical Engineering}
+      \field{number}{6}
+      \field{title}{Modeling of the mixing of monodisperse particles using a stationary DEM-based Markov process}
+      \field{volume}{32}
+      \field{year}{2008}
+      \field{pages}{1334\bibrangedash 1341}
+      \range{pages}{8}
+      \verb{doi}
+      \verb 10.1016/j.compchemeng.2007.06.017
+      \endverb
+    \endentry
+    \entry{hu2021}{article}{}
+      \name{author}{2}{}{%
+        {{hash=78466fe544514d72cc7ea5a5321418d5}{%
+           family={Hu},
+           familyi={H\bibinitperiod},
+           given={Z.},
+           giveni={Z\bibinitperiod}}}%
+        {{hash=4b44bba1743c2ad874f7d960887af663}{%
+           family={Liu},
+           familyi={L\bibinitperiod},
+           given={X.},
+           giveni={X\bibinitperiod}}}%
+      }
+      \strng{namehash}{f4d8cd44f1280c2dd6a1bdc22aec71b9}
+      \strng{fullhash}{f4d8cd44f1280c2dd6a1bdc22aec71b9}
+      \strng{bibnamehash}{f4d8cd44f1280c2dd6a1bdc22aec71b9}
+      \strng{authorbibnamehash}{f4d8cd44f1280c2dd6a1bdc22aec71b9}
+      \strng{authornamehash}{f4d8cd44f1280c2dd6a1bdc22aec71b9}
+      \strng{authorfullhash}{f4d8cd44f1280c2dd6a1bdc22aec71b9}
+      \field{sortinit}{2}
+      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Powder Technology}
+      \field{title}{A novel Markov chain method for predicting granular mixing process in rotary drums under different rotation speeds}
+      \field{volume}{386}
+      \field{year}{2021}
+      \field{pages}{40\bibrangedash 50}
+      \range{pages}{11}
+      \verb{doi}
+      \verb 10.1016/j.powtec.2021.03.041
+      \endverb
+    \endentry
+    \entry{tjakra2013}{article}{}
+      \name{author}{4}{}{%
+        {{hash=48688efaf21f0f05b8b2d2f23f390f06}{%
+           family={Tjakra},
+           familyi={T\bibinitperiod},
+           given={J.\bibnamedelimi D.},
+           giveni={J\bibinitperiod\bibinitdelim D\bibinitperiod}}}%
+        {{hash=1fd322a3a14bd3eb6952bf620aaa5793}{%
+           family={Bao},
+           familyi={B\bibinitperiod},
+           given={J.},
+           giveni={J\bibinitperiod}}}%
+        {{hash=771d763ddf2add9ad754db872270a387}{%
+           family={Hudon},
+           familyi={H\bibinitperiod},
+           given={N.},
+           giveni={N\bibinitperiod}}}%
+        {{hash=8c657657f073a8564342be972344fdf0}{%
+           family={Yang},
+           familyi={Y\bibinitperiod},
+           given={R.},
+           giveni={R\bibinitperiod}}}%
+      }
+      \strng{namehash}{a2b061c4606cb553c6952a0d6dfba3b3}
+      \strng{fullhash}{94f33dad34ac285857d4e327b5340378}
+      \strng{bibnamehash}{a2b061c4606cb553c6952a0d6dfba3b3}
+      \strng{authorbibnamehash}{a2b061c4606cb553c6952a0d6dfba3b3}
+      \strng{authornamehash}{a2b061c4606cb553c6952a0d6dfba3b3}
+      \strng{authorfullhash}{94f33dad34ac285857d4e327b5340378}
+      \field{sortinit}{3}
+      \field{sortinithash}{ad6fe7482ffbd7b9f99c9e8b5dccd3d7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Powder Technology}
+      \field{title}{Analysis of collective dynamics of particulate systems modeled by Markov chains}
+      \field{volume}{235}
+      \field{year}{2013}
+      \field{pages}{228\bibrangedash 237}
+      \range{pages}{10}
+      \verb{doi}
+      \verb 10.1016/j.powtec.2012.10.012
+      \endverb
+    \endentry
+  \enddatalist
+\endrefsection
+\endinput
+
