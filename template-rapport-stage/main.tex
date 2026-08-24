@@ -723,12 +723,12 @@ Chaque méthode de découpage est d'abord illustrée par un post-traitement 3D d
 
 \subsubsection{Découpage cartésien}
 
-La figure~\ref{fig:pv_cellules_cartesien} montre le résultat du découpage sur le lit de particules : chaque grain, représenté à son diamètre réel, est coloré par le label \textit{cell\_id} de la cellule qui le contient. Cette vue sert de base visuelle aux analyses qui suivent : on y vérifie que la labélisation respecte bien la grille $5 \times 2 \times 1$, et l'on identifie immédiatement les cellules très peuplées du bas du lit et les cellules du haut, peu occupées.
+La figure~\ref{fig:pv_cellules_cartesien} montre le résultat du découpage produit par le partitionneur cartésien de la librairie : chaque grain, représenté à son diamètre réel, est coloré par le label \textit{cell\_id} de la cellule qui le contient, en vue de face et en vue de côté. On y vérifie la labélisation en grille $5 \times 2 \times 1$ : cinq bandes verticales en $x$, deux niveaux en $y$, chaque cellule couvrant toute la longueur axiale. On note que les bornes de la grille étant ajustées sur l'enveloppe de \emph{toutes} les positions observées (convention de la librairie pour cette méthode), le lit incliné ne peuple pas uniformément les dix cellules : les cellules hautes côté droit (8, 9) sont très peuplées, la cellule basse extrême (0) reste quasiment vide.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.85\textwidth]{figures/pv_cellules_cartesien.png}
-  \caption{Post-traitement 3D du découpage cartésien ($5 \times 2 \times 1$, 10 cellules) : particules aux diamètres réels colorées par le label \textit{cell\_id} de leur cellule, à $t = \SI{1.57}{s}$.}
+  \caption{Post-traitement 3D du découpage cartésien de la librairie ($5 \times 2 \times 1$, 10 cellules) : particules aux diamètres réels colorées par le label \textit{cell\_id}, vue de face et vue de côté, à $t = \SI{1.57}{s}$. La vue de face montre les 5 bandes en $x$ et les 2 niveaux en $y$ ; les cellules couvrent toute la longueur axiale ($n_z = 1$).}
   \label{fig:pv_cellules_cartesien}
 \end{figure}
 
@@ -754,12 +754,12 @@ Le découpage cylindrique remédie à ce défaut en épousant la géométrie du 
   \label{fig:cylindrique_resolutions}
 \end{figure}
 
-La vue 3D de la figure~\ref{fig:pv_cellules_cylindrique} montre la labélisation obtenue pour la résolution retenue dans la suite ($n_r = 2$, $n_\theta = 5$, 10 cellules) : les secteurs angulaires se lisent directement sur le lit, et l'on voit que les cellules du cœur (rayon interne) regroupent des particules des deux zones, active et passive --- première indication visuelle de la limite de ce maillage pour la ségrégation.
+La vue 3D de la figure~\ref{fig:pv_cellules_cylindrique} montre la labélisation produite par le partitionneur cylindrique de la librairie pour la résolution retenue dans la suite ($n_r = 2$, $n_\theta = 5$, 10 cellules) : les cinq secteurs angulaires, tournés autour de l'axe du tambour, découpent le lit en quartiers, et les deux couronnes radiales séparent une couronne interne (cellules 0 à 4, peu peuplées car le cœur géométrique du tambour est en partie au-dessus du lit) d'une couronne externe contre la paroi (cellules 5 à 9, qui concentrent l'essentiel des particules). Chaque cellule regroupe ainsi des particules de la zone active et de la zone passive --- première indication visuelle de la limite de ce maillage pour la ségrégation.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.85\textwidth]{figures/pv_cellules_cylindrique.png}
-  \caption{Post-traitement 3D du découpage cylindrique ($n_r = 2$, $n_\theta = 5$, 10 cellules) : particules aux diamètres réels colorées par le label \textit{cell\_id} de leur cellule, à $t = \SI{1.57}{s}$.}
+  \caption{Post-traitement 3D du découpage cylindrique de la librairie ($n_r = 2$, $n_\theta = 5$, 10 cellules) : particules aux diamètres réels colorées par le label \textit{cell\_id}, vue de face et vue de côté, à $t = \SI{1.57}{s}$. Les secteurs angulaires et les deux couronnes radiales (couronne interne visible au cœur du lit, couronne externe contre la paroi) se lisent sur la vue de face.}
   \label{fig:pv_cellules_cylindrique}
 \end{figure}
 
@@ -788,7 +788,7 @@ Le pas de temps markovien est fixé à \SI{1.57}{s}, soit approximativement un t
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.85\textwidth]{figures/pv_cellules_voronoi.png}
-  \caption{Post-traitement 3D du découpage de Voronoï (10 cellules) : particules aux diamètres réels colorées par le label \textit{cell\_id} de leur cellule, à $t = \SI{1.57}{s}$.}
+  \caption{Post-traitement 3D du découpage de Voronoï de la librairie (10 cellules) : particules aux diamètres réels colorées par le label \textit{cell\_id}, vue de face et vue de côté, à $t = \SI{1.57}{s}$. Les centroïdes k-means se répartissent dans les trois directions : la vue de côté révèle le partage axial des cellules, invisible en projection de face.}
   \label{fig:pv_cellules_voronoi}
 \end{figure}
 
@@ -851,7 +851,7 @@ La figure~\ref{fig:pv_cellules_physique} montre la labélisation du découpage p
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.85\textwidth]{figures/pv_cellules_physique.png}
-  \caption{Post-traitement 3D du découpage physique (10 cellules) : particules aux diamètres réels colorées par le label \textit{cell\_id} de leur cellule, à $t = \SI{1.57}{s}$. Les cellules suivent les iso-vitesses de l'écoulement.}
+  \caption{Post-traitement 3D du découpage physique de la librairie (10 cellules) : particules aux diamètres réels colorées par le label \textit{cell\_id}, vue de face et vue de côté, à $t = \SI{1.57}{s}$. Le vecteur de caractéristiques (positions + vitesse relative) produit des cellules stratifiées entre surface libre et cœur du lit, partagées aussi selon l'axe $z$.}
   \label{fig:pv_cellules_physique}
 \end{figure}
 

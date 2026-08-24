@@ -213,9 +213,19 @@ def fig_melangeur_especes(X, small_p):
 
 
 def fig_cellules(X, small_p, key, nom, lab):
+    """Particules colorées par cellule (cell_id), vue de face ET de côté :
+    les cellules k-means se partagent aussi selon l'axe z du tambour,
+    invisible en vue de face seule."""
     diam = np.where(small_p, D_SMALL, D_BIG)
     colors = np.array([_hex2rgb(TAB10[l % 10]) for l in lab])
-    fig = go.Figure(spheres_mesh(X[START], diam / 2, colors))
+    fig = make_subplots(
+        rows=1, cols=2, specs=[[{"type": "scene"}] * 2],
+        subplot_titles=("vue de face (plan x\u2013y)",
+                        "vue de côté (plan z\u2013y)"),
+        horizontal_spacing=0.01,
+    )
+    fig.add_trace(spheres_mesh(X[START], diam / 2, colors), row=1, col=1)
+    fig.add_trace(spheres_mesh(X[START], diam / 2, colors), row=1, col=2)
     # barre de couleurs discrète simulée par un scatter invisible
     fig.add_trace(go.Scatter3d(
         x=[None], y=[None], z=[None], mode="markers",
@@ -231,16 +241,18 @@ def fig_cellules(X, small_p, key, nom, lab):
             showscale=True, size=0.0001,
         ),
         showlegend=False,
-    ))
+    ), row=1, col=2)
     fig.update_scenes(**scene_kwargs(CAM_FACE))
+    fig.update_scenes(camera=CAM_COTE, row=1, col=2)
     fig.update_layout(
-        paper_bgcolor=BG, margin=dict(l=0, r=0, t=54, b=0),
+        paper_bgcolor=BG, margin=dict(l=0, r=0, t=64, b=0),
+        font=dict(color="white", size=14),
         title=dict(text=f"Découpage {nom} — particules colorées par cellule "
                         f"(t = 1,57 s)",
                    font=dict(color="white", size=17), x=0.5),
     )
     fig.write_image(FIGDIR / f"pv_cellules_{key}.png",
-                    width=1300, height=1000, scale=1)
+                    width=1700, height=800, scale=1)
     print(f"pv_cellules_{key} ok")
 
 
