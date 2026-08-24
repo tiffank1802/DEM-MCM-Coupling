@@ -264,6 +264,12 @@ Dans la pratique, les limites exactes de la partie utile ne sont pas imposées a
 Les positions de l'ensemble des grains sont enregistrées tous les \SI{0.01}{s} sur \SI{60}{s}, soit 6000 instants d'observation. Cette base constitue la référence à partir de laquelle les matrices de transition sont estimées et les prédictions markoviennes sont validées.
 
 % ------------------------------------------------------------
+%% je voudrais que tu utilise pyvista (comme déjà implementé dans la librairie dem_mcm_coupling) pour postraiter les resultats.
+% Dans ce sens où tu fais un screenshot avec pyvista du mélangeur avec les particules de tailles disctingctes (grandes et petites comme déjà fait dans la librairie)
+% pour montrer le mélangeur faire l'analyse et montrer comment les particules sont dans une cellule visuellement et ce dans toute les parties -- sauf celle du principe-- 
+% Typiquement pour montrer les resultats pour un découpag cartésien, cylindrique,... faire l'étude comparative des paramètres et s'appuyer dessus comme base pour les justifications et les validations
+% Tu peux soit annoter ces resultats directement avec pyvista
+
 \subsection{Principe de la simulation DEM}
 \label{subsec:dem}
 
@@ -659,7 +665,7 @@ Le découpage physique repose sur le même algorithme de k-moyennes que le déco
 \end{equation}
 
 L'algorithme de partitionnement reste un k-means, mais opéré dans un espace de dimension quatre. La figure~\ref{fig:schema_voronoi} schématise les deux découpages statistiques, et la figure~\ref{fig:schematisation_voronoi_physique} montre l'espace des caractéristiques dans lequel les 1030 particules sont représentées, sur la phase d'apprentissage et sur la phase de prédiction.
-
+% Enlève les labels zones actives et zones passives sur cette image car ils ont déjà été mis sur figure 1 décrivant le tambour tournant.
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/schema_decoupage_voronoi.png}
