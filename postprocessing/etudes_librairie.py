@@ -772,3 +772,139 @@ if __name__ == "__main__":
     dump_labels_3d(etudes)
     print("\n✅ toutes les figures écrites (calculs 100 % librairie) dans",
           FIGDIR)
+
+
+def etude_dt(etudes):
+    """Justification du raffinage temporel dt : conformité de la matrice.
+
+    Une cellule occupée durant la fenêtre d'apprentissage mais jamais
+    observée comme source produit un dénominateur nul dans l'équation de la
+    matrice de transition, donc des NaN. On compte, pour chaque méthode et
+    chaque valeur de dt, le nombre de ces cellules (pire cas des deux
+    espèces). La matrice est dite conforme lorsque ce nombre est nul.
+    """
+    dts = [157, 78, 39, 16, 8, 4]
+    resume = {}
+    for key, et in etudes.items():
+        vals = []
+        for dt in dts:
+            cfg = config_for(et.method, dt=dt)
+            r0 = int(np.searchsorted(et.times, cfg.start_index))
+            r1 = int(np.searchsorted(
+                et.times, cfg.start_index + cfg.nlt * (cfg.step + cfg.tau)))
+            worst = 0
+            for sp in ("small", "large"):
+                P = et.build_P(cfg, sp)
+                visited = P.sum(axis=1) > 0
+                occupees = et.S_matrices[sp][r0:r1].sum(axis=0) > 0
+                manquantes = int((occupees & ~visited).sum())
+                worst = max(worst, manquantes)
+            vals.append(worst)
+            print(f"  {et.nom} dt={dt}: cellules sources manquantes={worst}")
+        resume[et.nom] = vals
+
+    fig, ax = plt.subplots(figsize=(9, 5.2))
+    for nom, vals in resume.items():
+        ax.plot(dts, vals, "o-", color=COLORS[nom], lw=2, label=nom)
+    ax.axhline(0, color="k", lw=0.8)
+    ax.invert_xaxis()
+    ax.set_xlabel("Raffinage temporel $dt$ (pas de sortie DEM)")
+    ax.set_ylabel("Cellules occupées jamais observées comme source\n"
+                  "(sources de NaN dans $\\mathbf{P}$, pire des deux espèces)")
+    ax.set_title(
+        "Conformité de la matrice de transition selon $dt$\n"
+        "(10 cellules par méthode, nlt=2, start=1,57 s, step=tau=1,57 s)"
+    )
+    ax.legend()
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(FIGDIR / "etude_dt_nan.png", dpi=200)
+    plt.close(fig)
+    with open(FIGDIR / "etude_dt_table.txt", "w") as f:
+        f.write("dt      " + "  ".join(f"{d:>5d}" for d in dts) + "\n")
+        for nom, vals in resume.items():
+            f.write(f"{nom:<12}" + "  ".join(f"{v:>5d}" for v in vals) + "\n")
+    print("dt ok", resume)
+    return resume
+
+
+def matrices_annotees(etudes):
+    """Matrices de transition annotées au centième + vérification NaN."""
+    for key, et in etudes.items():
+        cfg = config_for(et.method)
+        P_small = et.build_P(cfg, "small")
+        P_large = et.build_P(cfg, "large")
+        n_nan = int(np.isnan(P_small).sum() + np.isnan(P_large).sum())
+        print(f"  {et.nom}: NaN dans P = {n_nan}")
+        vmax = max(P_small.max(), P_large.max())
+        fig, axes = plt.subplots(1, 2, figsize=(14.5, 6.4))
+        for ax, P, ttl in ((axes[0], P_large.T, "Grandes particules (8 mm)"),
+                           (axes[1], P_small.T, "Petites particules (4 mm)")):
+            im = ax.imshow(P, cmap="viridis", vmin=0, vmax=vmax)
+            for i in range(P.shape[0]):
+                for j in range(P.shape[1]):
+                    v = P[i, j]
+                    ax.text(j, i, f"{v:.2f}".replace("0.", "."),
+                            ha="center", va="center", fontsize=6.5,
+                            color="white" if v < 0.6 * vmax else "black")
+            ax.set_xticks(range(10))
+            ax.set_yticks(range(10))
+            ax.set_xlabel("Cellule source $j$")
+            ax.set_ylabel("Cellule d'arrivée $i$")
+            ax.set_title(ttl)
+            fig.colorbar(im, ax=ax, label="$P_{i,j}$", shrink=0.85)
+        fig.suptitle(f"Matrices de transition — découpage {et.nom.lower()} "
+                     f"(10 cellules, nlt=2, start=1,57 s, step=tau=1,57 s, "
+                     f"dt=8 pas) — probabilités arrondies au centième, "
+                     f"aucun NaN")
+        fig.tight_layout()
+        fig.savefig(FIGDIR / f"matrice_{key}_especes.png", dpi=200)
+        plt.close(fig)
+    print("matrices annotées ok")
+
+
+def table_erreurs(etudes):
+    """Figures d'écart |Markov - DEM| par méthode et par espèce (table 4)."""
+    noms_sp = {"large": "grandes", "small": "petites"}
+    for key in ("cartesien", "voronoi", "physique"):
+        et = etudes[key]
+        cfg = config_for(et.method)
+        for sp in ("large", "small"):
+            P_clean, act = clean_transition_matrix(et.build_P(cfg, sp))
+            row0 = int(np.searchsorted(et.times, cfg.start_index))
+            S0 = et.S_matrices[sp][row0].astype(float)
+            traj, t_mk = propagate_markov(
+                S0, P_clean, et.times, cfg.start_index, cfg.tau, act)
+            rows = np.searchsorted(et.times, t_mk)
+            S_dem = et.S_matrices[sp][rows]
+            err = np.abs(traj - S_dem)
+            rms = np.sqrt((err ** 2).mean(axis=1))
+
+            fig, axes = plt.subplots(1, 2, figsize=(12.5, 4.6),
+                                     width_ratios=[1, 1.25])
+            axes[0].plot(t_mk / 100, rms, "-", color="#d62728", lw=2)
+            axes[0].fill_between(t_mk / 100, 0, rms, color="#d62728",
+                                 alpha=0.25)
+            axes[0].set_xlabel("Temps (s)")
+            axes[0].set_ylabel("Écart RMS (particules)")
+            axes[0].set_title("Écart temporel RMS $|$Markov $-$ DEM$|$")
+            axes[0].grid(alpha=0.3)
+            im = axes[1].imshow(err.T, cmap="viridis", aspect="auto",
+                                origin="lower",
+                                extent=[t_mk[0] / 100, t_mk[-1] / 100,
+                                        -0.5, err.shape[1] - 0.5])
+            axes[1].set_xlabel("Temps (s)")
+            axes[1].set_ylabel("Indice de cellule")
+            axes[1].set_title("Écart absolu par cellule")
+            fig.colorbar(im, ax=axes[1],
+                         label="$|$Markov $-$ DEM$|$ (particules)")
+            fig.suptitle(
+                f"Découpage {et.nom.lower()} — {noms_sp[sp]} particules "
+                f"(nlt=2, start=1,57 s, step=tau=1,57 s, dt=8 pas)",
+                fontsize=11)
+            fig.tight_layout()
+            fig.savefig(FIGDIR / f"erreur_lib_{key}_{sp}.png", dpi=200)
+            plt.close(fig)
+            print(f"  erreur {key} {sp}: RMS moyen "
+                  f"{rms[1:].mean():.2f} particules")
+    print("table erreurs ok")
