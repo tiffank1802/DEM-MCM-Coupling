@@ -79,18 +79,66 @@ TAU = 157
 START = 157
 N_T = 6000
 
+#: dégradé jaune -> rouge pour distinguer les quatre méthodes
 COLORS = {
-    "Cartésien": "#1f77b4",
-    "Cylindrique": "#d62728",
-    "Voronoï": "#2ca02c",
-    "Physique": "#ff7f0e",
+    "Cartésien": "#fec44f",
+    "Cylindrique": "#fe9929",
+    "Voronoï": "#ec7014",
+    "Physique": "#cc4c02",
 }
+
+#: découpages géométriques : labellisation dans le repère du lit
+GEO_METHODS = {"cartesien", "cylindrique"}
+
+
+def make_frame(sample_coords, permanent_rows):
+    """Repère du lit : origine au barycentre des positions du régime
+    permanent, axes du plan transverse alignés sur les directions
+    principales du lit (la surface libre inclinée devient un axe du repère).
+
+    Ce changement de repère, appliqué avant la labellisation des découpages
+    géométriques, répartit les particules dans les cellules de manière plus
+    équilibrée ; les découpages par k-moyennes y sont insensibles
+    (invariance par translation et rotation).
+    """
+    pts = np.asarray(sample_coords[permanent_rows:], dtype=np.float64)
+    c = pts.mean(axis=0)
+    xy = pts[:, :2] - c[:2]
+    cov = xy.T @ xy / len(xy)
+    _, evecs = np.linalg.eigh(cov)
+    R2 = evecs[:, ::-1]  # colonnes : direction principale, puis normale
+    if np.linalg.det(R2) < 0:
+        R2[:, 1] = -R2[:, 1]
+    return c, R2
+
+
+def transform_coords(coords, c, R2):
+    out = np.asarray(coords, dtype=np.float64).copy()
+    out[:, :2] = (out[:, :2] - c[:2]) @ R2
+    out[:, 2] -= c[2]
+    return out
+
+
+def transform_dict(timestep_dict, c, R2):
+    """Copie du dictionnaire de pas de temps avec coordonnées transformées
+    (colonnes de coordonnées uniquement : suffisant pour la labellisation
+    des découpages géométriques)."""
+    out = {}
+    for idx, df in timestep_dict.items():
+        xy = (df[["coordinates:0", "coordinates:1"]].to_numpy() - c[:2]) @ R2
+        out[idx] = pd.DataFrame({
+            "coordinates:0": xy[:, 0],
+            "coordinates:1": xy[:, 1],
+            "coordinates:2": df["coordinates:2"].to_numpy() - c[2],
+        })
+    return out
+
 
 #: méthode -> (nom d'affichage, identifiant registry, kwargs) — 10 cellules
 METHODES = {
-    "cartesien": ("Cartésien", "cartesian", dict(nx=5, ny=2, nz=1)),
+    "cartesien": ("Cartésien", "cartesian", dict(nx=10, ny=1, nz=1)),
     "cylindrique": ("Cylindrique", "cylindrical",
-                    dict(nr=2, ntheta=5, nz=1, radial_mode="equal_area")),
+                    dict(nr=1, ntheta=10, nz=1, radial_mode="equal_area")),
     "voronoi": ("Voronoï", "voronoi", dict(n_cells=10)),
     "physique": ("Physique", "physics",
                  dict(n_cells=10, velocity_weight=0.5)),
@@ -139,7 +187,8 @@ class EtudeMethode:
     à :func:`_build_pairs` + :func:`compute_P_matrix_torch`.
     """
 
-    def __init__(self, key, timestep_dict, sample_coords, s_velocities):
+    def __init__(self, key, timestep_dict, sample_coords, s_velocities,
+                 frame=None):
         self.key = key
         self.nom, method, kwargs = METHODES[key]
         self.method = method
@@ -149,16 +198,30 @@ class EtudeMethode:
 
         cfg_fit = ExperimentConfig(method=method, method_kwargs=kwargs)
         permanent_rows = PERMANENT_START * N_PARTICLES_PER_TIMESTEP
-        _fit_partitioner_for_sweep(
-            self.partitioner, cfg_fit, sample_coords, s_velocities,
-            permanent_rows,
-        )
+
+        # Découpages géométriques : labellisation dans le repère du lit
+        # (translation au barycentre + rotation aux axes principaux).
+        label_dict = timestep_dict
+        fit_coords = sample_coords
+        if frame is not None and key in GEO_METHODS:
+            c, R2 = frame
+            fit_coords = transform_coords(sample_coords, c, R2)
+            label_dict = transform_dict(timestep_dict, c, R2)
+            # Dans le repère du lit, le fit se fait sur le régime permanent
+            # pour les deux découpages géométriques : les bornes épousent le
+            # lit stationnaire, ce qui équilibre l'occupation des cellules.
+            self.partitioner.fit(fit_coords[permanent_rows:])
+        else:
+            _fit_partitioner_for_sweep(
+                self.partitioner, cfg_fit, fit_coords, s_velocities,
+                permanent_rows,
+            )
 
         self.species_masks = _detect_species(
             timestep_dict[min(timestep_dict)]
         )
         self.states_matrix, self.sorted_indices = _compute_state_matrices(
-            timestep_dict, self.partitioner, START
+            label_dict, self.partitioner, START
         )
         self.idx_to_row = {int(i): r for r, i in
                            enumerate(self.sorted_indices)}
@@ -215,8 +278,10 @@ class EtudeMethode:
         start_pred = config.start_index if start_pred is None else start_pred
         trajs, acts = {}, {}
         for sp in ("small", "large"):
+            P_raw = self.build_P(config, sp)
+            # Les lignes NaN (cellules jamais sources) sont désactivées.
             P_clean, activated = clean_transition_matrix(
-                self.build_P(config, sp))
+                np.nan_to_num(P_raw, nan=0.0))
             row0 = np.searchsorted(self.times, start_pred)
             S0 = self.S_matrices[sp][row0].astype(float)
             traj, t_mk = propagate_markov(
@@ -231,7 +296,7 @@ class EtudeMethode:
         """RSD prédit avec UNE matrice unique (sans distinction d'espèce)."""
         start_pred = config.start_index if start_pred is None else start_pred
         P_clean, activated = clean_transition_matrix(
-            self.build_P(config, "all"))
+            np.nan_to_num(self.build_P(config, "all"), nan=0.0))
         row0 = np.searchsorted(self.times, start_pred)
         trajs = {}
         for sp in ("small", "large"):
@@ -246,7 +311,8 @@ class EtudeMethode:
     def markov_rsd_inhomogeneous(self, config):
         trajs, acts = {}, {}
         for sp in ("small", "large"):
-            P_blocks = self.build_P_blocks(config, sp)
+            P_blocks = np.nan_to_num(self.build_P_blocks(config, sp),
+                                      nan=0.0)
             P0_clean, activated = clean_transition_matrix(P_blocks[0])
             row0 = np.searchsorted(self.times, config.start_index)
             S0 = self.S_matrices[sp][row0].astype(float)
@@ -264,8 +330,10 @@ class EtudeMethode:
         start_pred = config.start_index if start_pred is None else start_pred
         trajs, acts = {}, {}
         for sp in ("small", "large"):
+            P_raw = self.build_P(config, sp)
+            # Les lignes NaN (cellules jamais sources) sont désactivées.
             P_clean, activated = clean_transition_matrix(
-                self.build_P(config, sp))
+                np.nan_to_num(P_raw, nan=0.0))
             row0 = np.searchsorted(self.times, start_pred)
             S0 = self.S_matrices[sp][row0].astype(float)
             traj, t_mk = propagate_markov(
@@ -746,61 +814,30 @@ def dump_labels_3d(etudes):
     print("labels 3D ok")
 
 
-if __name__ == "__main__":
-    timestep_dict = load_timestep_dict()
-    figure_espace_caracteristiques(timestep_dict)
-
-    print("\n🔍 Échantillonnage des coordonnées (librairie)…")
-    sample_coords, s_velocities, _ = sample_coordinates(timestep_dict)
-
-    etudes = {}
-    for key in METHODES:
-        print(f"\n══ Préparation {key} (fit + états, code librairie) ══")
-        etudes[key] = EtudeMethode(key, timestep_dict, sample_coords,
-                                   s_velocities)
-
-    comparaison_methodes(etudes)
-    etude_start(etudes)
-    etude_tau(etudes)
-    etude_nlt(etudes)
-    etude_nlt_erreur_relative(etudes)
-    etude_step(etudes)
-    etude_especes(etudes)
-    resultats_cylindrique(etudes)
-    matrices_par_methode(etudes)
-    teneur_et_nombre(etudes)
-    dump_labels_3d(etudes)
-    print("\n✅ toutes les figures écrites (calculs 100 % librairie) dans",
-          FIGDIR)
-
-
 def etude_dt(etudes):
-    """Justification du raffinage temporel dt : conformité de la matrice.
+    """Choix du raffinage temporel dt : nombre de NaN dans la matrice.
 
-    Une cellule occupée durant la fenêtre d'apprentissage mais jamais
-    observée comme source produit un dénominateur nul dans l'équation de la
-    matrice de transition, donc des NaN. On compte, pour chaque méthode et
-    chaque valeur de dt, le nombre de ces cellules (pire cas des deux
-    espèces). La matrice est dite conforme lorsque ce nombre est nul.
+    La matrice de transition conserve des NaN pour toute cellule occupée
+    jamais observée comme source (dénominateur nul). On compte, pour chaque
+    méthode et chaque valeur de dt, le nombre de colonnes de la convention
+    du rapport (lignes de la convention de stockage) contenant des NaN,
+    dans le pire cas des deux espèces. La matrice est conforme --- la
+    condition d'homogénéisation est vérifiable sur toutes les colonnes ---
+    lorsque ce nombre est nul.
     """
-    dts = [157, 78, 39, 16, 8, 4]
+    dts = [157, 78, 39, 16, 8, 4, 2]
     resume = {}
     for key, et in etudes.items():
         vals = []
         for dt in dts:
             cfg = config_for(et.method, dt=dt)
-            r0 = int(np.searchsorted(et.times, cfg.start_index))
-            r1 = int(np.searchsorted(
-                et.times, cfg.start_index + cfg.nlt * (cfg.step + cfg.tau)))
             worst = 0
             for sp in ("small", "large"):
                 P = et.build_P(cfg, sp)
-                visited = P.sum(axis=1) > 0
-                occupees = et.S_matrices[sp][r0:r1].sum(axis=0) > 0
-                manquantes = int((occupees & ~visited).sum())
-                worst = max(worst, manquantes)
+                n_nan_cols = int(np.isnan(P).any(axis=1).sum())
+                worst = max(worst, n_nan_cols)
             vals.append(worst)
-            print(f"  {et.nom} dt={dt}: cellules sources manquantes={worst}")
+            print(f"  {et.nom} dt={dt}: colonnes NaN={worst}")
         resume[et.nom] = vals
 
     fig, ax = plt.subplots(figsize=(9, 5.2))
@@ -809,8 +846,8 @@ def etude_dt(etudes):
     ax.axhline(0, color="k", lw=0.8)
     ax.invert_xaxis()
     ax.set_xlabel("Raffinage temporel $dt$ (pas de sortie DEM)")
-    ax.set_ylabel("Cellules occupées jamais observées comme source\n"
-                  "(sources de NaN dans $\\mathbf{P}$, pire des deux espèces)")
+    ax.set_ylabel("Colonnes de $\\mathbf{P}$ contenant des NaN\n"
+                  "(pire des deux espèces)")
     ax.set_title(
         "Conformité de la matrice de transition selon $dt$\n"
         "(10 cellules par méthode, nlt=2, start=1,57 s, step=tau=1,57 s)"
@@ -829,24 +866,34 @@ def etude_dt(etudes):
 
 
 def matrices_annotees(etudes):
-    """Matrices de transition annotées au centième + vérification NaN."""
+    """Matrices de transition annotées au centième.
+
+    Pour chaque matrice : vérification de l'absence de NaN et de la
+    condition d'homogénéisation (chaque colonne de la convention du rapport
+    somme à un).
+    """
     for key, et in etudes.items():
         cfg = config_for(et.method)
         P_small = et.build_P(cfg, "small")
         P_large = et.build_P(cfg, "large")
-        n_nan = int(np.isnan(P_small).sum() + np.isnan(P_large).sum())
-        print(f"  {et.nom}: NaN dans P = {n_nan}")
-        vmax = max(P_small.max(), P_large.max())
+        for sp, P in (("small", P_small), ("large", P_large)):
+            n_nan = int(np.isnan(P).sum())
+            sums = P.sum(axis=1)  # convention stockage : lignes
+            homog = np.allclose(sums[~np.isnan(sums)], 1.0, atol=1e-9)
+            print(f"  {et.nom} {sp}: NaN={n_nan} | "
+                  f"homogénéisation={'OK' if homog and n_nan == 0 else 'NON'}")
+        vmax = max(np.nanmax(P_small), np.nanmax(P_large))
         fig, axes = plt.subplots(1, 2, figsize=(14.5, 6.4))
         for ax, P, ttl in ((axes[0], P_large.T, "Grandes particules (8 mm)"),
                            (axes[1], P_small.T, "Petites particules (4 mm)")):
-            im = ax.imshow(P, cmap="viridis", vmin=0, vmax=vmax)
+            im = ax.imshow(P, cmap="YlOrRd", vmin=0, vmax=vmax)
             for i in range(P.shape[0]):
                 for j in range(P.shape[1]):
                     v = P[i, j]
-                    ax.text(j, i, f"{v:.2f}".replace("0.", "."),
-                            ha="center", va="center", fontsize=6.5,
-                            color="white" if v < 0.6 * vmax else "black")
+                    txt = "NaN" if np.isnan(v) else f"{v:.2f}".replace("0.", ".")
+                    ax.text(j, i, txt, ha="center", va="center", fontsize=6.5,
+                            color="black" if (np.isnan(v) or v < 0.55 * vmax)
+                            else "white")
             ax.set_xticks(range(10))
             ax.set_yticks(range(10))
             ax.set_xlabel("Cellule source $j$")
@@ -855,8 +902,8 @@ def matrices_annotees(etudes):
             fig.colorbar(im, ax=ax, label="$P_{i,j}$", shrink=0.85)
         fig.suptitle(f"Matrices de transition — découpage {et.nom.lower()} "
                      f"(10 cellules, nlt=2, start=1,57 s, step=tau=1,57 s, "
-                     f"dt=8 pas) — probabilités arrondies au centième, "
-                     f"aucun NaN")
+                     f"dt=8 pas) — probabilités arrondies au centième ; "
+                     f"chaque colonne somme à un")
         fig.tight_layout()
         fig.savefig(FIGDIR / f"matrice_{key}_especes.png", dpi=200)
         plt.close(fig)
@@ -908,3 +955,36 @@ def table_erreurs(etudes):
             print(f"  erreur {key} {sp}: RMS moyen "
                   f"{rms[1:].mean():.2f} particules")
     print("table erreurs ok")
+
+
+if __name__ == "__main__":
+    timestep_dict = load_timestep_dict()
+    figure_espace_caracteristiques(timestep_dict)
+
+    print("\n🔍 Échantillonnage des coordonnées (librairie)…")
+    sample_coords, s_velocities, _ = sample_coordinates(timestep_dict)
+
+    permanent_rows = PERMANENT_START * N_PARTICLES_PER_TIMESTEP
+    frame = make_frame(sample_coords, permanent_rows)
+
+    etudes = {}
+    for key in METHODES:
+        print(f"\n══ Préparation {key} (fit + états, code librairie) ══")
+        etudes[key] = EtudeMethode(key, timestep_dict, sample_coords,
+                                   s_velocities, frame=frame)
+
+    comparaison_methodes(etudes)
+    etude_start(etudes)
+    etude_tau(etudes)
+    etude_nlt(etudes)
+    etude_nlt_erreur_relative(etudes)
+    etude_step(etudes)
+    etude_especes(etudes)
+    resultats_cylindrique(etudes)
+    etude_dt(etudes)
+    matrices_annotees(etudes)
+    table_erreurs(etudes)
+    teneur_et_nombre(etudes)
+    dump_labels_3d(etudes)
+    print("\n✅ toutes les figures écrites (calculs 100 % librairie) dans",
+          FIGDIR)

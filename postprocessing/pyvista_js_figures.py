@@ -120,6 +120,46 @@ def spheres_mesh(centers, radii, colors, opacity=1.0, name=None):
     )
 
 
+def axes_triad(scale=0.02, origin=(-0.055, -0.055, -0.01)):
+    """Triade d'axes orientés (x rouge, y vert, z bleu) avec cônes de sens,
+    ancrée près du coin inférieur de la scène."""
+    o = np.asarray(origin, dtype=float)
+    traces = []
+    dirs = {
+        "x": (np.array([1.0, 0, 0]), "#d62728"),
+        "y": (np.array([0, 1.0, 0]), "#2ca02c"),
+        "z": (np.array([0, 0, 1.0]), "#1f77b4"),
+    }
+    for name, (d, color) in dirs.items():
+        tip = o + d * scale
+        traces.append(go.Scatter3d(
+            x=[o[0], tip[0]], y=[o[1], tip[1]], z=[o[2], tip[2]],
+            mode="lines", line=dict(color=color, width=7),
+            showlegend=False, hoverinfo="skip"))
+        traces.append(go.Cone(
+            x=[tip[0]], y=[tip[1]], z=[tip[2]],
+            u=[d[0] * scale * 0.5], v=[d[1] * scale * 0.5],
+            w=[d[2] * scale * 0.5],
+            anchor="tail", colorscale=[[0, color], [1, color]],
+            showscale=False, hoverinfo="skip"))
+        lab = o + d * scale * 1.55
+        traces.append(go.Scatter3d(
+            x=[lab[0]], y=[lab[1]], z=[lab[2]], mode="text",
+            text=[name], textfont=dict(color=color, size=16),
+            showlegend=False, hoverinfo="skip"))
+    return traces
+
+
+def add_triad_all_scenes(fig):
+    """Ajoute la triade d'axes à chaque scène de la figure."""
+    n_scenes = sum(1 for k in fig.layout if str(k).startswith("scene"))
+    n_scenes = max(n_scenes, 1)
+    for i in range(1, n_scenes + 1):
+        for tr in axes_triad():
+            tr.update(scene=f"scene{i}" if i > 1 else "scene")
+            fig.add_trace(tr)
+
+
 def scene_kwargs(camera):
     return dict(
         aspectmode="data",
@@ -166,8 +206,8 @@ def partition_labels(X, V, small_p):
     """
     d = np.load(ROOT / "data" / "labels_librairie.npz")
     noms = {
-        "cartesien": "cartésien (5 \u00d7 2 \u00d7 1)",
-        "cylindrique": "cylindrique (n\u1d63 = 2, n\u03b8 = 5)",
+        "cartesien": "cartésien (10 bandes, repère du lit)",
+        "cylindrique": "cylindrique (10 secteurs, repère du lit)",
         "voronoi": "de Voronoï (10 cellules)",
         "physique": "physique (10 cellules)",
     }
@@ -207,6 +247,7 @@ def fig_melangeur_especes(X, small_p):
                  bgcolor="white"),
         ],
     )
+    add_triad_all_scenes(fig)
     fig.write_image(FIGDIR / "pv_melangeur_especes.png",
                     width=1600, height=780, scale=1)
     print("pv_melangeur_especes ok")
@@ -251,6 +292,7 @@ def fig_cellules(X, small_p, key, nom, lab):
                         f"(t = 1,57 s)",
                    font=dict(color="white", size=17), x=0.5),
     )
+    add_triad_all_scenes(fig)
     fig.write_image(FIGDIR / f"pv_cellules_{key}.png",
                     width=1700, height=800, scale=1)
     print(f"pv_cellules_{key} ok")
@@ -290,6 +332,7 @@ def fig_contenu_cellule(X, small_p, labels):
                  font=dict(color=ROUGE_GRANDES, size=15), bgcolor="white"),
         ],
     )
+    add_triad_all_scenes(fig)
     fig.write_image(FIGDIR / "pv_cellule_contenu.png",
                     width=1300, height=1000, scale=1)
     print("pv_cellule_contenu ok")
@@ -319,6 +362,7 @@ def fig_melange_instants(X, small_p):
         paper_bgcolor=BG, margin=dict(l=0, r=0, t=40, b=8),
         font=dict(color="white", size=14), showlegend=False,
     )
+    add_triad_all_scenes(fig)
     fig.write_image(FIGDIR / "pv_melange_instants.png",
                     width=1500, height=1400, scale=1)
     print("pv_melange_instants ok")
@@ -344,6 +388,7 @@ def fig_melange_instants_voronoi(X, small_p):
         paper_bgcolor=BG, margin=dict(l=0, r=0, t=42, b=8),
         font=dict(color="white", size=14), showlegend=False,
     )
+    add_triad_all_scenes(fig)
     fig.write_image(FIGDIR / "pv_melange_instants_voronoi.png",
                     width=1800, height=680, scale=1)
     print("pv_melange_instants_voronoi ok")

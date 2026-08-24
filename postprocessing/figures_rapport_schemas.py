@@ -378,8 +378,11 @@ def schema_parametres_temporels():
 
     # regime transitoire
     ax.axvspan(0, start, ymin=0.42, ymax=0.58, color="#dddddd")
-    ax.text(start / 2, 0.28, "régime\ntransitoire", ha="center", fontsize=10,
-            color=GRIS)
+    # label centré dans le rectangle (ymin/ymax sont des fractions d'axes)
+    y_lo, y_hi = -0.55, 1.5
+    y_mid_tr = y_lo + 0.50 * (y_hi - y_lo)
+    ax.text(start / 2, y_mid_tr, "régime\ntransitoire", ha="center",
+            va="center", fontsize=10, color=GRIS)
     ax.axvline(start, color=ROUGE, lw=2)
     ax.text(start, -0.32, "start = 1,57 s\n(début du régime permanent)",
             ha="center", fontsize=10, color=ROUGE)
