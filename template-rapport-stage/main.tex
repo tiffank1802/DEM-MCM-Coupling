@@ -896,7 +896,7 @@ En intégrant la norme de la vitesse dans le critère de partitionnement, les ce
 \subsubsection{Comparaison des méthodes}
 \label{subsec:comparaison_methodes}
 
-La figure~\ref{fig:comparaison_methodes_rsd} confronte, pour les quatre méthodes de découpage à \textbf{nombre de cellules identique} (10 cellules chacune : cartésien $5 \times 2 \times 1$, cylindrique $n_r = 2$, $n_\theta = 5$, Voronoï et physique $K = 10$) et à paramètres d'apprentissage identiques ($\tau = \SI{1.57}{s}$, deux blocs), le RSD de la teneur en petites particules prédit par la chaîne homogène à la référence DEM. Cette égalité de résolution garantit que les écarts observés proviennent bien de la \textit{forme} des cellules --- c'est-à-dire de la méthode de découpage --- et non d'une différence de finesse de maillage, chaque cellule contenant en moyenne une centaine de particules dans les quatre cas. L'écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur toute la fenêtre de prédiction est reporté dans chaque cadran et synthétisé au tableau~\ref{tab:ecart_rsd_methodes}. La hiérarchie est nette : le découpage physique (écart moyen de 0{,}064) et le découpage de Voronoï (0{,}102) suivent correctement le niveau d'homogénéisation atteint par la DEM, tandis que les maillages géométriques --- cartésien (0{,}214) et cylindrique (0{,}267) --- s'en écartent durablement, leurs cellules moyennant des zones de dynamiques hétérogènes.
+La figure~\ref{fig:comparaison_methodes_rsd} confronte, pour les quatre méthodes de découpage à \textbf{nombre de cellules identique} (10 cellules chacune : cartésien $5 \times 2 \times 1$, cylindrique $n_r = 2$, $n_\theta = 5$, Voronoï et physique $K = 10$) et à paramètres d'apprentissage identiques ($\tau = \SI{1.57}{s}$, deux blocs), le RSD de la teneur en petites particules prédit par la chaîne homogène à la référence DEM. Cette égalité de résolution garantit que les écarts observés proviennent bien de la \textit{forme} des cellules --- c'est-à-dire de la méthode de découpage --- et non d'une différence de finesse de maillage, chaque cellule contenant en moyenne une centaine de particules dans les quatre cas. L'écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur toute la fenêtre de prédiction est reporté dans chaque cadran et synthétisé au tableau~\ref{tab:ecart_rsd_methodes}. La hiérarchie est nette : les découpages statistiques --- Voronoï (écart moyen de 0{,}083) et physique (0{,}103) --- suivent correctement le niveau d'homogénéisation atteint par la DEM, tandis que les maillages géométriques --- cartésien (0{,}161) et cylindrique (0{,}259) --- s'en écartent durablement, leurs cellules moyennant des zones de dynamiques hétérogènes.
 
 \begin{figure}[H]
   \centering
@@ -913,7 +913,7 @@ La figure~\ref{fig:comparaison_methodes_rsd} confronte, pour les quatre méthode
     \toprule
     & Cartésien & Cylindrique & Voronoï & Physique\\
     \midrule
-    Écart moyen (--) & 0{,}214 & 0{,}267 & 0{,}102 & \textbf{0{,}064}\\
+    Écart moyen (--) & 0{,}161 & 0{,}259 & \textbf{0{,}083} & 0{,}103\\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -987,7 +987,7 @@ Trois enseignements principaux se dégagent de l'ensemble de ces résultats.
 
 \paragraph{Dualité de comportement entre espèces.} Les matrices de transition, quelle que soit la méthode de maillage, montrent systématiquement que les grandes particules restent plus longtemps dans leur cellule d'origine tandis que les petites se redistribuent plus rapidement. Cette asymétrie, cohérente avec les mécanismes de percolation et de convection dans un tambour tournant, justifie pleinement la construction de matrices séparées.
 
-\paragraph{Rôle déterminant de la discrétisation.} Un maillage purement géométrique, bien que simple à mettre en œuvre, peut produire des cellules peu représentatives de la distribution effective des grains : le découpage cartésien crée des cellules de coin vides, et le découpage cylindrique, s'il épouse l'enceinte et garantit des cellules toutes physiquement pertinentes, moyenne les zones enrichies et appauvries en petites particules à l'intérieur de ses cellules de révolution --- au point de produire le plus grand écart de RSD des quatre méthodes (tableau~\ref{tab:ecart_rsd_methodes}). Les approches statistiques --- Voronoï, physique --- adaptent les partitions à la configuration réelle du lit et à la structure de l'écoulement, et réduisent l'erreur de prédiction, comme en témoignent la figure~\ref{fig:comparaison_methodes_rsd} et le tableau~\ref{tab:erreur_methodes}.
+\paragraph{Rôle déterminant de la discrétisation.} Un maillage purement géométrique, bien que simple à mettre en œuvre, peut produire des cellules peu représentatives de la distribution effective des grains : le découpage cartésien crée des cellules de coin vides, et le découpage cylindrique, s'il épouse l'enceinte et garantit des cellules toutes physiquement pertinentes, moyenne les zones enrichies et appauvries en petites particules à l'intérieur de ses cellules de révolution --- au point de produire le plus grand écart de RSD des quatre méthodes (0{,}259, tableau~\ref{tab:ecart_rsd_methodes}). Les approches statistiques --- Voronoï, physique --- adaptent les partitions à la configuration réelle du lit et à la structure de l'écoulement, et réduisent l'erreur de prédiction, comme en témoignent la figure~\ref{fig:comparaison_methodes_rsd} et le tableau~\ref{tab:erreur_methodes}.
 
 \paragraph{Pertinence de la variable d'état.} Le comptage par cellule décrit l'occupation globale mais masque la ségrégation. La teneur locale en petites particules, en revanche, fait apparaître des hétérogénéités marquées (cellules 9 et 4, par exemple) et offre un indicateur directement relié au phénomène physique étudié.
 
@@ -1003,7 +1003,7 @@ Ce mémoire a proposé et évalué une modélisation stochastique par chaînes d
 
 \begin{itemize}
   \item La construction de matrices de transition distinctes par espèce met en évidence des dynamiques contrastées entre petites et grandes particules.
-  \item Le choix de la discrétisation spatiale conditionne fortement la fidélité du modèle : à nombre de cellules identique, les maillages statistiques (Voronoï, physique) surpassent nettement les maillages géométriques en termes d'erreur de prédiction (écarts moyens de RSD de 0{,}064 et 0{,}102 contre 0{,}214 pour le cartésien et 0{,}267 pour le cylindrique) ; le cas cylindrique montre que le respect de la géométrie de l'enceinte ne garantit pas la pertinence du maillage vis-à-vis de la ségrégation.
+  \item Le choix de la discrétisation spatiale conditionne fortement la fidélité du modèle : à nombre de cellules identique, les maillages statistiques (Voronoï, physique) surpassent nettement les maillages géométriques en termes d'erreur de prédiction (écarts moyens de RSD de 0{,}083 et 0{,}103 contre 0{,}161 pour le cartésien et 0{,}259 pour le cylindrique) ; le cas cylindrique montre que le respect de la géométrie de l'enceinte ne garantit pas la pertinence du maillage vis-à-vis de la ségrégation.
   \item Un vecteur d'état fondé sur la teneur locale en petites particules discrimine la ségrégation bien mieux qu'un simple comptage.
   \item Les chaînes inhomogènes, en actualisant les probabilités à chaque pas, suivent plus fidèlement l'évolution DEM que les chaînes homogènes, en particulier durant les régimes transitoires.
 \end{itemize}
@@ -1162,15 +1162,15 @@ La figure~\ref{fig:etude_start_rsd} y répond en confrontant, pour chacune des q
     \toprule
     $t$ (s) & 0 & 0{,}50 & 1{,}00 & \textbf{1{,}57} & 3{,}00 & 6{,}00 & 10{,}00\\
     \midrule
-    Cartésien   & 0{,}872 & 1{,}010 & 0{,}877 & \textbf{0{,}657} & 1{,}108 & 0{,}360 & 0{,}208\\
-    Cylindrique & 1{,}073 & 0{,}963 & 1{,}198 & \textbf{0{,}660} & 0{,}657 & 0{,}889 & 0{,}762\\
-    Voronoï     & 0{,}621 & 0{,}895 & 0{,}297 & \textbf{0{,}617} & 0{,}239 & 0{,}091 & 0{,}196\\
-    Physique    & 1{,}071 & 0{,}904 & 0{,}886 & \textbf{0{,}683} & 0{,}316 & 0{,}151 & 0{,}123\\
+    Cartésien   & 1{,}423 & 2{,}032 & 0{,}942 & \textbf{0{,}730} & 0{,}634 & 0{,}657 & 0{,}662\\
+    Cylindrique & 2{,}032 & 2{,}003 & 0{,}778 & \textbf{1{,}257} & 0{,}682 & 0{,}558 & 0{,}448\\
+    Voronoï     & 0{,}707 & 1{,}289 & 0{,}284 & \textbf{0{,}703} & 0{,}245 & 0{,}093 & 0{,}216\\
+    Physique    & 1{,}343 & 1{,}242 & 0{,}980 & \textbf{0{,}808} & 0{,}339 & 0{,}160 & 0{,}111\\
     \bottomrule
   \end{tabular}
 \end{table}
 
-Deux constats se dégagent de cette confrontation. D'abord, l'effet du $start$ est le plus marqué pour le découpage le plus performant : sur le maillage physique, l'écart moyen passe de 0{,}103 (apprentissage incluant le transitoire) à 0{,}072 (apprentissage sur le régime permanent), soit une réduction de 30\,\% --- la matrice apprise sur le transitoire encode une dynamique de démarrage (chute brutale du RSD) qui n'est plus représentative du mélange établi et dégrade toute la suite de la prédiction. Sur le découpage cartésien, l'effet s'inverse légèrement (0{,}214 contre 0{,}220) et il reste marginal sur le cylindrique et le Voronoï : lorsque le maillage lui-même moyenne des zones hétérogènes, le biais d'apprentissage du transitoire est noyé dans l'erreur de discrétisation. Ensuite, quelle que soit la méthode, la trajectoire prédite traverse le régime transitoire (descente initiale du RSD) puis rejoint son palier : c'est bien la qualité de ce palier, comparé au niveau DEM en régime établi, qui départage les apprentissages --- et celui-ci est systématiquement mieux placé lorsque la matrice est apprise à partir de $start = \SI{1.57}{s}$ sur les maillages statistiques. La valeur $start = \SI{1.57}{s}$ --- un tour de tambour, cohérente avec $\tau$ --- est donc retenue.
+Deux constats se dégagent de cette confrontation. D'abord, l'effet du $start$ est net sur les découpages statistiques : sur le maillage de Voronoï, l'écart moyen passe de 0{,}124 (apprentissage incluant le transitoire) à 0{,}095 (apprentissage sur le régime permanent), soit une réduction de près de 25\,\%, et le maillage physique suit la même tendance (0{,}115 contre 0{,}111) --- la matrice apprise sur le transitoire encode une dynamique de démarrage (chute brutale du RSD) qui n'est plus représentative du mélange établi et dégrade la suite de la prédiction. Sur les maillages géométriques, l'effet est brouillé par l'erreur de discrétisation elle-même : le cartésien varie peu (0{,}149 contre 0{,}161) et le cylindrique se comporte de manière erratique (0{,}203 contre 0{,}394), ses cellules de révolution moyennant de toute façon les zones que le start cherche à isoler. Ensuite, quelle que soit la méthode, la trajectoire prédite traverse le régime transitoire (descente initiale du RSD) puis rejoint son palier : c'est bien la qualité de ce palier, comparé au niveau DEM en régime établi, qui départage les apprentissages --- et celui-ci est mieux placé lorsque la matrice est apprise à partir de $start = \SI{1.57}{s}$ sur les maillages statistiques, ceux-là mêmes qui sont retenus pour l'étude. La valeur $start = \SI{1.57}{s}$ --- un tour de tambour, cohérente avec $\tau$ --- est donc retenue.
 
 L'étude comparative est complétée par trois valeurs de $start$ --- \SI{1.57}{s} (un tour), \SI{3.14}{s} (deux tours) et \SI{15.7}{s} (dix tours) --- pour le découpage de Voronoï à 10 cellules, l'espèce des grandes particules et des paramètres par ailleurs identiques ($NLT = 1$, $\tau = step = \SI{1.57}{s}$). La figure~\ref{fig:etude_start} montre l'écart $|\text{Markov} - \text{DEM}|$ pour les trois valeurs, et le tableau~\ref{tab:etude_start} en synthétise les niveaux d'écart RMS en régime établi.
 
@@ -1261,13 +1261,13 @@ Cette étude de sensibilité compare l'erreur de prédiction du modèle selon qu
     \toprule
     & Cartésien & Cylindrique & Voronoï & Physique\\
     \midrule
-    Sans distinction & 0{,}494 & 0{,}652 & 0{,}211 & 0{,}194\\
-    Avec distinction & \textbf{0{,}214} & \textbf{0{,}267} & \textbf{0{,}102} & \textbf{0{,}064}\\
+    Sans distinction & 0{,}357 & 0{,}459 & 0{,}215 & 0{,}202\\
+    Avec distinction & \textbf{0{,}161} & \textbf{0{,}259} & \textbf{0{,}083} & \textbf{0{,}103}\\
     \bottomrule
   \end{tabular}
 \end{table}
 
-Le verdict est sans appel : quelle que soit la méthode de découpage, la matrice unique fait converger le RSD prédit vers zéro --- c'est-à-dire vers un mélange parfait fictif --- car les deux comptages, propagés par les mêmes probabilités, deviennent proportionnels et la teneur locale s'uniformise artificiellement. La distinction des espèces divise l'écart moyen par un facteur 2 à 3 (jusqu'à 0{,}194 contre 0{,}064 pour le découpage physique) : les petites particules (percolation rapide) et les grandes (transport en bloc, piégeage en zone passive) n'obéissent pas aux mêmes probabilités de saut, comme le montrent d'ailleurs les cartographies de matrices du corps du texte (figures~\ref{fig:matrice_cartesien}, \ref{fig:matrices_voronoi} et~\ref{fig:matrice_physique}), et seule la propagation par des matrices propres à chaque espèce préserve le contraste de teneur qui fonde l'observation de la ségrégation.
+Le verdict est sans appel : quelle que soit la méthode de découpage, la matrice unique fait converger le RSD prédit vers zéro --- c'est-à-dire vers un mélange parfait fictif --- car les deux comptages, propagés par les mêmes probabilités, deviennent proportionnels et la teneur locale s'uniformise artificiellement. La distinction des espèces divise l'écart moyen par un facteur 2 environ (0{,}215 contre 0{,}083 pour le Voronoï, 0{,}202 contre 0{,}103 pour le physique) : les petites particules (percolation rapide) et les grandes (transport en bloc, piégeage en zone passive) n'obéissent pas aux mêmes probabilités de saut, comme le montrent d'ailleurs les cartographies de matrices du corps du texte (figures~\ref{fig:matrice_cartesien}, \ref{fig:matrices_voronoi} et~\ref{fig:matrice_physique}), et seule la propagation par des matrices propres à chaque espèce préserve le contraste de teneur qui fonde l'observation de la ségrégation.
 
 % ------------------------------------------------------------
 \subsection{Illustration de la teneur locale}

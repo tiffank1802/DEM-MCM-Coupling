@@ -1,5 +1,5 @@
 méthode         sans distinction  avec distinction
-Cartésien                 0.4935            0.2135
-Cylindrique               0.6524            0.2671
-Voronoï                   0.2114            0.1019
-Physique                  0.1940            0.0644
+Cartésien                 0.3569            0.1614
+Cylindrique               0.4591            0.2586
+Voronoï                   0.2148            0.0834
+Physique                  0.2025            0.1034

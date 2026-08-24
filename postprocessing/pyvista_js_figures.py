@@ -156,29 +156,20 @@ def load_frames():
 
 
 def partition_labels(X, V, small_p):
-    import sys
+    """Labels de cellule au régime établi, produits par la librairie.
 
-    sys.path.insert(0, str(ROOT / "postprocessing"))
-    from etudes_rapport import Cartesian, Cylindrical, Physics, Voronoi
-
-    fit_ts = np.arange(START, START + 5 * TAU, 10)
-    fit_pts = X[fit_ts].reshape(-1, 3)
-    fit_vn = V[fit_ts].reshape(-1)
-
-    labels = {}
-    cart = Cartesian(5, 2, 1).fit(fit_pts)
-    labels["cartesien"] = ("cartésien (5 × 2 × 1)",
-                           cart.states(X[START]))
-    cyl = Cylindrical(2, 5, 1).fit(fit_pts)
-    labels["cylindrique"] = ("cylindrique (nᵣ = 2, nθ = 5)",
-                             cyl.states(X[START]))
-    vor = Voronoi(10).fit(fit_pts)
-    labels["voronoi"] = ("de Voronoï (10 cellules)", vor.states(X[START]))
-    phy = Physics(10, vw=0.5)
-    phy.fit(fit_pts, fit_vn)
-    labels["physique"] = ("physique (10 cellules)",
-                          phy.states(X[START], V[START]))
-    return labels
+    Les labels sont calculés par ``etudes_librairie.py`` (partitionneurs de
+    ``dem_mcm_coupling.partitioners``, fit de ``run_sweep``) et sauvegardés
+    dans ``data/labels_librairie.npz`` — aucune réimplémentation ici.
+    """
+    d = np.load(ROOT / "data" / "labels_librairie.npz")
+    noms = {
+        "cartesien": "cartésien (5 \u00d7 2 \u00d7 1)",
+        "cylindrique": "cylindrique (n\u1d63 = 2, n\u03b8 = 5)",
+        "voronoi": "de Voronoï (10 cellules)",
+        "physique": "physique (10 cellules)",
+    }
+    return {k: (noms[k], d[k].astype(int)) for k in noms}
 
 
 # ---------------------------------------------------------------------------
