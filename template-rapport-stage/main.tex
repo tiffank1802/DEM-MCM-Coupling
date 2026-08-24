@@ -331,22 +331,20 @@ S_i(t_{k+1}) =\sum_{j=0}^{N-1}  \gamma_{j \to i}S_j(t_k).
 \label{eq:principe_projection}
 \end{align}
 Le modèle de Markov est construit sur ce vecteur de \emph{comptage} ; pour évaluer le modèle et observer la ségrégation, on construira en fin de chaîne un vecteur en termes de \emph{teneur} en une espèce (\S\ref{subsubsec:vecteur_etat}).
-% remplace ces figures par le mélangeur avec les particules de tailles distinctes d'une part;
-% d'autres part, ajoute le mélangeur en des instants distincts pour faire une idée au lecteur du mélange(discretisé(voronoi) et non discretisé)
+La figure~\ref{fig:maillage_melangeur} donne au lecteur une idée du processus de mélange que le modèle doit reproduire : le mélangeur non discrétisé, avec ses particules de tailles distinctes, est montré à quatre instants --- configuration initiale séparée, lit en écoulement après un tour, mélange avancé, régime tardif où les petites particules se concentrent au cœur et contre la paroi. La figure~\ref{fig:maillage_melangeur_voronoi} montre les mêmes particules après discrétisation (découpage de Voronoï) : chaque grain porte la couleur de sa cellule, et c'est à l'échelle de ces cellules que la dynamique est agrégée.
+
 \begin{figure}[H]
   \centering
-  \begin{minipage}{0.48\textwidth}
-    \centering
-    \includegraphics[width=\linewidth]{figures/melangeur_non_discretise.png}
-    \subcaption*{(a) Mélangeur non discrétisé}
-  \end{minipage}\hfill
-  \begin{minipage}{0.48\textwidth}
-    \centering
-    \includegraphics[width=\linewidth]{figures/melangeur_discretise.png}
-    \subcaption*{(b) Mélangeur discrétisé}
-  \end{minipage}
-  \caption{Principe de la discrétisation spatiale : le tambour est partitionné en cellules au sein desquelles la dynamique particulaire est agrégée.}
+  \includegraphics[width=0.9\linewidth]{figures/pv_melange_instants.png}
+  \caption{Mélangeur non discrétisé à des instants distincts (particules aux diamètres réels, petites 4 mm en bleu, grandes 8 mm en rouge) : état initial séparé, lit en écoulement ($t = \SI{1.57}{s}$), mélange avancé ($t = \SI{10}{s}$) et régime tardif ($t = \SI{30}{s}$).}
   \label{fig:maillage_melangeur}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/pv_melange_instants_voronoi.png}
+  \caption{Mélangeur discrétisé (découpage de Voronoï, 10 cellules) aux mêmes instants : chaque particule porte la couleur de la cellule qui la contient ; la dynamique particulaire est agrégée à l'échelle de ces cellules.}
+  \label{fig:maillage_melangeur_voronoi}
 \end{figure}
 
 La construction du modèle se fait suivant trois étapes principales, détaillées dans les paragraphes qui suivent : la discrétisation du mélangeur, la construction du vecteur d'état initial, et la construction de la matrice de transition. La figure~\ref{fig:schema_construction_markov} résume l'algorithme complet, de la donnée DEM à la validation, en rappelant les points importants de chaque étape.
@@ -687,8 +685,6 @@ L'algorithme de partitionnement reste un k-means, mais opéré dans un espace de
 
 \section{Résultats}
 \label{sec:resultats}
-%% Mes à jour tous les resultats en retraçant les courbes de teneur locale, nombre de particules, les matrices de transition d'une part et d'autre part
-% illustrer les commentaires par les images du mélangeur discretisé suivant deux vues (face et de côté), montrer le cellules sensibles plus ou moins de teneur local et expliquer
 Cette section expose les résultats suivant deux approches complémentaires, directement reliées à la problématique du mémoire : l'influence du choix de la méthode de discrétisation sur la qualité du modèle de Markov (\S\ref{subsec:res_discretisation}), puis l'apport des chaînes inhomogènes par rapport aux chaînes homogènes (\S\ref{subsec:res_inhomogene}). Les résultats relatifs à la justification des paramètres du modèle ($\tau$, $NLT$, $start$, $step$) sont regroupés en annexe~\ref{annexe:parametres}.
 
 Pour quantifier le degré d'homogénéité, nous utilisons l'écart-type relatif (\textit{Relative Standard Deviation}, RSD) :
@@ -740,17 +736,8 @@ Les matrices de transition (figure~\ref{fig:matrice_cartesien}) révèlent d'emb
 
 \begin{figure}[H]
   \centering
-  \begin{minipage}{0.48\textwidth}
-    \centering
-    \includegraphics[width=\linewidth]{figures/matrice_cartesien_grandes.png}
-    \subcaption*{(a) Grandes particules}
-  \end{minipage}\hfill
-  \begin{minipage}{0.48\textwidth}
-    \centering
-    \includegraphics[width=\linewidth]{figures/matrice_cartesien_petites.png}
-    \subcaption*{(b) Petites particules}
-  \end{minipage}
-  \caption{Matrices de transition (découpage cartésien) construites séparément pour chaque espèce.}
+  \includegraphics[width=\linewidth]{figures/matrice_cartesien_especes.png}
+  \caption{Matrices de transition construites avec la librairie pour le découpage cartésien ($5 \times 2 \times 1$, 10 cellules, configuration : $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas), séparément pour chaque espèce.}
   \label{fig:matrice_cartesien}
 \end{figure}
 
@@ -781,7 +768,7 @@ Les matrices de transition construites par espèce pour un découpage cylindriqu
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/matrice_cylindrique_especes.png}
-  \caption{Matrices de transition construites à partir des données DEM pour le découpage cylindrique (10 cellules, $n_r = 2$, $n_\theta = 5$, mode à aire constante, $\tau = \SI{1.57}{s}$), séparément pour chaque espèce. La structure en blocs suit la numérotation radiale $\to$ angulaire ; la condition de stochasticité en colonne est vérifiée sur toutes les colonnes.}
+  \caption{Matrices de transition construites avec la librairie pour le découpage cylindrique (10 cellules, $n_r = 2$, $n_\theta = 5$, mode à aire constante ; configuration : $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas), séparément pour chaque espèce. La structure en blocs suit la numérotation radiale $\to$ angulaire.}
   \label{fig:matrice_cylindrique}
 \end{figure}
 
@@ -790,7 +777,7 @@ La confrontation de la prédiction markovienne à la référence DEM (figure~\re
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.85\textwidth]{figures/rsd_cylindrique.png}
-  \caption{Découpage cylindrique : RSD de la teneur en petites particules, DEM (trait continu) vs prédictions markoviennes homogène et inhomogène ($\tau = \SI{1.57}{s}$, données DEM réelles).}
+  \caption{Découpage cylindrique : RSD de la teneur en petites particules, DEM (trait continu) vs prédictions markoviennes homogène ($nlt = 2$) et inhomogène (une matrice par bloc), configuration $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas.}
   \label{fig:rsd_cylindrique}
 \end{figure}
 
@@ -805,49 +792,47 @@ Le pas de temps markovien est fixé à \SI{1.57}{s}, soit approximativement un t
   \label{fig:pv_cellules_voronoi}
 \end{figure}
 
-Deux matrices distinctes sont estimées en appliquant un masque sur les labels afin d'isoler chaque espèce. La probabilité maximale de transition inter-cellule atteint $\approx 0{,}5$ pour les grandes particules contre $\approx 0{,}35$ pour les petites, confirmant la mobilité supérieure de ces dernières (figure~\ref{fig:matrices_voronoi}).
+Deux matrices distinctes sont estimées en appliquant un masque sur les labels afin d'isoler chaque espèce (figure~\ref{fig:matrices_voronoi}). La cartographie confirme l'asymétrie entre espèces : les grandes particules concentrent leurs probabilités sur un petit nombre de destinations privilégiées, tandis que les petites les répartissent plus largement, signature de leur mobilité supérieure par percolation.
 
 \begin{figure}[H]
   \centering
-  \begin{minipage}{0.45\textwidth}
-    \centering
-    \includegraphics[width=\linewidth]{figures/voronoi_grandes.png}
-    \subcaption*{(a) Grandes particules}
-  \end{minipage}\hfill
-  \begin{minipage}{0.45\textwidth}
-    \centering
-    \includegraphics[width=\linewidth]{figures/voronoi_petites.png}
-    \subcaption*{(b) Petites particules}
-  \end{minipage}
-  \caption{Matrices de transition (découpage de Voronoï) pour chaque espèce.}
+  \includegraphics[width=\linewidth]{figures/matrice_voronoi_especes.png}
+  \caption{Matrices de transition construites avec la librairie pour le découpage de Voronoï (10 cellules, configuration : $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas), séparément pour chaque espèce.}
   \label{fig:matrices_voronoi}
 \end{figure}
 
-\paragraph{Vecteur d'état par comptage.} La figure~\ref{fig:vecteur_etat_nb} montre l'évolution du nombre de particules par cellule. Si cette représentation décrit l'occupation globale du tambour, elle ne permet pas de discriminer les zones enrichies en une espèce.
+\paragraph{Vecteur d'état par comptage.} La figure~\ref{fig:vecteur_etat_nb} montre l'évolution du nombre de particules par cellule, dans la référence DEM (a) et dans la prédiction markovienne homogène (b). L'occupation des cellules est stable et bien reproduite par le modèle --- la conservation du nombre total de particules est assurée par la stochasticité de la matrice --- mais cette représentation ne permet pas de discriminer les zones enrichies en une espèce.
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=0.85\textwidth]{figures/vecteur_etat_nb.png}
-  \caption{Évolution temporelle du nombre de particules par cellule (vecteur d'état de type comptage).}
+  \includegraphics[width=\linewidth]{figures/nombre_particules_cellules.png}
+  \caption{Nombre de particules par cellule (toutes espèces), DEM (a) vs prédiction markovienne homogène (b) --- découpage de Voronoï, 10 cellules, configuration $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas, dégradé viridis par cellule.}
   \label{fig:vecteur_etat_nb}
 \end{figure}
 
-\paragraph{Vecteur d'état par teneur locale.} En substituant au comptage la teneur en petites particules, des écarts significatifs entre cellules émergent (figure~\ref{fig:teneur_petites}) : la cellule 9, adossée à la paroi, s'enrichit en petits grains tandis que la cellule 4 s'appauvrit. Cette hétérogénéité, invisible dans le comptage, traduit la ségrégation en cours : les petites particules percolent vers la paroi et le cœur du lit, d'où elles ne remontent que difficilement.
+\paragraph{Vecteur d'état par teneur locale.} En substituant au comptage la teneur en petites particules, des écarts significatifs entre cellules émergent (figure~\ref{fig:teneur_petites}) : certaines cellules s'enrichissent durablement en petits grains tandis que d'autres s'appauvrissent. Cette hétérogénéité, invisible dans le comptage, traduit la ségrégation en cours : les petites particules percolent vers la paroi et le cœur du lit, d'où elles ne remontent que difficilement. La prédiction markovienne (b) restitue les niveaux moyens de teneur de chaque cellule mais lisse les fluctuations rapides de la DEM (a).
 
 \begin{figure}[H]
   \centering
-  \begin{minipage}{0.48\textwidth}
-    \centering
-    \includegraphics[width=\linewidth]{figures/teneur_petites1.png}
-    \subcaption*{(a) Teneur en petites particules}
-  \end{minipage}\hfill
-  \begin{minipage}{0.48\textwidth}
-    \centering
-    \includegraphics[width=\linewidth]{figures/teneur_petites2.png}
-    \subcaption*{(b) Vue d'ensemble}
-  \end{minipage}
-  \caption{Évolution de la teneur locale en petites particules (vecteur d'état de type ségrégation).}
+  \includegraphics[width=\linewidth]{figures/teneur_locale_cellules.png}
+  \caption{Teneur locale en petites particules par cellule, DEM (a) vs prédiction markovienne homogène (b) --- découpage de Voronoï, 10 cellules, configuration $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas, dégradé viridis par cellule.}
   \label{fig:teneur_petites}
+\end{figure}
+
+Les vues 3D du mélangeur discrétisé (figures~\ref{fig:teneur_3d_debut} et~\ref{fig:teneur_3d_tardif}), où chaque particule porte la couleur de la teneur de sa cellule (échelle viridis), localisent ces cellules sensibles dans le tambour, en vue de face et en vue de côté. Au début du régime établi ($t = \SI{1.57}{s}$), le contraste est maximal : les cellules issues de la couche initiale de petites particules affichent des teneurs de 0{,}5 et plus (teintes vertes, cellule 4 à 0{,}56), tandis que les cellules du haut du lit en sont presque dépourvues (teintes sombres, cellules 1, 2 et 5 sous 0{,}02). À l'instant tardif ($t = \SI{30}{s}$), la gamme s'est resserrée (0{,}19 à 0{,}51) mais ne s'annule pas : les cellules riches sont désormais celles du cœur et de la paroi (cellules 0 et 9, teintes turquoise), là où les petites particules piégées se concentrent, et les cellules de la surface libre restent appauvries (cellule 5) --- c'est la signature spatiale de la ségrégation par percolation que le RSD agrège en un seul indicateur.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/pv_teneur_voronoi_t157.png}
+  \caption{Mélangeur discrétisé (Voronoï) coloré par la teneur locale de chaque cellule à $t = \SI{1.57}{s}$, vues de face et de côté (échelle viridis). Les cellules héritées de la couche initiale de petites particules (teintes claires) contrastent avec les cellules du haut du lit, quasi vides de petites (teintes sombres).}
+  \label{fig:teneur_3d_debut}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/pv_teneur_voronoi_t3000.png}
+  \caption{Même représentation à $t = \SI{30}{s}$ : la gamme de teneurs s'est resserrée mais les cellules du cœur et de la paroi (teintes turquoise) restent enrichies en petites particules, et la surface libre appauvrie --- signature spatiale persistante de la ségrégation.}
+  \label{fig:teneur_3d_tardif}
 \end{figure}
 
 \paragraph{Validation par le RSD.} La figure~\ref{fig:rsd_voronoi} compare le RSD issu de la DEM à celui prédit par la chaîne de Markov. L'accord qualitatif confirme que le modèle reproduit correctement le niveau global d'homogénéisation atteint par le système.
@@ -881,17 +866,8 @@ En intégrant la norme de la vitesse dans le critère de partitionnement, les ce
 
 \begin{figure}[H]
   \centering
-  \begin{minipage}{0.48\textwidth}
-    \centering
-    \includegraphics[width=\linewidth]{figures/matrice_physique_grandes.png}
-    \subcaption*{(a) Grandes particules}
-  \end{minipage}\hfill
-  \begin{minipage}{0.48\textwidth}
-    \centering
-    \includegraphics[width=\linewidth]{figures/matrice_physique_petites.png}
-    \subcaption*{(b) Petites particules}
-  \end{minipage}
-  \caption{Matrices de transition (découpage physique) pour chaque espèce.}
+  \includegraphics[width=\linewidth]{figures/matrice_physique_especes.png}
+  \caption{Matrices de transition construites avec la librairie pour le découpage physique (10 cellules, configuration : $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas), séparément pour chaque espèce.}
   \label{fig:matrice_physique}
 \end{figure}
 
@@ -903,13 +879,13 @@ La figure~\ref{fig:comparaison_methodes_rsd} confronte, pour les quatre méthode
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/comparaison_methodes_rsd.png}
-  \caption{Influence de la méthode de découpage sur la prédiction (données DEM réelles) : RSD DEM vs prédiction markovienne homogène pour les quatre méthodes, à nombre de cellules identique (10 cellules) et à paramètres identiques ($\tau = \SI{1.57}{s}$, deux blocs d'apprentissage). L'écart moyen est indiqué dans le titre de chaque cadran.}
+  \caption{Influence de la méthode de découpage sur la prédiction (données DEM réelles) : RSD DEM vs prédiction markovienne homogène pour les quatre méthodes, à nombre de cellules identique (10 cellules) et à configuration identique ($nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas). L'écart moyen est indiqué dans le titre de chaque cadran.}
   \label{fig:comparaison_methodes_rsd}
 \end{figure}
 
 \begin{table}[H]
   \centering
-  \caption{Écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ (adimensionnel) sur la fenêtre de prédiction, par méthode de découpage à nombre de cellules identique (10 cellules, chaîne homogène, $\tau = \SI{1.57}{s}$).}
+  \caption{Écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ (adimensionnel) sur la fenêtre de prédiction, par méthode de découpage à nombre de cellules identique (10 cellules, chaîne homogène, configuration $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
   \label{tab:ecart_rsd_methodes}
   \begin{tabular}{lcccc}
     \toprule
@@ -1034,8 +1010,7 @@ Plusieurs axes de prolongement se dessinent. Une question ouverte, directement i
 
 \section{Justification des paramètres du modèle de Markov}
 \label{annexe:parametres}
-%% se referer à l'etude comparative de Doucet pour mener cette étude choix des grandeurs pour la comparaison
-Cette annexe rassemble les études comparatives qui justifient les valeurs des paramètres de construction du modèle (tableau~\ref{tab:parametres} du corps du texte) : le pas de temps de Markov $\tau$ (\S\ref{annexe:tau}), le nombre de blocs d'apprentissage $NLT$ (\S\ref{annexe:nlt}), l'instant de départ $start$ (\S\ref{annexe:start}) et l'écart entre blocs $step$ (\S\ref{annexe:step}). Tous les temps sont exprimés en secondes ; on rappelle que le pas d'extraction DEM vaut \SI{0.01}{s}, si bien que $\SI{1.57}{s}$ correspond à 157 pas DEM.
+Cette annexe rassemble les études comparatives qui justifient les valeurs des paramètres de construction du modèle (tableau~\ref{tab:parametres} du corps du texte) : le pas de temps de Markov $\tau$ (\S\ref{annexe:tau}), le nombre de blocs d'apprentissage $NLT$ (\S\ref{annexe:nlt}), l'instant de départ $start$ (\S\ref{annexe:start}) et l'écart entre blocs $step$ (\S\ref{annexe:step}). La démarche suit l'étude comparative de Doucet et al.~\cite{doucet2008} : deux familles de grandeurs de comparaison sont utilisées --- d'une part la convergence de la matrice de transition elle-même, mesurée par une erreur relative entre matrices (grandeur retenue par ces auteurs pour valider la stationnarité du processus appris), d'autre part la fidélité de la prédiction, mesurée par l'écart des indicateurs macroscopiques (RSD de la teneur) entre le modèle et la référence DEM. Pour chaque étude, la configuration complète du modèle ($nlt$, $start$, $step$, $\tau$, $dt$) est explicitée. Tous les temps sont exprimés en secondes ; on rappelle que le pas de sortie des résultats DEM vaut \SI{0.01}{s}, si bien que $\SI{1.57}{s}$ correspond à 157 pas de sortie.
 
 % ------------------------------------------------------------
 \subsection{Choix du pas de temps de Markov \texorpdfstring{$\tau = \SI{1.57}{s}$}{tau = 1,57 s}}
@@ -1057,13 +1032,12 @@ soit 157 pas d'extraction DEM ($\Delta t_{\mathrm{DEM}} = \SI{0.01}{s}$). La fig
   \label{fig:schema_tau}
 \end{figure}
 
-Ce choix répond à un double impératif. D'une part, $\tau$ doit être suffisamment grand pour que les particules aient le temps de changer de cellule entre deux observations : un $\tau$ trop court produit des matrices quasi identitaires (fortes diagonales artificielles) qui figent la prédiction. D'autre part, $\tau$ doit rester suffisamment court pour résoudre la dynamique du phénomène : un $\tau$ trop long saute des étapes de la cinétique et lisse artificiellement les courbes de RSD. L'étude paramétrique de la figure~\ref{fig:etude_tau}, menée sur les données DEM pour des valeurs de $\tau$ allant de \SI{0.1}{s} à \SI{10}{s} (découpage physique, 10 cellules, RSD de la teneur en petites particules), illustre ce compromis : les très petites valeurs ($\tau = \SI{0.1}{s}$, \SI{0.25}{s}) figent le RSD prédit à un niveau élevé --- entre deux observations si rapprochées, les particules n'ont pas quitté leur cellule et la matrice, quasi identitaire, n'encode presque aucun échange ---, tandis que les grandes valeurs ($\tau = \SI{5}{s}$, \SI{10}{s}) dégradent la résolution temporelle de la prédiction (segments anguleux, peu de points). Le choix $\tau = \SI{1.57}{s}$ (courbe épaisse), en plus de sa signification physique --- un tour de tambour ---, se situe dans la gamme intermédiaire qui suit correctement la descente initiale du RSD DEM et son niveau de palier.
-% il ne s'agit pas d'un \tau_{DEM} mais du pas de temps de sortie des résultats de la DEM
-% Utilise des couleurs viridis de matplotlib pour montrer la difference de couleurs
+Ce choix répond à un double impératif. D'une part, $\tau$ doit être suffisamment grand pour que les particules aient le temps de changer de cellule entre deux observations : un $\tau$ trop court produit des matrices quasi identitaires (fortes diagonales artificielles) qui figent la prédiction. D'autre part, $\tau$ doit rester suffisamment court pour résoudre la dynamique du phénomène : un $\tau$ trop long saute des étapes de la cinétique et lisse artificiellement les courbes de RSD. L'étude paramétrique de la figure~\ref{fig:etude_tau}, menée sur les données DEM pour des valeurs de $\tau$ allant de \SI{0.1}{s} à \SI{10}{s} (découpage physique, 10 cellules, RSD de la teneur en petites particules), illustre ce compromis : les très petites valeurs ($\tau = \SI{0.1}{s}$, \SI{0.25}{s}) figent le RSD prédit à un niveau élevé --- entre deux observations si rapprochées, les particules n'ont pas quitté leur cellule et la matrice, quasi identitaire, n'encode presque aucun échange ---, tandis que les grandes valeurs ($\tau = \SI{5}{s}$, \SI{10}{s}) dégradent la résolution temporelle de la prédiction (segments anguleux, peu de points). Le choix $\tau = \SI{1.57}{s}$ (courbe épaisse), en plus de sa signification physique --- un tour de tambour ---, se situe dans la gamme intermédiaire qui suit correctement la descente initiale du RSD DEM et son niveau de palier. Il convient de ne pas confondre $\tau$, pas de temps du modèle de Markov, avec le pas de sortie des résultats de la DEM (\SI{0.01}{s}), qui fixe seulement la résolution à laquelle les positions sont disponibles.
+
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/etude_tau_rsd.png}
-  \caption{Influence du pas de temps de Markov $\tau$ sur la cinétique de mélange prédite, calculée sur les données DEM (découpage physique, 10 cellules) : RSD DEM de la teneur en petites particules (noir) et prédictions markoviennes homogènes pour $\tau$ de \SI{0.1}{s} à \SI{10}{s}. La courbe épaisse correspond à la valeur retenue $\tau = \SI{1.57}{s}$.}
+  \caption{Influence du pas de temps de Markov $\tau$ sur la cinétique de mélange prédite, calculée sur les données DEM (découpage physique, 10 cellules ; configuration : $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau$, $dt = \tau/10$) : RSD DEM de la teneur en petites particules (noir) et prédictions markoviennes homogènes pour $\tau$ de \SI{0.1}{s} à \SI{10}{s}, dégradé viridis. La courbe épaisse correspond à la valeur retenue $\tau = \SI{1.57}{s}$.}
   \label{fig:etude_tau}
 \end{figure}
 
@@ -1090,19 +1064,29 @@ Ce choix répond à un double impératif. D'une part, $\tau$ doit être suffisam
 % ------------------------------------------------------------
 \subsection{Choix du nombre de blocs d'apprentissage \texorpdfstring{$NLT$}{NLT}}
 \label{annexe:nlt}
-% Utilise l'erreur relative sur la matrice de transition pour faire l'étude de sensibilité du NLT
-% Expliciter les configurations des modèles par exemple pour etude de \tau mettre nlt=.., start=...,step=...,tau=...
 
 Le paramètre $NLT$ contrôle le nombre de blocs d'apprentissage sur lesquels les probabilités de transition sont observées, puis moyennées (chaîne homogène) ou conservées séparément (chaîne inhomogène).
 
-L'étude de sensibilité menée sur les données DEM (figure~\ref{fig:etude_nlt_courbe}) balaie $NLT$ de 1 à 18 (découpage physique, 10 cellules, $\tau = step = \SI{1.57}{s}$) et mesure pour chaque valeur l'erreur moyenne $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur toute la fenêtre de prédiction. Deux régimes apparaissent : pour les petites valeurs ($NLT = 2$ à $5$), l'erreur fluctue entre 0{,}060 et 0{,}066 --- chaque bloc supplémentaire modifie sensiblement la matrice moyenne, signe que la statistique n'est pas encore stabilisée --- puis, à partir de $NLT \gtrsim 8$, l'erreur décroît de façon monotone (0{,}056 à $NLT = 8$, 0{,}047 à $NLT = 18$) : la moyenne sur de nombreux blocs gomme le bruit statistique de l'apprentissage et la matrice converge vers la dynamique moyenne du régime permanent. On note que $NLT = 1$ peut ponctuellement donner une erreur faible : la matrice épouse alors la configuration particulière de son unique tour d'apprentissage, mais sans garantie de robustesse --- ce résultat dépend fortement du tour choisi, comme le confirme la sensibilité au paramètre $start$ (annexe~\ref{annexe:start}).
+À la suite de Doucet et al.~\cite{doucet2008}, qui valident la stationnarité de leur processus de Markov en comparant les matrices de transition obtenues pour des durées d'apprentissage croissantes, la grandeur de comparaison retenue pour cette étude est l'\textbf{erreur relative sur la matrice de transition} :
+\begin{equation}
+  E(NLT)
+  =
+  \frac{\left\| \mathbf{P}^{(NLT)} - \mathbf{P}^{(\mathrm{réf})} \right\|_F}
+       {\left\| \mathbf{P}^{(\mathrm{réf})} \right\|_F},
+  \label{eq:erreur_relative_nlt}
+\end{equation}
+où $\mathbf{P}^{(NLT)}$ est la matrice apprise avec $NLT$ blocs, $\mathbf{P}^{(\mathrm{réf})}$ la matrice de référence apprise avec le plus grand nombre de blocs disponible ($NLT_{\mathrm{réf}} = 18$), et $\|\cdot\|_F$ la norme de Frobenius. Cette erreur mesure directement la convergence des probabilités de transition avec la durée d'apprentissage, indépendamment de toute propagation.
+
+L'étude est menée sur le découpage physique (10 cellules) avec la configuration $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas, pour $NLT$ de 1 à 18 et pour chaque espèce (figure~\ref{fig:etude_nlt_courbe}). La décroissance est monotone pour les deux espèces : pour les petites particules, l'erreur relative passe de $0{,}138$ ($NLT = 1$) à $0{,}093$ ($NLT = 3$), $0{,}034$ ($NLT = 8$) et $0{,}021$ ($NLT = 12$) ; pour les grandes, dont la dynamique est plus régulière, elle reste inférieure dès le départ ($0{,}047$ à $NLT = 1$, $0{,}013$ à $NLT = 12$). Deux enseignements en découlent : d'une part la matrice converge bien vers une matrice stationnaire lorsque le nombre de tours observés augmente --- ce qui légitime l'hypothèse markovienne homogène sur le régime permanent, comme chez Doucet et al. ---, d'autre part une dizaine de blocs suffit à stabiliser les probabilités à quelques pourcents près, la statistique des petites particules (350 individus, percolation rapide) exigeant davantage de blocs que celle des grandes (680 individus, transport en bloc).
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=0.78\textwidth]{figures/etude_nlt_erreur.png}
-  \caption{Étude de sensibilité au nombre de blocs d'apprentissage $NLT$, calculée sur les données DEM (découpage physique, 10 cellules, $\tau = step = \SI{1.57}{s}$) : erreur moyenne $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur la fenêtre de prédiction.}
+  \includegraphics[width=0.78\textwidth]{figures/etude_nlt_erreur_relative.png}
+  \caption{Étude de sensibilité au nombre de blocs d'apprentissage $NLT$ par l'erreur relative sur la matrice de transition (équation~\eqref{eq:erreur_relative_nlt}, grandeur de comparaison de Doucet et al.~\cite{doucet2008}) : découpage physique, 10 cellules, configuration $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas, référence $NLT_{\mathrm{réf}} = 18$.}
   \label{fig:etude_nlt_courbe}
 \end{figure}
+
+En complément, l'erreur de prédiction $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$, moyennée sur la fenêtre de prédiction, suit la même tendance ($0{,}070$ à $NLT = 8$, $0{,}056$ à $NLT = 18$) : la convergence de la matrice se traduit directement par celle de la prédiction.
 
 La comparaison détaillée des cas extrêmes $NLT = 1$ et $NLT = 50$ (figures~\ref{fig:etude_nlt_ecart} et~\ref{fig:etude_nlt_teneur}) illustre ces deux régimes cellule par cellule. Avec $NLT = 1$, l'écart RMS sur les petites particules plafonne autour de 5 à 10 particules avec des cellules durablement mal prédites (bandes rouges persistantes sur la carte des écarts). Avec $NLT = 50$, l'écart RMS retombe dans la gamme 2 à 5, et les erreurs résiduelles se concentrent sur des épisodes courts plutôt que sur des cellules entières ; la prédiction suit sensiblement mieux les trajectoires DEM de teneur, cellule par cellule.
 
@@ -1155,7 +1139,7 @@ La figure~\ref{fig:etude_start_rsd} y répond en confrontant, pour chacune des q
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/etude_start_rsd.png}
-  \caption{Justification du choix de $start$ : RSD DEM de la teneur en petites particules et prédictions markoviennes homogènes propagées depuis $t = \SI{0}{s}$, dont la matrice est apprise soit en incluant le régime transitoire ($start = \SI{0}{s}$, gris), soit sur le régime permanent ($start = \SI{1.57}{s}$, couleur), pour les quatre méthodes de découpage. La zone grisée matérialise le régime transitoire ; l'écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ est indiqué dans chaque légende.}
+  \caption{Justification du choix de $start$ : RSD DEM de la teneur en petites particules et prédictions markoviennes homogènes propagées depuis $t = \SI{0}{s}$, dont la matrice est apprise soit en incluant le régime transitoire ($start = \SI{0}{s}$, gris), soit sur le régime permanent ($start = \SI{1.57}{s}$, couleur), pour les quatre méthodes de découpage (configuration : $nlt = 2$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas). La zone grisée matérialise le régime transitoire ; l'écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ est indiqué dans chaque légende.}
   \label{fig:etude_start_rsd}
 \end{figure}
 
@@ -1239,7 +1223,7 @@ L'étude de sensibilité menée sur les données DEM (figure~\ref{fig:etude_step
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.78\textwidth]{figures/etude_step_erreur.png}
-  \caption{Étude de sensibilité à l'écart entre blocs $step$, calculée sur les données DEM (découpage physique, 10 cellules, $NLT = 3$, $\tau = \SI{1.57}{s}$) : erreur moyenne $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur la fenêtre de prédiction. La ligne pointillée marque la valeur retenue $step = \tau = \SI{1.57}{s}$.}
+  \caption{Étude de sensibilité à l'écart entre blocs $step$, calculée sur les données DEM (découpage physique, 10 cellules ; configuration : $nlt = 3$, $start = \SI{1.57}{s}$, $\tau = \SI{1.57}{s}$, $dt = 8$ pas) : erreur moyenne $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur la fenêtre de prédiction. La ligne pointillée marque la valeur retenue $step = \tau = \SI{1.57}{s}$.}
   \label{fig:etude_step_courbe}
 \end{figure}
 
@@ -1254,7 +1238,7 @@ Cette étude de sensibilité compare l'erreur de prédiction du modèle selon qu
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/etude_especes_rsd.png}
-  \caption{Justification des matrices distinctes par espèce : RSD DEM de la teneur en petites particules vs prédictions markoviennes construites sans distinction d'espèce (matrice unique, gris) et avec distinction (matrices par espèce, couleur), pour les quatre méthodes de découpage.}
+  \caption{Justification des matrices distinctes par espèce : RSD DEM de la teneur en petites particules vs prédictions markoviennes construites sans distinction d'espèce (matrice unique, gris) et avec distinction (matrices par espèce, couleur), pour les quatre méthodes de découpage (configuration : $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
   \label{fig:etude_especes}
 \end{figure}
 

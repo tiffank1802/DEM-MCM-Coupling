@@ -56,6 +56,8 @@ LIGHTPOS = dict(x=0.0, y=0.3, z=2.0)
 CAM_FACE = dict(eye=dict(x=0.0, y=0.0, z=2.1), up=dict(x=0, y=1, z=0))
 # caméra trois-quarts
 CAM_3Q = dict(eye=dict(x=1.3, y=0.9, z=1.5), up=dict(x=0, y=1, z=0))
+# caméra vue de côté (axe x vers l'observateur : plan z-y)
+CAM_COTE = dict(eye=dict(x=2.1, y=0.0, z=0.0), up=dict(x=0, y=1, z=0))
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +171,7 @@ def partition_labels(X, V, small_p):
         "voronoi": "de Voronoï (10 cellules)",
         "physique": "physique (10 cellules)",
     }
-    return {k: (noms[k], d[k].astype(int)) for k in noms}
+    return {k: (noms[k], d[f"{k}_157"].astype(int)) for k in noms}
 
 
 # ---------------------------------------------------------------------------
@@ -281,10 +283,122 @@ def fig_contenu_cellule(X, small_p, labels):
     print("pv_cellule_contenu ok")
 
 
+
+
+def fig_melange_instants(X, small_p):
+    """Mélangeur à des instants distincts : évolution du mélange
+    (non discrétisé, espèces distinctes)."""
+    diam = np.where(small_p, D_SMALL, D_BIG)
+    colors = np.where(small_p[:, None],
+                      [_hex2rgb(BLEU_PETITES)], [_hex2rgb(ROUGE_GRANDES)])
+    instants = [(0, "t = 0 s"), (157, "t = 1,57 s"),
+                (1000, "t = 10 s"), (3000, "t = 30 s")]
+    fig = make_subplots(
+        rows=2, cols=2,
+        specs=[[{"type": "scene"}] * 2] * 2,
+        subplot_titles=[t for _, t in instants],
+        horizontal_spacing=0.01, vertical_spacing=0.04,
+    )
+    for k, (t, _) in enumerate(instants):
+        fig.add_trace(spheres_mesh(X[t], diam / 2, colors),
+                      row=k // 2 + 1, col=k % 2 + 1)
+    fig.update_scenes(**scene_kwargs(CAM_FACE))
+    fig.update_layout(
+        paper_bgcolor=BG, margin=dict(l=0, r=0, t=40, b=8),
+        font=dict(color="white", size=14), showlegend=False,
+    )
+    fig.write_image(FIGDIR / "pv_melange_instants.png",
+                    width=1500, height=1400, scale=1)
+    print("pv_melange_instants ok")
+
+
+def fig_melange_instants_voronoi(X, small_p):
+    """Mélangeur discrétisé (Voronoï) à des instants distincts :
+    particules colorées par cellule."""
+    d = np.load(ROOT / "data" / "labels_librairie.npz")
+    diam = np.where(small_p, D_SMALL, D_BIG)
+    instants = [(0, "t = 0 s"), (157, "t = 1,57 s"), (3000, "t = 30 s")]
+    fig = make_subplots(
+        rows=1, cols=3, specs=[[{"type": "scene"}] * 3],
+        subplot_titles=[t for _, t in instants],
+        horizontal_spacing=0.005,
+    )
+    for k, (t, _) in enumerate(instants):
+        lab = d[f"voronoi_{t}"].astype(int)
+        colors = np.array([_hex2rgb(TAB10[l % 10]) for l in lab])
+        fig.add_trace(spheres_mesh(X[t], diam / 2, colors), row=1, col=k + 1)
+    fig.update_scenes(**scene_kwargs(CAM_FACE))
+    fig.update_layout(
+        paper_bgcolor=BG, margin=dict(l=0, r=0, t=42, b=8),
+        font=dict(color="white", size=14), showlegend=False,
+    )
+    fig.write_image(FIGDIR / "pv_melange_instants_voronoi.png",
+                    width=1800, height=680, scale=1)
+    print("pv_melange_instants_voronoi ok")
+
+
+def fig_teneur_3d(X, small_p):
+    """Mélangeur discrétisé (Voronoï) coloré par la teneur locale de la
+    cellule, vues de face et de côté, régime établi et instant tardif.
+    Met en évidence les cellules sensibles (teneur haute/basse)."""
+    d = np.load(ROOT / "data" / "labels_librairie.npz")
+    diam = np.where(small_p, D_SMALL, D_BIG)
+    cmap = plt_cmap_viridis()
+    for t in (157, 3000):
+        lab = d[f"voronoi_{t}"].astype(int)
+        ten = d[f"voronoi_teneur_{t}"]
+        vals = ten[lab]
+        colors = (np.array([cmap(v) for v in vals])[:, :3] * 255).astype(int)
+        fig = make_subplots(
+            rows=1, cols=2, specs=[[{"type": "scene"}] * 2],
+            subplot_titles=("vue de face", "vue de côté"),
+            horizontal_spacing=0.01,
+        )
+        fig.add_trace(spheres_mesh(X[t], diam / 2, colors), row=1, col=1)
+        fig.add_trace(spheres_mesh(X[t], diam / 2, colors), row=1, col=2)
+        fig.update_scenes(**scene_kwargs(CAM_FACE))
+        fig.update_scenes(camera=CAM_COTE, row=1, col=2)
+        # colorbar continue viridis
+        fig.add_trace(go.Scatter3d(
+            x=[None], y=[None], z=[None], mode="markers",
+            marker=dict(colorscale="Viridis", cmin=0, cmax=1, color=[0],
+                        colorbar=dict(
+                            title=dict(text="teneur locale",
+                                       font=dict(color="white")),
+                            tickfont=dict(color="white"),
+                            len=0.75, thickness=20),
+                        showscale=True, size=0.0001),
+            showlegend=False), row=1, col=2)
+        cmin, cmax = ten.min(), ten.max()
+        imin, imax = int(np.argmin(ten)), int(np.argmax(ten))
+        fig.update_layout(
+            paper_bgcolor=BG, margin=dict(l=0, r=0, t=64, b=8),
+            font=dict(color="white", size=14),
+            title=dict(text=(f"Teneur locale par cellule (Voronoï, "
+                             f"t = {t / 100:g} s) — min : cellule {imin} "
+                             f"({cmin:.2f}), max : cellule {imax} "
+                             f"({cmax:.2f})"),
+                       font=dict(color="white", size=16), x=0.5),
+        )
+        fig.write_image(FIGDIR / f"pv_teneur_voronoi_t{t}.png",
+                        width=1700, height=780, scale=1)
+        print(f"pv_teneur_voronoi_t{t} ok")
+
+
+def plt_cmap_viridis():
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    return plt.get_cmap("viridis")
+
+
 if __name__ == "__main__":
     X, V, small_p = load_frames()
     labels = partition_labels(X, V, small_p)
     fig_melangeur_especes(X, small_p)
+    fig_melange_instants(X, small_p)
+    fig_melange_instants_voronoi(X, small_p)
+    fig_teneur_3d(X, small_p)
     for key, (nom, lab) in labels.items():
         fig_cellules(X, small_p, key, nom, lab)
     fig_contenu_cellule(X, small_p, labels)

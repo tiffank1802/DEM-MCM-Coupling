@@ -259,6 +259,20 @@ class EtudeMethode:
                                 acts["small"], acts["large"])
         return rsd, t_mk[:n]
 
+    def markov_traj(self, config, start_pred=None):
+        """Trajectoires prédites par espèce (comptages par cellule)."""
+        start_pred = config.start_index if start_pred is None else start_pred
+        trajs, acts = {}, {}
+        for sp in ("small", "large"):
+            P_clean, activated = clean_transition_matrix(
+                self.build_P(config, sp))
+            row0 = np.searchsorted(self.times, start_pred)
+            S0 = self.S_matrices[sp][row0].astype(float)
+            traj, t_mk = propagate_markov(
+                S0, P_clean, self.times, start_pred, config.tau, activated)
+            trajs[sp], acts[sp] = traj, activated
+        return trajs, t_mk, acts
+
     def dem_rsd(self, times_probe, acts=None):
         rows = np.searchsorted(self.times, times_probe)
         S_s = self.S_matrices["small"][rows]
@@ -376,8 +390,9 @@ def etude_tau(etudes):
     ax.set_xlabel("Temps (s)")
     ax.set_ylabel("RSD (–)")
     ax.set_title(
-        "Influence du pas de temps de Markov $\\tau$ sur la cinétique prédite "
-        "(découpage physique, 10 cellules, teneur en petites)"
+        "Influence du pas de temps de Markov $\\tau$ sur la cinétique prédite\n"
+        "(découpage physique, 10 cellules, nlt=2, start=1,57 s, "
+        "step=$\\tau$, dt=$\\tau$/10)"
     )
     ax.legend(ncol=2, fontsize=9)
     ax.grid(alpha=0.3)
@@ -404,8 +419,9 @@ def etude_nlt(etudes):
     ax.set_xlabel("Nombre de blocs d'apprentissage $NLT$")
     ax.set_ylabel(r"Erreur moyenne $|\mathrm{RSD}_{Markov} - \mathrm{RSD}_{DEM}|$ (–)")
     ax.set_title(
-        "Influence de $NLT$ sur la qualité du modèle "
-        "(découpage physique, 10 cellules, $\\tau = step = 1{,}57$ s)"
+        "Influence de $NLT$ sur la qualité du modèle\n"
+        "(découpage physique, 10 cellules, start=1,57 s, "
+        "step=tau=1,57 s, dt=8 pas)"
     )
     ax.grid(alpha=0.3)
     fig.tight_layout()
@@ -428,8 +444,9 @@ def etude_step(etudes):
     ax.set_xlabel("Écart entre blocs $step$ (s)")
     ax.set_ylabel(r"Erreur moyenne $|\mathrm{RSD}_{Markov} - \mathrm{RSD}_{DEM}|$ (–)")
     ax.set_title(
-        "Influence de $step$ sur la qualité du modèle "
-        "(découpage physique, 10 cellules, $NLT = 3$, $\\tau = 1{,}57$ s)"
+        "Influence de $step$ sur la qualité du modèle\n"
+        "(découpage physique, 10 cellules, nlt=3, start=1,57 s, "
+        "tau=1,57 s, dt=8 pas)"
     )
     ax.grid(alpha=0.3)
     fig.tight_layout()
@@ -572,6 +589,163 @@ def figure_espace_caracteristiques(timestep_dict):
     print("espace caracteristiques ok")
 
 
+
+
+def _cfg_str(cfg):
+    """Configuration explicite pour les légendes."""
+    return (f"nlt={cfg.nlt}, start={cfg.start_index / 100:g} s, "
+            f"step={cfg.step / 100:g} s, tau={cfg.tau / 100:g} s, "
+            f"dt={cfg.dt} pas")
+
+
+def matrices_par_methode(etudes):
+    """Matrices de transition par espèce pour cartésien, Voronoï, physique
+    (le cylindrique est déjà produit par resultats_cylindrique)."""
+    from postprocessing.metrics import concentration_from_S  # noqa: F401
+
+    for key in ("cartesien", "voronoi", "physique"):
+        et = etudes[key]
+        cfg = config_for(et.method)
+        P_small = et.build_P(cfg, "small")
+        P_large = et.build_P(cfg, "large")
+        vmax = max(P_small.max(), P_large.max())
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5.2))
+        for ax, P, ttl in ((axes[0], P_large.T, "Grandes particules (8 mm)"),
+                           (axes[1], P_small.T, "Petites particules (4 mm)")):
+            im = ax.imshow(P, cmap="viridis", vmin=0, vmax=vmax)
+            ax.set_xlabel("Cellule source $j$")
+            ax.set_ylabel("Cellule d'arrivée $i$")
+            ax.set_title(ttl)
+            fig.colorbar(im, ax=ax, label="$P_{i,j}$")
+        fig.suptitle(f"Matrices de transition — découpage {et.nom.lower()} "
+                     f"(10 cellules, {_cfg_str(cfg)})")
+        fig.tight_layout()
+        fig.savefig(FIGDIR / f"matrice_{key}_especes.png", dpi=200)
+        plt.close(fig)
+        print(f"matrices {key} ok")
+
+
+def teneur_et_nombre(etudes):
+    """Teneur locale et nombre de particules par cellule : DEM vs Markov
+    (découpage de Voronoï, code librairie)."""
+    from postprocessing.metrics import concentration_from_S
+
+    et = etudes["voronoi"]
+    cfg = config_for(et.method)
+    trajs, t_mk, acts = et.markov_traj(cfg)
+    act = acts["small"] & acts["large"]
+    rows = np.searchsorted(et.times, t_mk)
+    S_s_dem = et.S_matrices["small"][rows]
+    S_l_dem = et.S_matrices["large"][rows]
+    n = min(len(trajs["small"]), len(trajs["large"]), len(rows))
+
+    C_dem = concentration_from_S(S_s_dem[:n], S_l_dem[:n])
+    C_mk = concentration_from_S(trajs["small"][:n], trajs["large"][:n])
+    N_dem = S_s_dem[:n] + S_l_dem[:n]
+    N_mk = trajs["small"][:n] + trajs["large"][:n]
+    t = t_mk[:n] / 100
+    cells = np.where(act)[0]
+    cmap = plt.get_cmap("viridis")
+
+    # ── teneur locale ──
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5.2), sharey=True)
+    for ax, M, ttl in ((axes[0], C_dem, "(a) DEM"),
+                       (axes[1], C_mk, "(b) Markov homogène")):
+        for kk, c in enumerate(cells):
+            ax.plot(t, M[:, c], color=cmap(kk / max(1, len(cells) - 1)),
+                    lw=1.4, label=f"cellule {c}")
+        ax.set_xlabel("Temps (s)")
+        ax.set_title(ttl)
+        ax.grid(alpha=0.3)
+    axes[0].set_ylabel("Teneur locale en petites particules (–)")
+    axes[1].legend(fontsize=8, ncol=2)
+    fig.suptitle("Teneur locale en petites particules par cellule — "
+                 f"découpage de Voronoï ({_cfg_str(cfg)})")
+    fig.tight_layout()
+    fig.savefig(FIGDIR / "teneur_locale_cellules.png", dpi=200)
+    plt.close(fig)
+
+    # ── nombre de particules ──
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5.2), sharey=True)
+    for ax, M, ttl in ((axes[0], N_dem, "(a) DEM"),
+                       (axes[1], N_mk, "(b) Markov homogène")):
+        for kk, c in enumerate(cells):
+            ax.plot(t, M[:, c], color=cmap(kk / max(1, len(cells) - 1)),
+                    lw=1.4, label=f"cellule {c}")
+        ax.set_xlabel("Temps (s)")
+        ax.set_title(ttl)
+        ax.grid(alpha=0.3)
+    axes[0].set_ylabel("Nombre de particules par cellule")
+    axes[1].legend(fontsize=8, ncol=2)
+    fig.suptitle("Nombre de particules par cellule — "
+                 f"découpage de Voronoï ({_cfg_str(cfg)})")
+    fig.tight_layout()
+    fig.savefig(FIGDIR / "nombre_particules_cellules.png", dpi=200)
+    plt.close(fig)
+    print("teneur + nombre ok")
+
+    # teneurs par cellule au régime établi et tardif, pour les vues 3D
+    return {"cells": cells, "C_dem": C_dem, "t": t}
+
+
+def etude_nlt_erreur_relative(etudes):
+    """Sensibilité au NLT par l'erreur relative sur la matrice de transition
+    (grandeur de comparaison de Doucet et al. 2008) :
+    E(NLT) = ||P(NLT) - P(NLT_ref)||_F / ||P(NLT_ref)||_F."""
+    et = etudes["physique"]
+    nlts = [1, 2, 3, 5, 8, 12, 18]
+    nlt_ref = nlts[-1]
+    P_ref = {sp: et.build_P(config_for(et.method, nlt=nlt_ref), sp)
+             for sp in ("small", "large")}
+    errs = {sp: [] for sp in ("small", "large")}
+    for nlt in nlts:
+        cfg = config_for(et.method, nlt=nlt)
+        for sp in ("small", "large"):
+            P = et.build_P(cfg, sp)
+            e = (np.linalg.norm(P - P_ref[sp], "fro")
+                 / np.linalg.norm(P_ref[sp], "fro"))
+            errs[sp].append(e)
+            print(f"  NLT={nlt} {sp}: E_rel={e:.4f}")
+    fig, ax = plt.subplots(figsize=(8.6, 5))
+    ax.plot(nlts, errs["small"], "o-", color="#2166ac", lw=2,
+            label="petites particules")
+    ax.plot(nlts, errs["large"], "s-", color="#b2182b", lw=2,
+            label="grandes particules")
+    ax.set_xlabel("Nombre de blocs d'apprentissage $NLT$")
+    ax.set_ylabel(r"Erreur relative $E(NLT) = \frac{\|\mathbf{P}^{(NLT)}"
+                  r" - \mathbf{P}^{(réf)}\|_F}{\|\mathbf{P}^{(réf)}\|_F}$")
+    ax.set_title(
+        "Convergence de la matrice de transition avec $NLT$ "
+        f"(découpage physique, 10 cellules,\n"
+        f"start=1,57 s, step=tau=1,57 s, dt=8 pas ; référence NLT={nlt_ref})"
+    )
+    ax.legend()
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(FIGDIR / "etude_nlt_erreur_relative.png", dpi=200)
+    plt.close(fig)
+    print("nlt erreur relative ok")
+    return errs, nlts
+
+
+def dump_labels_3d(etudes):
+    """Labels et teneurs par cellule pour les vues 3D (pyvista_js)."""
+    out = {}
+    from postprocessing.metrics import concentration_from_S
+    for key, et in etudes.items():
+        for t in (0, 157, 3000):
+            row = et.idx_to_row[t]
+            out[f"{key}_{t}"] = et.states_matrix[row]
+        # teneur par cellule au regime etabli et tardif (pour annotations)
+        for t in (157, 3000):
+            row = et.idx_to_row[t]
+            S_s = et.S_matrices["small"][row][None]
+            S_l = et.S_matrices["large"][row][None]
+            out[f"{key}_teneur_{t}"] = concentration_from_S(S_s, S_l)[0]
+    np.savez(ROOT / "data" / "labels_librairie.npz", **out)
+    print("labels 3D ok")
+
+
 if __name__ == "__main__":
     timestep_dict = load_timestep_dict()
     figure_espace_caracteristiques(timestep_dict)
@@ -589,8 +763,12 @@ if __name__ == "__main__":
     etude_start(etudes)
     etude_tau(etudes)
     etude_nlt(etudes)
+    etude_nlt_erreur_relative(etudes)
     etude_step(etudes)
     etude_especes(etudes)
     resultats_cylindrique(etudes)
+    matrices_par_methode(etudes)
+    teneur_et_nombre(etudes)
+    dump_labels_3d(etudes)
     print("\n✅ toutes les figures écrites (calculs 100 % librairie) dans",
           FIGDIR)
