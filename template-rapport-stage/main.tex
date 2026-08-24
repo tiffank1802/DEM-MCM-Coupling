@@ -249,12 +249,15 @@ La simulation de référence met en scène un mélange bidisperse représentatif
   \end{tabular}
 \end{table}
 
-Le mélangeur est un tambour cylindrique tournant autour de son axe horizontal $z$ à la vitesse de rotation constante $\omega = \SI{4}{rad/s}$. La figure~\ref{fig:schema_tambour} en donne la géométrie : la vue de face (plan $x$--$y$) montre le lit de particules incliné par l'entraînement de la paroi, avec sa zone active de surface où les grains dévalent et sa zone passive en profondeur où ils sont transportés en bloc ; la vue de côté (plan $x$--$z$) précise les dimensions caractéristiques, le diamètre $D = 2R$ et la longueur axiale $L$. Dans la pratique, les limites exactes de la partie utile ne sont pas imposées a priori : elles sont recalées sur l'enveloppe des positions des particules observées durant le régime permanent de la simulation DEM (phase dite de \textit{fit}), ce qui évite de découper dans le vide et garantit que chaque cellule du maillage a une chance d'être peuplée.
+Le mélangeur est un tambour cylindrique tournant autour de son axe horizontal $z$ à la vitesse de rotation constante $\omega = \SI{4}{rad/s}$. 
+La figure~\ref{fig:schema_tambour} en donne la géométrie : la vue de face (plan $x$--$y$) montre le lit de particules incliné par l'entraînement de la paroi, avec sa zone active de surface, lit du mélange où les grains dévalent et sa zone passive, zone d'équilibre en profondeur où ils sont transportés en bloc comme précisé par Morrison et al.~\cite{morrison2016} ; 
+la vue de côté (plan $y$--$z$) précise les dimensions caractéristiques, le diamètre $D = 2R= 0.1 m$ et la longueur axiale $L=0.1 m$.
+Dans la pratique, les limites exactes de la partie utile ne sont pas imposées a priori : elles sont recalées sur l'enveloppe des positions des particules observées durant le régime permanent de la simulation DEM (phase dite de \textit{fit}), ce qui évite de découper dans le vide et garantit que chaque cellule du maillage a une chance d'être peuplée.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/schema_tambour.png}
-  \caption{Géométrie du tambour tournant : (a) vue de face avec le lit granulaire incliné, la zone active et la zone passive ; (b) vue de côté avec les dimensions caractéristiques $D = 2R$ et $L$. Le tambour tourne à $\omega = \SI{4}{rad/s}$ autour de l'axe $z$.}
+  \caption{Géométrie du tambour tournant : (a) vue de face avec le lit granulaire incliné,  (b) vue de côté . Le tambour de dimensions caractéristiques $D = 2R=0.1m$ et $L=0.1m$ tourne à $\omega = \SI{4}{rad/s}$ autour de l'axe $z$.}
   \label{fig:schema_tambour}
 \end{figure}
 
@@ -294,16 +297,16 @@ La figure~\ref{fig:schema_forces} illustre ce bilan dans le cas du tambour tourn
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=0.7\textwidth]{figures/schema_forces_tambour.png}
-  \caption{Bilan des actions mécaniques sur une particule du lit granulaire : force de contact normale $\mathbf{F}_{n,ij}$ et tangentielle $\mathbf{F}_{t,ij}$ au contact inter-grains, moment de rotation $\mathbf{M}_{r,ij}$, pesanteur $m_i\mathbf{g}$ et frottement tangentiel à la paroi entraînante.}
+  \includegraphics[width=0.7\textwidth]{figures/principe_simulation_DEM.png}
+  \caption{Bilan des actions mécaniques sur une particule de la zone d'équilibre du granulaire : force de contact normale $\mathbf{F}_{n,ij}$ et tangentielle $\mathbf{F}_{t,ij}$ au contact inter-grains, moment de rotation $\mathbf{M}_{r,ij}$, pesanteur $m_i\mathbf{g}$ et frottement tangentiel à la paroi entraînante.}
   \label{fig:schema_forces}
 \end{figure}
 
-\begin{figure}[H]
-  \centering
-\includegraphics[width=\linewidth]{figures/principe_simulation_DEM.png}
-\caption{Principe de la simulation DEM}
-\end{figure}
+% \begin{figure}[H]
+%   \centering
+% \includegraphics[width=\linewidth]{figures/principe_simulation_DEM.png}
+% \caption{Principe de la simulation DEM}
+% \end{figure}
 
 Pour capturer fidèlement ces interactions de contact, le pas de temps de simulation est très faible (de l'ordre de $10^{-6}$\,s), ce qui rend la méthode difficilement applicable à l'échelle industrielle où des milliards de particules sont en interaction. C'est cette limite qui justifie le passage à l'approche stochastique décrite ci-après.
 
@@ -311,9 +314,38 @@ Pour capturer fidèlement ces interactions de contact, le pas de temps de simula
 \subsection{Du déterminisme particulaire au formalisme markovien}
 \label{subsec:markov}
 
-Plutôt que de suivre individuellement chaque grain, l'approche stochastique regroupe les particules dans des cellules issues d'une discrétisation spatiale de la zone utile du mélangeur comme le montre la figure~\ref{fig:maillage_melangeur},
+Plutôt que de suivre individuellement chaque grain, l'approche stochastique regroupe les particules dans des cellules issues d'une discrétisation spatiale de la \textbf{zone utile} du mélangeur constituée par la zone active et la zone passive. comme le montre la figure~\ref{fig:maillage_melangeur},
 permettant de suivre l'évolution du mélange à l'échelle des cellules. Le modèle de Markov est le couple (vecteur d'état initial, matrice de transition).
+%% ce bloc doit rester ensemble donner un aperçu du principe avant de détailler par la suite la méthode de construction du vecteur d'état initial de la matric de transition.
+%---------------------------------------------------------
 Des probabilités de saut entre cellules sont alors appliquées afin de reproduire la dynamique des particules dans le mélangeur sur une série d'instants discrets. Ce changement d'échelle autorise un pas de temps de prédiction nettement plus grand et un coût en ressources computationnelles réduit.
+
+On considère l'état du mélangeur à un instant $t_i$ défini par le nombre de particules dans chaque cellule spatiale à l'aide d'un vecteur $\mathbf{S}$ : 
+
+
+\begin{equation}
+  \mathbf{S}(t_i)
+  = 
+  \begin{bmatrix}
+    S_0(t_i)\\
+    S_1(t_i)\\
+    \vdots\\
+    S_{N-1}(t_i)
+  \end{bmatrix},
+  % \qquad
+  % S_i(t)
+  % =
+  % \begin{cases}
+  %   N_i(t), & \text{mélange (comptage)},\\[4pt]
+  %   c_i(t), & \text{ségrégation (teneur locale)}.
+  % \end{cases}
+  \label{eq:vecteur_etat}
+\end{equation}
+où $S_i(t_k)$ correspond au nombre de particules d'une espèce dans la cellule $ i \in [O,N-1]$ à l'instant $t_k$. À partir des probabilités de saut $\gamma_{j \to i}$ des cellules $j$ vers une cellule $i$, on peut calculer le nombre de particules dans la cellule $i$ à l'instant $t_{i+1}$ : 
+\begin{align}
+S_i(t_{k+1}) =\sum_{j=0}^{N-1}  \gamma_{j \to i}S_j(t_k)
+\end{align}
+% --------------------------------------------------------------
 
 \begin{figure}[H]
   \centering
@@ -331,6 +363,7 @@ Des probabilités de saut entre cellules sont alors appliquées afin de reprodui
   \label{fig:maillage_melangeur}
 \end{figure}
 
+%% Faire une figure illustrant cet algorithme de construction du modèle de markov en détaillant(du moins en mettant les points importants de chaque étape)
 La construction du modèle se fait suivant trois étapes principales, détaillées dans les paragraphes qui suivent : la discrétisation du mélangeur, la construction du vecteur d'état initial, et la construction de la matrice de transition.
 
 \subsubsection{Définition et construction du vecteur d'état}
@@ -349,7 +382,13 @@ On considère l'état du mélangeur à un instant $t_k$ défini par le contenu d
   \end{bmatrix},
   \label{eq:vecteur_etat}
 \end{equation}
-où la composante $S_i(t_k)$, $i \in [0, N-1]$, admet deux définitions selon le phénomène que l'on souhaite caractériser :
+où la composante $S_i(t_k)$, $i \in [0, N-1]$, admet deux définitions selon le phénomène que l'on souhaite caractériser : % Dans cette partie sur la construction du modèle de markov on a utilisé le vecteur d'état comme le nombre de particule dans une cellule
+% de ce fait définit le vecteur d'état comme tel dans cette partie du moins. par la suite, à titre de rappel, pour évaluer le modèle et observer la ségrégation, on construit un vecteur en terme de teneur
+% Je pense qu'il faudrait le dire en début comme tu l'as fait dans le résumé et en fin de la partie sur la construction du modèle de Markov
+
+%% Du moins, laisse la définition de la teneur locale(nombre de particule d'une espèce dans une cellule sur le nombre total de particules dans la cellule)  comme tu l'as fait dans le document mais précise que pour construire le modèle de Markov, on utilise le nombre de particules
+% Surtout que les matrice de transitions sont pour chaque espèce
+% faire un schéma illustrant cette teneur locale dans un découpage cartésien en annexe que fera reference. 
 \begin{itemize}[itemsep=2pt]
   \item \textbf{vecteur d'état de type comptage} : $S_i(t_k)$ est le nombre de particules (d'une espèce ou de l'ensemble) présentes dans la cellule $i$ à l'instant $t_k$. Il renseigne sur l'occupation globale du mélangeur et laisse apprécier l'homogénéité du mélange ;
   \item \textbf{vecteur d'état de type teneur} : $S_i(t_k)$ est la teneur en une espèce de la cellule $i$, c'est-à-dire le nombre de particules de cette espèce rapporté au nombre total de particules de la cellule. Il discrimine les zones enrichies ou appauvries en une espèce donnée et laisse apprécier l'état de ségrégation.
@@ -380,7 +419,7 @@ S_i(t_{k+1}) =\sum_{j=0}^{N-1}  \gamma_{j \to i}S_j(t_k).
 La matrice de transition $\mathbf{P}$ encode la probabilité qu'une particule quitte la cellule source $j$ (colonne) pour rejoindre la cellule d'arrivée $i$ (ligne) durant un intervalle $\tau=t_{k+1}-t_k$, appelé \textbf{pas de temps de Markov}. Elle est estimée en observant, entre deux instants séparés de $\tau$, les déplacements des particules d'une cellule vers une autre (figure~\ref{fig:representation_melangeur}) : deux vecteurs d'états --- $\mathbf{S}(t_k)$ et $\mathbf{S}(t_{k+1})$ --- sont construits aux instants $t_k$ et $t_{k+1}$ respectivement, et les paires de labels $(l_p(t_k),\, l_p(t_{k+1}))$ fournissent les comptages de transition. Cette observation est répétée sur une période dite \textbf{temps d'apprentissage} couvrant $NLT$ paires d'instants, et les probabilités obtenues sont moyennées :
 
 \begin{equation}
-  P_{i,j}
+  P_{i,j} % Précise que  P_{i,j}=\gamma_{j \to i}
   =
   \frac{1}{NLT}
   \sum_{n=1}^{NLT}
@@ -401,7 +440,7 @@ où $NLT$ est le nombre d'instants d'apprentissage, $\phi_p(i,t_n)$ la fonction 
   \item $\boldsymbol{\tau} = \SI{1.57}{s}$ (soit 157 pas d'extraction DEM) : le pas de temps de Markov est calé sur la durée d'un tour complet du tambour tournant à $\omega = \SI{4}{rad/s}$, soit $2\pi/\omega \approx \SI{1.57}{s}$. Ce choix, physiquement interprétable, garantit que les particules ont le temps de se déplacer d'une cellule à l'autre entre deux observations (justification détaillée en annexe~\ref{annexe:tau}) ;
   \item $\boldsymbol{start} = \SI{1.57}{s}$ : le premier instant utilisé pour l'apprentissage est choisi au début du régime permanent. Le début de simulation (régime transitoire) est volontairement écarté : les tout premiers instants correspondent à la mise en mouvement du lit, durant laquelle les probabilités de transition ne sont représentatives ni du mélange établi ni de la ségrégation en cours de formation ; apprendre sur cette phase biaiserait la matrice. L'étude comparative sur plusieurs valeurs de $start$ est donnée en annexe~\ref{annexe:start} ;
   \item $\boldsymbol{step} = \SI{1.57}{s}$ : lorsque plusieurs blocs d'apprentissage sont utilisés ($NLT > 1$), $step$ désigne l'écart entre les débuts de deux blocs consécutifs. Prendre $step = \tau$ fait se succéder les blocs sans recouvrement ni trou, chaque bloc correspondant à un tour de tambour supplémentaire (justification en annexe~\ref{annexe:step}) ;
-  \item $\boldsymbol{dt}$ : à l'intérieur d'un bloc, les paires d'instants $(t,\, t+\tau)$ sont échantillonnées tous les $dt$ pas de temps DEM. Cette stratégie de raffinage temporel entre les pas de temps démultiplie le nombre de paires observées : elle assure que chaque cellule source est visitée suffisamment souvent au cours de l'apprentissage, ce qui évite les colonnes vides --- donc les divisions par zéro et les \textit{NaN} --- dans la matrice de transition.
+  \item $\boldsymbol{dt}$ : à l'intérieur d'un bloc, les paires d'instants $(t,\, t+\tau)$ sont échantillonnées tous les $dt$ pas de temps DEM. Cette stratégie de raffinage temporel entre les pas de temps démultiplie le nombre de paires observées : elle assure que chaque cellule source est visitée suffisamment souvent au cours de l'apprentissage, ce qui évite les colonnes vides --- donc les divisions par zéro et les \textit{NaN} --- dans la matrice de transition. Ces \textit{NaN} auraient pu être remplacés par des \textit{zéro} pour un soucis correspondance numérique; mais il n'auraient pas de signification physique.
 \end{itemize}
 
 \begin{table}[H]
@@ -423,7 +462,7 @@ où $NLT$ est le nombre d'instants d'apprentissage, $\phi_p(i,t_n)$ la fonction 
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\linewidth]{figures/schema_parametres_temporels.png}
+  \includegraphics[width=\linewidth]{figures/schema_parametres_temporels.png} % Refaire le schéma en centrant les labels dans les blocs car ils sont décalés
   \caption{Chronologie des paramètres temporels de l'apprentissage : à partir de $start$, chaque bloc fournit des paires $(t,\, t+\tau)$ échantillonnées tous les $dt$ ; les $NLT$ blocs successifs, décalés de $step$, sont moyennés (chaîne homogène) ou conservés séparément (chaîne inhomogène).}
   \label{fig:schema_parametres}
 \end{figure}
@@ -438,7 +477,7 @@ où $NLT$ est le nombre d'instants d'apprentissage, $\phi_p(i,t_n)$ la fonction 
 \end{equation}
 
 Ces deux conditions sont vérifiées et validées pour chacun des modèles construits : la positivité découle du fait que l'on travaille dans un espace probabilisé, et la condition de somme unitaire traduit simplement le fait que toutes les particules quittant la cellule source $j$ se retrouvent quelque part dans le mélangeur à l'instant suivant. Implicitement, sa validation signifie que la phase d'apprentissage est suffisamment longue pour voir les particules se déplacer d'une partition à l'autre, évitant des \textit{NaN} dans la matrice.
-
+%% pour ce paragraphe, l'étude de sensibilité doit consister à comparer l'erreur de prédiction du modèle sans distinction d'espèce dans la construction de la matrice de transition et avec distinction en annexe
 \paragraph{Deux matrices distinctes par espèce.} Les petites et les grandes particules n'ayant pas la même dynamique --- les petites percolent à travers le lit tandis que les grandes remontent en surface ---, une matrice de transition unique moyennerait deux comportements physiquement distincts. Deux matrices sont donc estimées séparément, en appliquant un masque sur les labels afin de ne compter que les particules d'une espèce donnée. Ce choix est confirmé a posteriori par les cartographies de matrices obtenues (section~\ref{sec:resultats}), systématiquement contrastées entre espèces, et par l'étude comparative en annexe~\ref{annexe:especes}.
 
 \paragraph{Chaîne homogène.} Lorsque $\mathbf{P}$ est supposée invariante dans le temps, la prédiction à $n$ pas s'écrit :
@@ -591,17 +630,19 @@ Afin de limiter cette dépendance et d'améliorer la robustesse du maillage, la 
   \label{eq:affectation_kmeans}
 \end{equation}
 
-Ainsi, une particule appartient à la cellule $k$ si la distance entre cette particule et le centre $\boldsymbol{\mu}_k$ est inférieure ou égale à sa distance à tout autre centre $\boldsymbol{\mu}_\ell$. La figure~\ref{fig:centres_voronoi} illustre cette règle d'affectation : chaque grain est attribué à la partition dont le centroïde est le plus proche.
+Ainsi, une particule appartient à la cellule $k$ si la distance entre cette particule et le centre $\boldsymbol{\mu}_k$ est inférieure ou égale à sa distance à tout autre centre $\boldsymbol{\mu}_\ell$. La figure~\ref{fig:schematisation_voronoi_physique} (a) illustre cette règle d'affectation : chaque grain est attribué à la partition dont le centroïde est le plus proche.
 
-\begin{figure}[H]
-  \centering
-  \begin{minipage}{0.85\textwidth}
-    \centering
-    \includegraphics[width=\linewidth]{figures/centres_voronoi.png}
-  \end{minipage}
-  \caption{Attribution des particules aux cellules de Voronoï : à l'issue de la phase d'apprentissage, chaque grain est affecté à la partition dont le centre $\boldsymbol{\mu}_k$ est le plus proche au sens de la distance euclidienne (équation~\ref{eq:affectation_kmeans}).}
-  \label{fig:centres_voronoi}
-\end{figure}
+% Cette figure n'est plus utile; utilise la figure schématisatisation_voronoi_physique
+
+% \begin{figure}[H]
+%   \centering
+%   \begin{minipage}{0.85\textwidth}
+%     \centering
+%     \includegraphics[width=\linewidth]{figures/centres_voronoi.png}
+%   \end{minipage}
+%   \caption{Attribution des particules aux cellules de Voronoï : à l'issue de la phase d'apprentissage, chaque grain est affecté à la partition dont le centre $\boldsymbol{\mu}_k$ est le plus proche au sens de la distance euclidienne (équation~\ref{eq:affectation_kmeans}).}
+%   \label{fig:centres_voronoi}
+% \end{figure}
 
 \subparagraph{Étape de mise à jour.}
 Une fois les particules affectées aux différentes cellules, les centres sont recalculés comme la moyenne des caractéristiques des particules appartenant à chaque cellule :
@@ -663,6 +704,8 @@ L'algorithme de partitionnement reste un k-means, mais opéré dans un espace de
   \label{fig:schema_voronoi}
 \end{figure}
 
+%% Remplace cette figure par une autre qui montre l'espace dans lequel les caractéristiques des 1030 particules sont representées pour la phase d'apprentissage et sur la phase de prédiction
+% À remplacer
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.85\textwidth]{figures/schematisation_voronoi_physique.png}
