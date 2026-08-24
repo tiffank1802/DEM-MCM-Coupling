@@ -626,3 +626,99 @@ if __name__ == "__main__":
     resultats_cylindrique(states, small_p)
     comparaison_methodes(states, small_p)
     print("✅ toutes les figures écrites dans", FIGDIR)
+
+
+def etude_especes(states, small_p):
+    """Comparaison : matrice unique (sans distinction d'espèce) vs matrices
+    distinctes par espèce, pour les quatre découpages.
+
+    Dans le cas « sans distinction », une seule matrice apprise sur toutes
+    les particules propage à la fois le comptage des petites et le comptage
+    total ; dans le cas « avec distinction », chaque espèce est propagée par
+    sa propre matrice.
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(12.5, 8.6), sharex=True)
+    n_steps = (N_T - START) // TAU
+    t_probe = (START + np.arange(n_steps + 1) * TAU).clip(max=N_T - 1)
+    resume = {}
+    for ax, (name, (st, n)) in zip(axes.flat, states.items()):
+        st_small = st[:, small_p]
+        # matrices
+        P_all, _ = learn_P(st, START, TAU, TAU, 2, 8, n)         # toutes especes
+        P_small, _ = learn_P(st_small, START, TAU, TAU, 2, 8, n)  # petites seules
+        S0_all = counts(st[START], n)
+        S0_small = counts(st[START], n, small_p)
+        # avec distinction : chaque espece suit sa matrice
+        r_avec = markov_rsd_series(P_small, P_all, S0_small, S0_all, n_steps)
+        # sans distinction : la matrice unique P_all propage les deux comptages
+        r_sans = markov_rsd_series(P_all, P_all, S0_small, S0_all, n_steps)
+        t_mk = (START + np.arange(n_steps + 1) * TAU) / 100
+        t_dem = np.arange(START, N_T, 20)
+        r_dem = dem_rsd_series(st, small_p, n, t_dem)
+        r_dem_probe = dem_rsd_series(st, small_p, n, t_probe)
+        e_avec = np.mean(np.abs(r_avec - r_dem_probe))
+        e_sans = np.mean(np.abs(r_sans - r_dem_probe))
+        resume[name] = (e_sans, e_avec)
+        ax.plot(t_dem / 100, r_dem, "k-", lw=0.9, alpha=0.7, label="DEM")
+        ax.plot(t_mk, r_sans, "s--", color="0.55", ms=4,
+                label=f"sans distinction (écart {e_sans:.3f})")
+        ax.plot(t_mk, r_avec, "o--", color=COLORS[name], ms=4,
+                label=f"avec distinction (écart {e_avec:.3f})")
+        ax.set_title(name)
+        ax.grid(alpha=0.3)
+        ax.legend(fontsize=8.5)
+    for ax in axes[-1]:
+        ax.set_xlabel("Temps (s)")
+    for ax in axes[:, 0]:
+        ax.set_ylabel("RSD teneur petites (–)")
+    fig.suptitle(
+        "Matrice unique (sans distinction d'espèce) vs matrices par espèce "
+        "($\\tau = 1{,}57$ s, 2 blocs)"
+    )
+    fig.tight_layout()
+    fig.savefig(FIGDIR / "etude_especes_rsd.png", dpi=200)
+    plt.close(fig)
+    with open(FIGDIR / "etude_especes_table.txt", "w") as f:
+        f.write(f"{'méthode':<14}{'sans distinction':>18}{'avec distinction':>18}\n")
+        for k, (es, ea) in resume.items():
+            f.write(f"{k:<14}{es:18.4f}{ea:18.4f}\n")
+    print("especes ok", resume)
+
+
+def figure_espace_caracteristiques(X, V, small_p):
+    """Espace des caractéristiques du découpage physique : positions (x, y)
+    et norme de vitesse, sur la fenêtre d'apprentissage et un instant de la
+    fenêtre de prédiction."""
+    fit_ts = np.arange(START, START + 5 * TAU, 10)
+    pred_t = 4000  # un instant de la phase de prédiction (40 s)
+
+    pts_fit = X[fit_ts].reshape(-1, 3)
+    vn_fit = V[fit_ts].reshape(-1)
+    pts_pred = X[pred_t]
+    vn_pred = V[pred_t]
+
+    fig, axes = plt.subplots(1, 2, figsize=(12.5, 5.4), sharey=True)
+    vmax = np.percentile(vn_fit, 99)
+    for ax, pts, vn, ttl in (
+        (axes[0], pts_fit[::12], vn_fit[::12],
+         "(a) Phase d'apprentissage (positions cumulées\nsur 5 tours du régime permanent)"),
+        (axes[1], pts_pred, vn_pred,
+         "(b) Phase de prédiction (instant $t = 40$ s)"),
+    ):
+        sc = ax.scatter(pts[:, 0], pts[:, 1], c=np.clip(vn, 0, vmax),
+                        cmap="viridis", s=8, lw=0)
+        ax.set_xlabel("$x$ (m)")
+        ax.set_aspect("equal")
+        ax.set_title(ttl, fontsize=10.5)
+    axes[0].set_ylabel("$y$ (m)")
+    cb = fig.colorbar(sc, ax=axes, shrink=0.85)
+    cb.set_label(r"$\|\mathbf{v}_p\|$ (m/s)")
+    fig.suptitle(
+        "Espace des caractéristiques du découpage physique : positions et "
+        "norme de la vitesse des 1030 particules",
+        fontsize=12,
+    )
+    fig.savefig(FIGDIR / "espace_caracteristiques_physique.png", dpi=200,
+                bbox_inches="tight")
+    plt.close(fig)
+    print("espace caracteristiques ok")

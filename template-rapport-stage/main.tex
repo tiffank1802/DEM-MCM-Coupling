@@ -314,38 +314,16 @@ Pour capturer fidèlement ces interactions de contact, le pas de temps de simula
 \subsection{Du déterminisme particulaire au formalisme markovien}
 \label{subsec:markov}
 
-Plutôt que de suivre individuellement chaque grain, l'approche stochastique regroupe les particules dans des cellules issues d'une discrétisation spatiale de la \textbf{zone utile} du mélangeur constituée par la zone active et la zone passive. comme le montre la figure~\ref{fig:maillage_melangeur},
+Plutôt que de suivre individuellement chaque grain, l'approche stochastique regroupe les particules dans des cellules issues d'une discrétisation spatiale de la \textbf{zone utile} du mélangeur constituée par la zone active et la zone passive, comme le montre la figure~\ref{fig:maillage_melangeur},
 permettant de suivre l'évolution du mélange à l'échelle des cellules. Le modèle de Markov est le couple (vecteur d'état initial, matrice de transition).
-%% ce bloc doit rester ensemble donner un aperçu du principe avant de détailler par la suite la méthode de construction du vecteur d'état initial de la matric de transition.
-%---------------------------------------------------------
 Des probabilités de saut entre cellules sont alors appliquées afin de reproduire la dynamique des particules dans le mélangeur sur une série d'instants discrets. Ce changement d'échelle autorise un pas de temps de prédiction nettement plus grand et un coût en ressources computationnelles réduit.
 
-On considère l'état du mélangeur à un instant $t_i$ défini par le nombre de particules dans chaque cellule spatiale à l'aide d'un vecteur $\mathbf{S}$ : 
-
-
-\begin{equation}
-  \mathbf{S}(t_i)
-  = 
-  \begin{bmatrix}
-    S_0(t_i)\\
-    S_1(t_i)\\
-    \vdots\\
-    S_{N-1}(t_i)
-  \end{bmatrix},
-  % \qquad
-  % S_i(t)
-  % =
-  % \begin{cases}
-  %   N_i(t), & \text{mélange (comptage)},\\[4pt]
-  %   c_i(t), & \text{ségrégation (teneur locale)}.
-  % \end{cases}
-  \label{eq:vecteur_etat}
-\end{equation}
-où $S_i(t_k)$ correspond au nombre de particules d'une espèce dans la cellule $ i \in [O,N-1]$ à l'instant $t_k$. À partir des probabilités de saut $\gamma_{j \to i}$ des cellules $j$ vers une cellule $i$, on peut calculer le nombre de particules dans la cellule $i$ à l'instant $t_{i+1}$ : 
+En quelques mots, le principe est le suivant --- chacun de ces éléments est détaillé dans les paragraphes qui suivent. L'état du mélangeur à un instant $t_k$ est décrit par un vecteur $\mathbf{S}(t_k)$ dont chaque composante représente le nombre de particules contenues dans une cellule. À partir des probabilités de saut $\gamma_{j \to i}$ d'une cellule $j$ vers une cellule $i$, le nombre de particules dans la cellule $i$ à l'instant suivant s'obtient par :
 \begin{align}
-S_i(t_{k+1}) =\sum_{j=0}^{N-1}  \gamma_{j \to i}S_j(t_k)
+S_i(t_{k+1}) =\sum_{j=0}^{N-1}  \gamma_{j \to i}S_j(t_k).
+\label{eq:principe_projection}
 \end{align}
-% --------------------------------------------------------------
+Le modèle de Markov est construit sur ce vecteur de \emph{comptage} ; pour évaluer le modèle et observer la ségrégation, on construira en fin de chaîne un vecteur en termes de \emph{teneur} en une espèce (\S\ref{subsubsec:vecteur_etat}).
 
 \begin{figure}[H]
   \centering
@@ -363,8 +341,14 @@ S_i(t_{k+1}) =\sum_{j=0}^{N-1}  \gamma_{j \to i}S_j(t_k)
   \label{fig:maillage_melangeur}
 \end{figure}
 
-%% Faire une figure illustrant cet algorithme de construction du modèle de markov en détaillant(du moins en mettant les points importants de chaque étape)
-La construction du modèle se fait suivant trois étapes principales, détaillées dans les paragraphes qui suivent : la discrétisation du mélangeur, la construction du vecteur d'état initial, et la construction de la matrice de transition.
+La construction du modèle se fait suivant trois étapes principales, détaillées dans les paragraphes qui suivent : la discrétisation du mélangeur, la construction du vecteur d'état initial, et la construction de la matrice de transition. La figure~\ref{fig:schema_construction_markov} résume l'algorithme complet, de la donnée DEM à la validation, en rappelant les points importants de chaque étape.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/schema_construction_markov.png}
+  \caption{Algorithme de construction et d'exploitation du modèle de Markov : les données DEM servent d'abord à ajuster le partitionneur sur le régime permanent, puis à labelliser chaque particule à chaque instant ; les vecteurs d'état de comptage qui en découlent alimentent l'apprentissage de la ou des matrices de transition, la prédiction, et enfin la validation par confrontation à la référence DEM.}
+  \label{fig:schema_construction_markov}
+\end{figure}
 
 \subsubsection{Définition et construction du vecteur d'état}
 \label{subsubsec:vecteur_etat}
@@ -382,17 +366,9 @@ On considère l'état du mélangeur à un instant $t_k$ défini par le contenu d
   \end{bmatrix},
   \label{eq:vecteur_etat}
 \end{equation}
-où la composante $S_i(t_k)$, $i \in [0, N-1]$, admet deux définitions selon le phénomène que l'on souhaite caractériser : % Dans cette partie sur la construction du modèle de markov on a utilisé le vecteur d'état comme le nombre de particule dans une cellule
-% de ce fait définit le vecteur d'état comme tel dans cette partie du moins. par la suite, à titre de rappel, pour évaluer le modèle et observer la ségrégation, on construit un vecteur en terme de teneur
-% Je pense qu'il faudrait le dire en début comme tu l'as fait dans le résumé et en fin de la partie sur la construction du modèle de Markov
+où la composante $S_i(t_k)$, $i \in [0, N-1]$, est le \textbf{nombre de particules} présentes dans la cellule $i$ à l'instant $t_k$. C'est ce vecteur de comptage --- et lui seul --- qui sert à construire le modèle de Markov : les matrices de transition étant estimées séparément pour chaque espèce (\S\ref{subsubsec:matrice}), le comptage est effectué par espèce (nombre de petites particules par cellule pour la matrice des petites, nombre de grandes pour celle des grandes).
 
-%% Du moins, laisse la définition de la teneur locale(nombre de particule d'une espèce dans une cellule sur le nombre total de particules dans la cellule)  comme tu l'as fait dans le document mais précise que pour construire le modèle de Markov, on utilise le nombre de particules
-% Surtout que les matrice de transitions sont pour chaque espèce
-% faire un schéma illustrant cette teneur locale dans un découpage cartésien en annexe que fera reference. 
-\begin{itemize}[itemsep=2pt]
-  \item \textbf{vecteur d'état de type comptage} : $S_i(t_k)$ est le nombre de particules (d'une espèce ou de l'ensemble) présentes dans la cellule $i$ à l'instant $t_k$. Il renseigne sur l'occupation globale du mélangeur et laisse apprécier l'homogénéité du mélange ;
-  \item \textbf{vecteur d'état de type teneur} : $S_i(t_k)$ est la teneur en une espèce de la cellule $i$, c'est-à-dire le nombre de particules de cette espèce rapporté au nombre total de particules de la cellule. Il discrimine les zones enrichies ou appauvries en une espèce donnée et laisse apprécier l'état de ségrégation.
-\end{itemize}
+On définit par ailleurs la \textbf{teneur locale} en une espèce de la cellule $i$, c'est-à-dire le nombre de particules de cette espèce rapporté au nombre total de particules de la cellule. Cette grandeur ne participe pas à la construction du modèle : elle est reconstruite en fin de chaîne, à partir des comptages prédits pour chaque espèce, afin d'évaluer le modèle et d'observer la ségrégation --- elle discrimine les zones enrichies ou appauvries en une espèce là où le comptage brut ne renseigne que sur l'occupation du mélangeur. La figure~\ref{fig:schema_teneur_locale}, en annexe~\ref{annexe:teneur}, illustre cette teneur locale sur un découpage cartésien.
 
 Concrètement, le vecteur d'état se construit de la manière suivante. Une fois le mélangeur discrétisé, chaque particule se voit attribuer un \textbf{label} dépendamment de son appartenance à une cellule : à l'instant $t_k$, la particule $p$ de coordonnées $(x_p, y_p, z_p)$ reçoit le label $l_p(t_k) \in [0, N-1]$ de la cellule qui la contient. Cette labélisation est effectuée par un objet \textit{partitionneur}, propre à chaque méthode de découpage (\S\ref{subsec:discretisation}), qui est ajusté une seule fois sur le régime permanent puis appliqué à l'identique sur tous les pas de temps : les labels ainsi produits constituent la référence DEM avec laquelle la prédiction de Markov sera comparée. Le vecteur d'état de comptage s'obtient alors en dénombrant, pour chaque cellule $i$, les particules dont le label vaut $i$ :
 \begin{equation}
@@ -416,10 +392,10 @@ S_i(t_{k+1}) =\sum_{j=0}^{N-1}  \gamma_{j \to i}S_j(t_k).
 \subsubsection{Construction de la matrice de transition}
 \label{subsubsec:matrice}
 
-La matrice de transition $\mathbf{P}$ encode la probabilité qu'une particule quitte la cellule source $j$ (colonne) pour rejoindre la cellule d'arrivée $i$ (ligne) durant un intervalle $\tau=t_{k+1}-t_k$, appelé \textbf{pas de temps de Markov}. Elle est estimée en observant, entre deux instants séparés de $\tau$, les déplacements des particules d'une cellule vers une autre (figure~\ref{fig:representation_melangeur}) : deux vecteurs d'états --- $\mathbf{S}(t_k)$ et $\mathbf{S}(t_{k+1})$ --- sont construits aux instants $t_k$ et $t_{k+1}$ respectivement, et les paires de labels $(l_p(t_k),\, l_p(t_{k+1}))$ fournissent les comptages de transition. Cette observation est répétée sur une période dite \textbf{temps d'apprentissage} couvrant $NLT$ paires d'instants, et les probabilités obtenues sont moyennées :
+La matrice de transition $\mathbf{P}$ encode la probabilité qu'une particule quitte la cellule source $j$ (colonne) pour rejoindre la cellule d'arrivée $i$ (ligne) durant un intervalle $\tau=t_{k+1}-t_k$, appelé \textbf{pas de temps de Markov} : son terme général est précisément la probabilité de saut introduite en~\eqref{eq:principe_projection}, $P_{i,j} = \gamma_{j \to i}$. Elle est estimée en observant, entre deux instants séparés de $\tau$, les déplacements des particules d'une cellule vers une autre (figure~\ref{fig:representation_melangeur}) : deux vecteurs d'états --- $\mathbf{S}(t_k)$ et $\mathbf{S}(t_{k+1})$ --- sont construits aux instants $t_k$ et $t_{k+1}$ respectivement, et les paires de labels $(l_p(t_k),\, l_p(t_{k+1}))$ fournissent les comptages de transition. Cette observation est répétée sur une période dite \textbf{temps d'apprentissage} couvrant $NLT$ paires d'instants, et les probabilités obtenues sont moyennées :
 
 \begin{equation}
-  P_{i,j} % Précise que  P_{i,j}=\gamma_{j \to i}
+  P_{i,j}
   =
   \frac{1}{NLT}
   \sum_{n=1}^{NLT}
@@ -462,7 +438,7 @@ où $NLT$ est le nombre d'instants d'apprentissage, $\phi_p(i,t_n)$ la fonction 
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\linewidth]{figures/schema_parametres_temporels.png} % Refaire le schéma en centrant les labels dans les blocs car ils sont décalés
+  \includegraphics[width=\linewidth]{figures/schema_parametres_temporels.png}
   \caption{Chronologie des paramètres temporels de l'apprentissage : à partir de $start$, chaque bloc fournit des paires $(t,\, t+\tau)$ échantillonnées tous les $dt$ ; les $NLT$ blocs successifs, décalés de $step$, sont moyennés (chaîne homogène) ou conservés séparément (chaîne inhomogène).}
   \label{fig:schema_parametres}
 \end{figure}
@@ -477,8 +453,7 @@ où $NLT$ est le nombre d'instants d'apprentissage, $\phi_p(i,t_n)$ la fonction 
 \end{equation}
 
 Ces deux conditions sont vérifiées et validées pour chacun des modèles construits : la positivité découle du fait que l'on travaille dans un espace probabilisé, et la condition de somme unitaire traduit simplement le fait que toutes les particules quittant la cellule source $j$ se retrouvent quelque part dans le mélangeur à l'instant suivant. Implicitement, sa validation signifie que la phase d'apprentissage est suffisamment longue pour voir les particules se déplacer d'une partition à l'autre, évitant des \textit{NaN} dans la matrice.
-%% pour ce paragraphe, l'étude de sensibilité doit consister à comparer l'erreur de prédiction du modèle sans distinction d'espèce dans la construction de la matrice de transition et avec distinction en annexe
-\paragraph{Deux matrices distinctes par espèce.} Les petites et les grandes particules n'ayant pas la même dynamique --- les petites percolent à travers le lit tandis que les grandes remontent en surface ---, une matrice de transition unique moyennerait deux comportements physiquement distincts. Deux matrices sont donc estimées séparément, en appliquant un masque sur les labels afin de ne compter que les particules d'une espèce donnée. Ce choix est confirmé a posteriori par les cartographies de matrices obtenues (section~\ref{sec:resultats}), systématiquement contrastées entre espèces, et par l'étude comparative en annexe~\ref{annexe:especes}.
+\paragraph{Deux matrices distinctes par espèce.} Les petites et les grandes particules n'ayant pas la même dynamique --- les petites percolent à travers le lit tandis que les grandes remontent en surface ---, une matrice de transition unique moyennerait deux comportements physiquement distincts. Deux matrices sont donc estimées séparément, en appliquant un masque sur les labels afin de ne compter que les particules d'une espèce donnée. Ce choix est justifié quantitativement par l'étude de sensibilité de l'annexe~\ref{annexe:especes}, qui compare l'erreur de prédiction du modèle construit sans distinction d'espèce (matrice unique) à celle du modèle construit avec distinction (matrices par espèce), pour les quatre méthodes de découpage.
 
 \paragraph{Chaîne homogène.} Lorsque $\mathbf{P}$ est supposée invariante dans le temps, la prédiction à $n$ pas s'écrit :
 
@@ -630,19 +605,7 @@ Afin de limiter cette dépendance et d'améliorer la robustesse du maillage, la 
   \label{eq:affectation_kmeans}
 \end{equation}
 
-Ainsi, une particule appartient à la cellule $k$ si la distance entre cette particule et le centre $\boldsymbol{\mu}_k$ est inférieure ou égale à sa distance à tout autre centre $\boldsymbol{\mu}_\ell$. La figure~\ref{fig:schematisation_voronoi_physique} (a) illustre cette règle d'affectation : chaque grain est attribué à la partition dont le centroïde est le plus proche.
-
-% Cette figure n'est plus utile; utilise la figure schématisatisation_voronoi_physique
-
-% \begin{figure}[H]
-%   \centering
-%   \begin{minipage}{0.85\textwidth}
-%     \centering
-%     \includegraphics[width=\linewidth]{figures/centres_voronoi.png}
-%   \end{minipage}
-%   \caption{Attribution des particules aux cellules de Voronoï : à l'issue de la phase d'apprentissage, chaque grain est affecté à la partition dont le centre $\boldsymbol{\mu}_k$ est le plus proche au sens de la distance euclidienne (équation~\ref{eq:affectation_kmeans}).}
-%   \label{fig:centres_voronoi}
-% \end{figure}
+Ainsi, une particule appartient à la cellule $k$ si la distance entre cette particule et le centre $\boldsymbol{\mu}_k$ est inférieure ou égale à sa distance à tout autre centre $\boldsymbol{\mu}_\ell$ : chaque grain est attribué à la partition dont le centroïde est le plus proche (figure~\ref{fig:schema_voronoi}~(a)).
 
 \subparagraph{Étape de mise à jour.}
 Une fois les particules affectées aux différentes cellules, les centres sont recalculés comme la moyenne des caractéristiques des particules appartenant à chaque cellule :
@@ -695,7 +658,7 @@ Le découpage physique repose sur le même algorithme de k-moyennes que le déco
   \label{eq:physics}
 \end{equation}
 
-L'algorithme de partitionnement reste un k-means, mais opéré dans un espace de dimension quatre. La figure~\ref{fig:schema_voronoi} schématise les deux découpages statistiques, et la figure~\ref{fig:schematisation_voronoi_physique} illustre leur application aux données DEM.
+L'algorithme de partitionnement reste un k-means, mais opéré dans un espace de dimension quatre. La figure~\ref{fig:schema_voronoi} schématise les deux découpages statistiques, et la figure~\ref{fig:schematisation_voronoi_physique} montre l'espace des caractéristiques dans lequel les 1030 particules sont représentées, sur la phase d'apprentissage et sur la phase de prédiction.
 
 \begin{figure}[H]
   \centering
@@ -704,12 +667,10 @@ L'algorithme de partitionnement reste un k-means, mais opéré dans un espace de
   \label{fig:schema_voronoi}
 \end{figure}
 
-%% Remplace cette figure par une autre qui montre l'espace dans lequel les caractéristiques des 1030 particules sont representées pour la phase d'apprentissage et sur la phase de prédiction
-% À remplacer
 \begin{figure}[H]
   \centering
-  \includegraphics[width=0.85\textwidth]{figures/schematisation_voronoi_physique.png}
-  \caption{Application des découpages de Voronoï et physique aux positions issues de la simulation DEM.}
+  \includegraphics[width=\linewidth]{figures/espace_caracteristiques_physique.png}
+  \caption{Espace des caractéristiques du découpage physique : positions des 1030 particules colorées par la norme de leur vitesse, (a) cumulées sur la fenêtre d'apprentissage (cinq tours du régime permanent) et (b) à un instant de la phase de prédiction. La zone active de surface (vitesses élevées, teintes claires) se distingue nettement de la zone passive du cœur du lit (vitesses faibles, teintes sombres) : c'est ce contraste que la quatrième caractéristique $\|\mathbf{v}_p\|$ permet de séparer.}
   \label{fig:schematisation_voronoi_physique}
 \end{figure}
 
@@ -1236,6 +1197,42 @@ Pour les chaînes inhomogènes, le choix $step = \tau$ prend une signification s
 \subsection{Justification des matrices distinctes par espèce}
 \label{annexe:especes}
 
-Le choix de construire deux matrices de transition distinctes --- l'une pour les petites, l'autre pour les grandes particules --- est étayé par la comparaison systématique des cartographies de matrices présentées dans le corps du texte (figures~\ref{fig:matrice_cartesien}, \ref{fig:matrices_voronoi} et~\ref{fig:matrice_physique}) : quelle que soit la méthode de découpage, la probabilité maximale de transition et le poids de la diagonale diffèrent nettement entre espèces (jusqu'à $0{,}5$ contre $0{,}35$ pour le découpage de Voronoï). Les écarts de prédiction par espèce du tableau~\ref{tab:erreur_methodes} et les études des annexes~\ref{annexe:nlt} et~\ref{annexe:start} --- menées séparément sur chaque espèce --- confirment qu'un modèle unique moyennant les deux dynamiques dégraderait la prédiction pour chacune d'elles, les petites particules (percolation rapide) et les grandes (transport en bloc, piégeage en zone passive) n'obéissant pas aux mêmes probabilités de saut.
+Cette étude de sensibilité compare l'erreur de prédiction du modèle selon que la matrice de transition est construite \emph{sans} distinction d'espèce (une matrice unique, apprise sur l'ensemble des 1030 particules, propage à la fois le comptage des petites particules et le comptage total) ou \emph{avec} distinction (chaque espèce est propagée par sa propre matrice, apprise sur les particules de cette espèce uniquement). La figure~\ref{fig:etude_especes} présente cette comparaison pour les quatre méthodes de découpage, à paramètres identiques ($\tau = \SI{1.57}{s}$, deux blocs d'apprentissage) ; le tableau~\ref{tab:etude_especes} en synthétise les écarts moyens.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/etude_especes_rsd.png}
+  \caption{Justification des matrices distinctes par espèce : RSD DEM de la teneur en petites particules vs prédictions markoviennes construites sans distinction d'espèce (matrice unique, gris) et avec distinction (matrices par espèce, couleur), pour les quatre méthodes de découpage.}
+  \label{fig:etude_especes}
+\end{figure}
+
+\begin{table}[H]
+  \centering
+  \caption{Écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ (adimensionnel) selon que la matrice de transition distingue ou non les espèces.}
+  \label{tab:etude_especes}
+  \begin{tabular}{lcccc}
+    \toprule
+    & Cartésien & Cylindrique & Voronoï & Physique\\
+    \midrule
+    Sans distinction & 0{,}494 & 0{,}652 & 0{,}211 & 0{,}194\\
+    Avec distinction & \textbf{0{,}214} & \textbf{0{,}267} & \textbf{0{,}102} & \textbf{0{,}064}\\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Le verdict est sans appel : quelle que soit la méthode de découpage, la matrice unique fait converger le RSD prédit vers zéro --- c'est-à-dire vers un mélange parfait fictif --- car les deux comptages, propagés par les mêmes probabilités, deviennent proportionnels et la teneur locale s'uniformise artificiellement. La distinction des espèces divise l'écart moyen par un facteur 2 à 3 (jusqu'à 0{,}194 contre 0{,}064 pour le découpage physique) : les petites particules (percolation rapide) et les grandes (transport en bloc, piégeage en zone passive) n'obéissent pas aux mêmes probabilités de saut, comme le montrent d'ailleurs les cartographies de matrices du corps du texte (figures~\ref{fig:matrice_cartesien}, \ref{fig:matrices_voronoi} et~\ref{fig:matrice_physique}), et seule la propagation par des matrices propres à chaque espèce préserve le contraste de teneur qui fonde l'observation de la ségrégation.
+
+% ------------------------------------------------------------
+\subsection{Illustration de la teneur locale}
+\label{annexe:teneur}
+
+La figure~\ref{fig:schema_teneur_locale} illustre la définition de la teneur locale en petites particules sur un découpage cartésien : dans chaque cellule $i$, la teneur $c_i$ est le rapport du nombre de petites particules au nombre total de particules de la cellule. Un mélange parfaitement homogène donnerait la même teneur dans toutes les cellules (ici $c_i = 0{,}5$ pour un mélange équimassique en nombre) ; les écarts de teneur entre cellules --- de $0{,}12$ à $0{,}88$ dans cet exemple --- signent la ségrégation.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.9\textwidth]{figures/schema_teneur_locale.png}
+  \caption{Illustration de la teneur locale en petites particules $c_i$ dans un découpage cartésien : rapport du nombre de petites particules (bleu) au nombre total de particules de la cellule. Les écarts de teneur entre cellules signent la ségrégation.}
+  \label{fig:schema_teneur_locale}
+\end{figure}
 
 \end{document}

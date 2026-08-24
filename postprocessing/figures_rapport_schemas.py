@@ -398,8 +398,12 @@ def schema_parametres_temporels():
         b0 = start + k * (step + tau)
         ax.axvspan(b0, b0 + step, ymin=0.62, ymax=0.78,
                    color=VERT, alpha=0.35)
-        ax.text(b0 + step / 2, y + 0.28, f"bloc {k + 1}", ha="center",
-                fontsize=11, color=VERT)
+        # label centré dans le rectangle du bloc (ymin/ymax sont des
+        # fractions d'axes : on convertit en coordonnées données)
+        y_lo, y_hi = -0.55, 1.5
+        y_mid = y_lo + 0.70 * (y_hi - y_lo)
+        ax.text(b0 + step / 2, y_mid, f"bloc {k + 1}", ha="center",
+                va="center", fontsize=11, color="#1e6f5c", weight="bold")
         # paires (t, t+tau) echantillonnees tous les dt
         for i, t0 in enumerate(range(b0, b0 + step - 1, dt)):
             ax.annotate("", xy=(t0 + tau, y - 0.13 - 0.05 * i),
@@ -470,8 +474,114 @@ def schema_tau_tour():
     plt.close(fig)
 
 
+def schema_construction_markov():
+    """Organigramme de la construction du modèle de Markov."""
+    from matplotlib.patches import FancyBboxPatch
+
+    fig, ax = plt.subplots(figsize=(11.5, 5.6))
+
+    def boite(x, y, w, h, titre, corps, fc="#eaf2fb", ec=BLEU):
+        ax.add_patch(FancyBboxPatch((x, y), w, h,
+                                    boxstyle="round,pad=0.06",
+                                    fc=fc, ec=ec, lw=1.6))
+        ax.text(x + w / 2, y + h - 0.16, titre, ha="center", va="top",
+                fontsize=10.5, weight="bold")
+        ax.text(x + w / 2, y + h / 2 - 0.14, corps, ha="center", va="center",
+                fontsize=8.8)
+
+    def fleche(x0, y0, x1, y1, label="", dy=0.1):
+        ax.annotate("", xy=(x1, y1), xytext=(x0, y0),
+                    arrowprops=dict(arrowstyle="-|>", color=GRIS, lw=1.8))
+        if label:
+            ax.text((x0 + x1) / 2, (y0 + y1) / 2 + dy, label, fontsize=8.5,
+                    ha="center", color=GRIS)
+
+    # rangée du haut : de la DEM aux vecteurs d'état
+    boite(0.0, 2.6, 2.6, 1.5, "1. Données DEM",
+          "positions, vitesses,\ndiamètres\n(6000 instants)")
+    boite(3.4, 2.6, 2.9, 1.5, "2. Ajustement du\npartitionneur",
+          "fit sur le régime\npermanent\n(limites, centres)")
+    boite(7.1, 2.6, 2.9, 1.5, "3. Labélisation",
+          "label $l_p(t_k)$ de chaque\nparticule à chaque instant")
+    boite(10.8, 2.6, 3.0, 1.5, "4. Vecteurs d'état",
+          "comptage par cellule\net par espèce\n$S_i(t_k)$")
+    fleche(2.6, 3.35, 3.4, 3.35)
+    fleche(6.3, 3.35, 7.1, 3.35)
+    fleche(10.0, 3.35, 10.8, 3.35)
+
+    # rangée du bas : matrice puis prédiction puis validation
+    boite(10.8, 0.3, 3.0, 1.5, "5. Matrice(s) de\ntransition",
+          "paires $(t,\\ t+\\tau)$,\nmoyenne sur NLT blocs\nou une matrice par bloc")
+    boite(6.4, 0.3, 3.4, 1.5, "6. Prédiction",
+          "$\\mathbf{S}_{k+1} = \\mathbf{P}\\,\\mathbf{S}_k$ (homogène)\n"
+          "$\\mathbf{S}_{k+1} = \\mathbf{P}^{(k)}\\mathbf{S}_k$ (inhomogène)")
+    boite(1.6, 0.3, 3.6, 1.5, "7. Validation vs DEM",
+          "teneur locale en petites\nparticules, RSD,\nécart $|$Markov $-$ DEM$|$",
+          fc="#fdeeee", ec=ROUGE)
+    fleche(12.3, 2.6, 12.3, 1.8, "apprentissage\n($start$, $\\tau$, $step$, $dt$, $NLT$)", dy=0.0)
+    fleche(10.8, 1.05, 9.8, 1.05)
+    fleche(6.4, 1.05, 5.2, 1.05, "comparaison à la\nréférence DEM", dy=0.35)
+
+    ax.set_xlim(-0.3, 14.2)
+    ax.set_ylim(-0.1, 4.5)
+    ax.axis("off")
+    ax.set_title("Algorithme de construction et d'exploitation du modèle de Markov",
+                 fontsize=12)
+    fig.tight_layout()
+    fig.savefig(FIGDIR / "schema_construction_markov.png", dpi=200)
+    plt.close(fig)
+
+
+def schema_teneur_locale():
+    """Teneur locale en petites particules dans un découpage cartésien."""
+    rng = np.random.default_rng(11)
+    fig, ax = plt.subplots(figsize=(9.5, 5.2))
+    nx, ny = 3, 2
+    W, H = 3.0, 2.0
+    # populations (petites, grandes) par cellule
+    pops = [[(6, 2), (3, 5), (1, 7)], [(5, 5), (2, 6), (7, 1)]]
+    for j in range(ny):
+        for i in range(nx):
+            x0, y0 = i * W, j * H
+            ax.add_patch(Rectangle((x0, y0), W, H, fill=False, ec="k", lw=1.6))
+            ns, nb = pops[j][i]
+            # petites (bleues) et grandes (rouges)
+            for _ in range(ns):
+                ax.add_patch(Circle((x0 + rng.uniform(0.3, W - 0.3),
+                                     y0 + rng.uniform(0.3, H - 0.3)),
+                                    0.09, fc="#1f4e9c", ec="none", alpha=0.9))
+            for _ in range(nb):
+                ax.add_patch(Circle((x0 + rng.uniform(0.35, W - 0.35),
+                                     y0 + rng.uniform(0.35, H - 0.35)),
+                                    0.17, fc="#c23b3b", ec="none", alpha=0.85))
+            c = ns / (ns + nb)
+            ax.text(x0 + W / 2, y0 + H - 0.28,
+                    f"$c_{{{j * nx + i}}} = \\frac{{{ns}}}{{{ns + nb}}} = {c:.2f}$",
+                    ha="center", fontsize=11,
+                    bbox=dict(fc="white", ec="0.6", alpha=0.9, pad=2.5))
+    # légende
+    ax.add_patch(Circle((0.35, -0.55), 0.09, fc="#1f4e9c", ec="none"))
+    ax.text(0.55, -0.55, "petite particule (4 mm)", va="center", fontsize=10)
+    ax.add_patch(Circle((4.1, -0.55), 0.17, fc="#c23b3b", ec="none"))
+    ax.text(4.35, -0.55, "grande particule (8 mm)", va="center", fontsize=10)
+    ax.text(9.0, -0.55,
+            r"$c_i = \dfrac{n_{\mathrm{petites},i}}{n_{\mathrm{petites},i} + n_{\mathrm{grandes},i}}$",
+            va="center", ha="right", fontsize=12)
+    ax.set_xlim(-0.3, nx * W + 0.3)
+    ax.set_ylim(-1.05, ny * H + 0.3)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    ax.set_title("Teneur locale en petites particules $c_i$\n"
+                 "dans un découpage cartésien", fontsize=12)
+    fig.tight_layout()
+    fig.savefig(FIGDIR / "schema_teneur_locale.png", dpi=200)
+    plt.close(fig)
+
+
 if __name__ == "__main__":
     schema_tambour()
+    schema_construction_markov()
+    schema_teneur_locale()
     schema_forces()
     schema_cartesien()
     schema_cylindrique()
