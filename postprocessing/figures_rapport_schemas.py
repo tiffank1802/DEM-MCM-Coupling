@@ -353,14 +353,6 @@ def schema_voronoi():
         ax.axis("off")
         ax.set_title(title, fontsize=11)
 
-    # sur le panneau physique : gradient de vitesse le long de la surface
-    ax2.annotate("zone active :\n$\\|\\mathbf{v}\\|$ élevée",
-                 xy=(0.15, 0.06), xytext=(0.55, 0.75), fontsize=10,
-                 arrowprops=dict(arrowstyle="->", color=ROUGE), color=ROUGE)
-    ax2.annotate("zone passive :\n$\\|\\mathbf{v}\\|$ faible",
-                 xy=(-0.25, -0.65), xytext=(-1.3, -1.15), fontsize=10,
-                 arrowprops=dict(arrowstyle="->", color=GRIS), color=GRIS)
-
     fig.suptitle(
         "Découpages statistiques par k-moyennes : chaque particule est "
         "affectée à la cellule dont le centroïde est le plus proche",

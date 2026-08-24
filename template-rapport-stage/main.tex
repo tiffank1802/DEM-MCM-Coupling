@@ -261,15 +261,16 @@ Dans la pratique, les limites exactes de la partie utile ne sont pas imposées a
   \label{fig:schema_tambour}
 \end{figure}
 
-Les positions de l'ensemble des grains sont enregistrées tous les \SI{0.01}{s} sur \SI{60}{s}, soit 6000 instants d'observation. Cette base constitue la référence à partir de laquelle les matrices de transition sont estimées et les prédictions markoviennes sont validées.
+Les positions de l'ensemble des grains sont enregistrées tous les \SI{0.01}{s} sur \SI{60}{s}, soit 6000 instants d'observation. Cette base constitue la référence à partir de laquelle les matrices de transition sont estimées et les prédictions markoviennes sont validées. La figure~\ref{fig:pv_melangeur_especes}, issue du post-traitement 3D des données, montre le système simulé avec ses deux espèces représentées aux diamètres réels : à l'état initial, les 350 petites particules forment une couche au fond du tambour sous les 680 grandes ; après un tour, le lit est en écoulement et l'inclinaison de la surface libre apparaît.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/pv_melangeur_especes.png}
+  \caption{Post-traitement 3D du matériau de référence : les 1030 particules aux diamètres réels (petites 4 mm en bleu, grandes 8 mm en rouge), (a) à l'état initial où les espèces sont séparées et (b) après un tour de tambour, lit en écoulement.}
+  \label{fig:pv_melangeur_especes}
+\end{figure}
 
 % ------------------------------------------------------------
-%% je voudrais que tu utilise pyvista (comme déjà implementé dans la librairie dem_mcm_coupling) pour postraiter les resultats.
-% Dans ce sens où tu fais un screenshot avec pyvista du mélangeur avec les particules de tailles disctingctes (grandes et petites comme déjà fait dans la librairie)
-% pour montrer le mélangeur faire l'analyse et montrer comment les particules sont dans une cellule visuellement et ce dans toute les parties -- sauf celle du principe-- 
-% Typiquement pour montrer les resultats pour un découpag cartésien, cylindrique,... faire l'étude comparative des paramètres et s'appuyer dessus comme base pour les justifications et les validations
-% Tu peux soit annoter ces resultats directement avec pyvista
-
 \subsection{Principe de la simulation DEM}
 \label{subsec:dem}
 
@@ -665,11 +666,10 @@ Le découpage physique repose sur le même algorithme de k-moyennes que le déco
 \end{equation}
 
 L'algorithme de partitionnement reste un k-means, mais opéré dans un espace de dimension quatre. La figure~\ref{fig:schema_voronoi} schématise les deux découpages statistiques, et la figure~\ref{fig:schematisation_voronoi_physique} montre l'espace des caractéristiques dans lequel les 1030 particules sont représentées, sur la phase d'apprentissage et sur la phase de prédiction.
-% Enlève les labels zones actives et zones passives sur cette image car ils ont déjà été mis sur figure 1 décrivant le tambour tournant.
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/schema_decoupage_voronoi.png}
-  \caption{Principe des découpages statistiques par k-moyennes : (a) découpage de Voronoï fondé sur les seules positions ; (b) découpage physique dont le vecteur de caractéristiques intègre la norme de la vitesse, séparant zone active (rapide) et zone passive (lente).}
+  \caption{Principe des découpages statistiques par k-moyennes : (a) découpage de Voronoï fondé sur les seules positions ; (b) découpage physique dont le vecteur de caractéristiques intègre la norme de la vitesse.}
   \label{fig:schema_voronoi}
 \end{figure}
 
@@ -710,7 +710,7 @@ Pour quantifier le degré d'homogénéité, nous utilisons l'écart-type relatif
 
 où $N_c$ est le nombre de cellules et $\bar{c}$ la teneur moyenne en petites particules.
 
-La figure~\ref{fig:melangeur_partitions} montre le mélangeur discrétisé tel qu'il apparaît en cours de simulation : chaque couleur correspond à une cellule du découpage, et l'on distingue immédiatement que certaines partitions sont plus peuplées que d'autres. Ce déséquilibre est physique : la gravité concentre les particules dans la moitié basse du tambour, la zone passive au cœur du lit reçoit et piège davantage de grains que la zone active de surface, et la ségrégation en cours enrichit certaines cellules en petites particules --- celles-ci percolent à travers les interstices du lit vers la paroi et le cœur, tandis que les grandes remontent en surface. C'est précisément cette hétérogénéité spatiale, variable dans le temps, que le modèle de Markov doit reproduire.
+Chaque méthode de découpage est d'abord illustrée par un post-traitement 3D du mélangeur --- particules aux diamètres réels colorées par le label de leur cellule --- qui sert de base visuelle aux justifications et validations qui suivent : ces vues permettent de vérifier la labélisation, d'identifier les cellules sur- ou sous-peuplées et de relier les propriétés des matrices de transition à la géométrie effective des cellules. La figure~\ref{fig:melangeur_partitions} en donne un premier aperçu : chaque couleur correspond à une cellule du découpage, et l'on distingue immédiatement que certaines partitions sont plus peuplées que d'autres. Ce déséquilibre est physique : la gravité concentre les particules dans la moitié basse du tambour, la zone passive au cœur du lit reçoit et piège davantage de grains que la zone active de surface, et la ségrégation en cours enrichit certaines cellules en petites particules --- celles-ci percolent à travers les interstices du lit vers la paroi et le cœur, tandis que les grandes remontent en surface. C'est précisément cette hétérogénéité spatiale, variable dans le temps, que le modèle de Markov doit reproduire.
 
 \begin{figure}[H]
   \centering
@@ -724,6 +724,15 @@ La figure~\ref{fig:melangeur_partitions} montre le mélangeur discrétisé tel q
 \label{subsec:res_discretisation}
 
 \subsubsection{Découpage cartésien}
+
+La figure~\ref{fig:pv_cellules_cartesien} montre le résultat du découpage sur le lit de particules : chaque grain, représenté à son diamètre réel, est coloré par le label \textit{cell\_id} de la cellule qui le contient. Cette vue sert de base visuelle aux analyses qui suivent : on y vérifie que la labélisation respecte bien la grille $5 \times 2 \times 1$, et l'on identifie immédiatement les cellules très peuplées du bas du lit et les cellules du haut, peu occupées.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{figures/pv_cellules_cartesien.png}
+  \caption{Post-traitement 3D du découpage cartésien ($5 \times 2 \times 1$, 10 cellules) : particules aux diamètres réels colorées par le label \textit{cell\_id} de leur cellule, à $t = \SI{1.57}{s}$.}
+  \label{fig:pv_cellules_cartesien}
+\end{figure}
 
 Les matrices de transition (figure~\ref{fig:matrice_cartesien}) révèlent d'emblée une asymétrie marquée entre les deux espèces : les grandes particules présentent une probabilité diagonale élevée, signe d'une faible mobilité, tandis que les petites particules se redistribuent plus largement d'une cellule à l'autre. Physiquement, cette asymétrie s'explique par la percolation : entre deux observations séparées d'un tour de tambour, une petite particule a pu s'infiltrer à travers les interstices du lit et changer plusieurs fois de cellule, alors qu'une grande particule, transportée en bloc dans la zone passive, retrouve le plus souvent sa cellule d'origine.
 
@@ -756,6 +765,15 @@ Le découpage cylindrique remédie à ce défaut en épousant la géométrie du 
   \label{fig:cylindrique_resolutions}
 \end{figure}
 
+La vue 3D de la figure~\ref{fig:pv_cellules_cylindrique} montre la labélisation obtenue pour la résolution retenue dans la suite ($n_r = 2$, $n_\theta = 5$, 10 cellules) : les secteurs angulaires se lisent directement sur le lit, et l'on voit que les cellules du cœur (rayon interne) regroupent des particules des deux zones, active et passive --- première indication visuelle de la limite de ce maillage pour la ségrégation.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{figures/pv_cellules_cylindrique.png}
+  \caption{Post-traitement 3D du découpage cylindrique ($n_r = 2$, $n_\theta = 5$, 10 cellules) : particules aux diamètres réels colorées par le label \textit{cell\_id} de leur cellule, à $t = \SI{1.57}{s}$.}
+  \label{fig:pv_cellules_cylindrique}
+\end{figure}
+
 Les matrices de transition construites par espèce pour un découpage cylindrique à 10 cellules ($n_r = 2$, $n_\theta = 5$, mode à aire constante, $\tau = \SI{1.57}{s}$) --- même nombre de cellules que les autres méthodes afin de permettre une comparaison à résolution égale --- sont données à la figure~\ref{fig:matrice_cylindrique}. La structure en blocs, alignée sur la numérotation radiale $\to$ angulaire, traduit la physique de l'écoulement : les transitions dominantes relient des cellules angulairement voisines --- signature de l'entraînement en rotation solide dans la zone passive ---, tandis que les cellules radialement internes échangent avec les cellules externes via l'écoulement de surface. Certaines colonnes concentrent une forte probabilité sur une seule cellule d'arrivée (jusqu'à $\approx 0{,}6$) : elles correspondent aux cellules du cœur du lit, dont les particules sont transportées en bloc vers une destination quasi déterministe en un tour de tambour. La comparaison des deux espèces retrouve l'asymétrie déjà observée : les petites particules répartissent leurs probabilités sur davantage de cellules d'arrivée que les grandes. À l'inverse du découpage cartésien, aucune colonne vide n'apparaît : chaque cellule est visitée durant l'apprentissage, et la condition de stochasticité en colonne~\eqref{eq:stochastique} est vérifiée sur l'ensemble de la matrice.
 
 \begin{figure}[H]
@@ -776,7 +794,14 @@ La confrontation de la prédiction markovienne à la référence DEM (figure~\re
 
 \subsubsection{Découpage de Voronoï}
 
-Le pas de temps markovien est fixé à \SI{1.57}{s}, soit approximativement un tour complet du tambour (annexe~\ref{annexe:tau}). Avec 10 cellules, le nombre moyen de particules par cellule avoisine 100, garantissant une statistique robuste.
+Le pas de temps markovien est fixé à \SI{1.57}{s}, soit approximativement un tour complet du tambour (annexe~\ref{annexe:tau}). Avec 10 cellules, le nombre moyen de particules par cellule avoisine 100, garantissant une statistique robuste. La figure~\ref{fig:pv_cellules_voronoi} montre la labélisation obtenue : contrairement aux grilles géométriques, les cellules épousent la forme du lit --- aucune n'est vide --- et leurs frontières, perpendiculaires aux médiatrices des centroïdes, suivent la répartition effective des particules.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{figures/pv_cellules_voronoi.png}
+  \caption{Post-traitement 3D du découpage de Voronoï (10 cellules) : particules aux diamètres réels colorées par le label \textit{cell\_id} de leur cellule, à $t = \SI{1.57}{s}$.}
+  \label{fig:pv_cellules_voronoi}
+\end{figure}
 
 Deux matrices distinctes sont estimées en appliquant un masque sur les labels afin d'isoler chaque espèce. La probabilité maximale de transition inter-cellule atteint $\approx 0{,}5$ pour les grandes particules contre $\approx 0{,}35$ pour les petites, confirmant la mobilité supérieure de ces dernières (figure~\ref{fig:matrices_voronoi}).
 
@@ -833,6 +858,22 @@ Deux matrices distinctes sont estimées en appliquant un masque sur les labels a
 \end{figure}
 
 \subsubsection{Découpage physique}
+
+La figure~\ref{fig:pv_cellules_physique} montre la labélisation du découpage physique : par rapport au Voronoï purement spatial, la quatrième caractéristique $\|\mathbf{v}_p\|$ déforme les cellules le long des iso-vitesses de l'écoulement --- les cellules du cœur du lit, lentes, se distinguent des cellules de la surface libre, rapides, alors même qu'elles peuvent être spatialement voisines. La figure~\ref{fig:pv_cellule_contenu} zoome sur le contenu d'une cellule : les particules qui la composent y sont dénombrées par espèce, ce qui matérialise visuellement le comptage $S_i$ et la teneur locale $c_i$ utilisés dans toute la suite.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{figures/pv_cellules_physique.png}
+  \caption{Post-traitement 3D du découpage physique (10 cellules) : particules aux diamètres réels colorées par le label \textit{cell\_id} de leur cellule, à $t = \SI{1.57}{s}$. Les cellules suivent les iso-vitesses de l'écoulement.}
+  \label{fig:pv_cellules_physique}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{figures/pv_cellule_contenu.png}
+  \caption{Contenu d'une cellule du découpage physique (cellule la plus peuplée, $t = \SI{1.57}{s}$) : les particules de la cellule sont mises en évidence (petites en bleu, grandes en rouge), le reste du lit est estompé. Le dénombrement par espèce donne directement la teneur locale de la cellule.}
+  \label{fig:pv_cellule_contenu}
+\end{figure}
 
 En intégrant la norme de la vitesse dans le critère de partitionnement, les cellules formées dans la zone passive reçoivent davantage de particules et exhibent une probabilité diagonale nettement plus élevée --- signature du piégeage temporaire des grains dans le cœur du lit. À l'inverse, les cellules de la zone active, plus agitées, présentent des transitions plus diffuses (figure~\ref{fig:matrice_physique}). Il convient de souligner que ces éléments diagonaux sont ici utilisés comme un \textbf{indicateur} de la physique locale --- ils localisent les zones de piégeage et quantifient la persistance des particules dans leur cellule --- et non comme un critère de validation du modèle : la validation repose sur la confrontation des trajectoires prédites (teneurs, RSD) à la référence DEM.
 
