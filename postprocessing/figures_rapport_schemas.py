@@ -579,7 +579,8 @@ def schema_teneur_locale():
 
 
 if __name__ == "__main__":
-    schema_tambour()
+    # schema_tambour() : désactivé — la version validée dans le dépôt
+    # (révisée manuellement) ne doit pas être écrasée.
     schema_construction_markov()
     schema_teneur_locale()
     schema_forces()
