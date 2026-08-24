@@ -45,6 +45,17 @@ import matplotlib
 
 matplotlib.use("Agg")
 
+# Police des figures alignée sur celle du texte du rapport (12 pt).
+matplotlib.rcParams.update({
+    "font.size": 13,
+    "axes.titlesize": 13,
+    "axes.labelsize": 13,
+    "xtick.labelsize": 12,
+    "ytick.labelsize": 12,
+    "legend.fontsize": 11,
+    "figure.titlesize": 14,
+})
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -89,6 +100,22 @@ COLORS = {
 
 #: découpages géométriques : labellisation dans le repère du lit
 GEO_METHODS = {"cartesien", "cylindrique"}
+
+#: couleurs distinctes des cellules (vecteur d'état), conservées dans tout
+#: le rapport : vert, rouge, orange, jaune, noir, bleu, violet, marron,
+#: rose, cyan — une couleur par cellule (10 cellules).
+CELL_COLORS = [
+    "#2ca02c",  # vert
+    "#d62728",  # rouge
+    "#ff7f0e",  # orange
+    "#e6b800",  # jaune
+    "#000000",  # noir
+    "#1f77b4",  # bleu
+    "#9467bd",  # violet
+    "#8c564b",  # marron
+    "#e377c2",  # rose
+    "#17becf",  # cyan
+]
 
 
 def make_frame(sample_coords, permanent_rows):
@@ -324,6 +351,21 @@ class EtudeMethode:
         rsd = rsd_concentration(trajs["small"][:n], trajs["large"][:n],
                                 acts["small"], acts["large"])
         return rsd, t_mk[:n]
+
+    def markov_traj_inhomogeneous(self, config):
+        """Trajectoires prédites par espèce avec la chaîne inhomogène."""
+        trajs, acts = {}, {}
+        for sp in ("small", "large"):
+            P_blocks = np.nan_to_num(self.build_P_blocks(config, sp),
+                                     nan=0.0)
+            _, activated = clean_transition_matrix(P_blocks[0])
+            row0 = np.searchsorted(self.times, config.start_index)
+            S0 = self.S_matrices[sp][row0].astype(float)
+            traj, t_mk = propagate_markov_inhomogeneous(
+                S0, P_blocks, self.times, config.start_index, config.tau,
+                activated, step=config.step, nlt=len(P_blocks))
+            trajs[sp], acts[sp] = traj, activated
+        return trajs, t_mk, acts
 
     def markov_traj(self, config, start_pred=None):
         """Trajectoires prédites par espèce (comptages par cellule)."""
@@ -569,28 +611,7 @@ def etude_especes(etudes):
 def resultats_cylindrique(etudes):
     et = etudes["cylindrique"]
     cfg = config_for(et.method)
-
-    # matrices par espèce (convention ligne-stochastique de la librairie)
-    P_small = et.build_P(cfg, "small")
-    P_large = et.build_P(cfg, "large")
-    vmax = max(P_small.max(), P_large.max())
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5.2))
-    # La librairie stocke P en convention ligne-stochastique
-    # (P[i, j] = P(i -> j), S_next = S @ P) ; on transpose pour l'affichage
-    # afin de retrouver la convention colonne du rapport
-    # (colonnes = source j, lignes = arrivée i).
-    for ax, P, ttl in ((axes[0], P_large.T, "Grandes particules (8 mm)"),
-                       (axes[1], P_small.T, "Petites particules (4 mm)")):
-        im = ax.imshow(P, cmap="viridis", vmin=0, vmax=vmax)
-        ax.set_xlabel("Cellule source $j$")
-        ax.set_ylabel("Cellule d'arrivée $i$")
-        ax.set_title(ttl)
-        fig.colorbar(im, ax=ax, label="$P_{i,j}$")
-    fig.suptitle("Matrices de transition — découpage cylindrique "
-                 "(10 cellules, $\\tau = 1{,}57$ s)")
-    fig.tight_layout()
-    fig.savefig(FIGDIR / "matrice_cylindrique_especes.png", dpi=200)
-    plt.close(fig)
+    # (les matrices annotées sont produites par matrices_annotees)
 
     # RSD DEM vs homogène vs inhomogène
     rsd_h, t_h, acts = et.markov_rsd(cfg)
@@ -614,6 +635,151 @@ def resultats_cylindrique(etudes):
     fig.savefig(FIGDIR / "rsd_cylindrique.png", dpi=200)
     plt.close(fig)
     print("cylindrique ok")
+
+
+def chaines_inhomogenes(etudes):
+    """Apport des chaînes inhomogènes, calcul librairie :
+
+    * ``rsd_homogene_inhomogene_methodes.png`` : pour chacune des quatre
+      méthodes, RSD DEM (trait continu) vs prédictions homogène et
+      inhomogène (marqueurs épais) sur une même figure ;
+    * ``teneur_physique_inhomogene_lib.png`` : teneur locale par cellule,
+      DEM (trait continu) vs chaîne inhomogène (marqueurs épais),
+      découpage physique, couleurs de cellules du rapport.
+    """
+    from postprocessing.metrics import concentration_from_S
+
+    nlt_max = (N_T - START) // (2 * TAU)
+    fig, axes = plt.subplots(2, 2, figsize=(12.5, 8.6), sharex=True)
+    resume = {}
+    for ax, (key, et) in zip(axes.flat, etudes.items()):
+        cfg = config_for(et.method)
+        cfg_inh = config_for(et.method, nlt=nlt_max)
+        rsd_h, t_h, acts = et.markov_rsd(cfg)
+        rsd_i, t_i = et.markov_rsd_inhomogeneous(cfg_inh)
+        n = min(len(rsd_h), len(rsd_i))
+        rsd_dem_mk = et.dem_rsd(t_h[:n], acts)
+        e_h = float(np.mean(np.abs(rsd_h[:n] - rsd_dem_mk)))
+        e_i = float(np.mean(np.abs(rsd_i[:n] - rsd_dem_mk)))
+        resume[et.nom] = (e_h, e_i)
+        t_dem = np.arange(START, N_T, 20)
+        ax.plot(t_dem / 100, et.dem_rsd(t_dem, acts), "k-", lw=1.2,
+                alpha=0.8, label="DEM")
+        ax.plot(t_h[:n] / 100, rsd_h[:n], "o", color="0.55", ms=5.5,
+                markeredgecolor="white", markeredgewidth=0.5,
+                label=f"Markov homogène (écart {e_h:.3f})")
+        ax.plot(t_i[:n] / 100, rsd_i[:n], "o", color=COLORS[et.nom], ms=5.5,
+                markeredgecolor="white", markeredgewidth=0.5,
+                label=f"Markov inhomogène (écart {e_i:.3f})")
+        ax.set_title(et.nom)
+        ax.grid(alpha=0.3)
+        ax.legend(fontsize=9.5)
+        print(f"  {et.nom}: homogène {e_h:.3f} | inhomogène {e_i:.3f}")
+    for ax in axes[-1]:
+        ax.set_xlabel("Temps (s)")
+    for ax in axes[:, 0]:
+        ax.set_ylabel("RSD teneur petites (–)")
+    fig.tight_layout()
+    fig.savefig(FIGDIR / "rsd_homogene_inhomogene_methodes.png", dpi=200)
+    plt.close(fig)
+    with open(FIGDIR / "inhomogene_table.txt", "w") as f:
+        f.write(f"{'méthode':<14}{'homogène':>12}{'inhomogène':>12}\n")
+        for k, (eh, ei) in resume.items():
+            f.write(f"{k:<14}{eh:12.4f}{ei:12.4f}\n")
+
+    # teneur locale par cellule, chaîne inhomogène (physique)
+    et = etudes["physique"]
+    cfg_inh = config_for(et.method, nlt=nlt_max)
+    trajs, t_mk, acts = et.markov_traj_inhomogeneous(cfg_inh)
+    act = acts["small"] & acts["large"]
+    cells = np.where(act)[0]
+    n = min(len(trajs["small"]), len(trajs["large"]))
+    C_mk = concentration_from_S(trajs["small"][:n], trajs["large"][:n])
+    t_dem_idx = np.arange(START, N_T, 20)
+    rows_dem = np.searchsorted(et.times, t_dem_idx)
+    C_dem = concentration_from_S(et.S_matrices["small"][rows_dem],
+                                 et.S_matrices["large"][rows_dem])
+    fig, ax = plt.subplots(figsize=(12.5, 6.2))
+    _plot_superpose(ax, t_dem_idx / 100, C_dem, t_mk[:n] / 100, C_mk, cells)
+    ax.set_xlabel("Temps (s)")
+    ax.set_ylabel("Teneur locale en petites particules (–)")
+    ax.grid(alpha=0.3)
+    leg = ax.legend(ncol=5, fontsize=10, loc="upper right",
+                    title="DEM : trait continu — Markov inhomogène : "
+                          "points épais")
+    leg.get_title().set_fontsize(10)
+    fig.tight_layout()
+    fig.savefig(FIGDIR / "teneur_physique_inhomogene_lib.png", dpi=200)
+    plt.close(fig)
+    print("chaînes inhomogènes ok", resume)
+    return resume
+
+
+def teneur_nlt_extremes(etudes):
+    """Teneur locale par cellule pour NLT = 1 et NLT = 18 (seuil de
+    convergence) : DEM (trait continu) vs Markov homogène (points épais),
+    découpage physique, couleurs de cellules du rapport."""
+    from postprocessing.metrics import concentration_from_S
+
+    et = etudes["physique"]
+    t_dem_idx = np.arange(START, N_T, 20)
+    rows_dem = np.searchsorted(et.times, t_dem_idx)
+    C_dem = concentration_from_S(et.S_matrices["small"][rows_dem],
+                                 et.S_matrices["large"][rows_dem])
+    for nlt in (1, 18):
+        cfg = config_for(et.method, nlt=nlt)
+        trajs, t_mk, acts = et.markov_traj(cfg)
+        act = acts["small"] & acts["large"]
+        cells = np.where(act)[0]
+        n = min(len(trajs["small"]), len(trajs["large"]))
+        C_mk = concentration_from_S(trajs["small"][:n], trajs["large"][:n])
+        fig, ax = plt.subplots(figsize=(12.5, 6.2))
+        _plot_superpose(ax, t_dem_idx / 100, C_dem, t_mk[:n] / 100, C_mk,
+                        cells)
+        ax.set_xlabel("Temps (s)")
+        ax.set_ylabel("Teneur locale en petites particules (–)")
+        ax.grid(alpha=0.3)
+        leg = ax.legend(ncol=5, fontsize=10, loc="upper right",
+                        title=f"NLT = {nlt} — DEM : trait continu, "
+                              f"Markov : points épais")
+        leg.get_title().set_fontsize(10)
+        fig.tight_layout()
+        fig.savefig(FIGDIR / f"teneur_nlt{nlt}_lib.png", dpi=200)
+        plt.close(fig)
+        print(f"  teneur nlt={nlt} ok")
+
+    # écart RMS + carte des écarts par cellule, NLT = 1 vs NLT = 18
+    fig, axes = plt.subplots(2, 2, figsize=(13, 8.6), width_ratios=[1, 1.25])
+    for r, nlt in enumerate((1, 18)):
+        cfg = config_for(et.method, nlt=nlt)
+        P_clean, act = clean_transition_matrix(
+            np.nan_to_num(et.build_P(cfg, "small"), nan=0.0))
+        row0 = int(np.searchsorted(et.times, cfg.start_index))
+        S0 = et.S_matrices["small"][row0].astype(float)
+        traj, t_mk = propagate_markov(
+            S0, P_clean, et.times, cfg.start_index, cfg.tau, act)
+        rows = np.searchsorted(et.times, t_mk)
+        err = np.abs(traj - et.S_matrices["small"][rows])
+        rms = np.sqrt((err ** 2).mean(axis=1))
+        axes[r, 0].plot(t_mk / 100, rms, "-", color="#cc4c02", lw=2)
+        axes[r, 0].fill_between(t_mk / 100, 0, rms, color="#cc4c02",
+                                alpha=0.25)
+        axes[r, 0].set_ylabel(f"NLT = {nlt}\nÉcart RMS (particules)")
+        axes[r, 0].grid(alpha=0.3)
+        im = axes[r, 1].imshow(err.T, cmap="YlOrRd", aspect="auto",
+                               origin="lower",
+                               extent=[t_mk[0] / 100, t_mk[-1] / 100,
+                                       -0.5, err.shape[1] - 0.5])
+        axes[r, 1].set_ylabel("Indice de cellule")
+        fig.colorbar(im, ax=axes[r, 1],
+                     label="$|$Markov $-$ DEM$|$ (particules)")
+        print(f"  écart nlt={nlt}: RMS moyen {rms[1:].mean():.2f}")
+    for ax in axes[-1]:
+        ax.set_xlabel("Temps (s)")
+    fig.tight_layout()
+    fig.savefig(FIGDIR / "ecart_nlt_1_18_lib.png", dpi=200)
+    plt.close(fig)
+    print("teneur nlt extrêmes ok")
 
 
 def figure_espace_caracteristiques(timestep_dict):
@@ -693,9 +859,23 @@ def matrices_par_methode(etudes):
         print(f"matrices {key} ok")
 
 
+def _plot_superpose(ax, t_dem, M_dem, t_mk, M_mk, cells):
+    """Superpose la référence DEM (trait continu) et la prédiction de
+    Markov (marqueurs de points épais), une couleur distincte par cellule
+    (palette de cellules conservée dans tout le rapport)."""
+    for c in cells:
+        col = CELL_COLORS[int(c) % len(CELL_COLORS)]
+        ax.plot(t_dem, M_dem[:, c], "-", color=col, lw=1.6,
+                label=f"cellule {c}")
+        ax.plot(t_mk, M_mk[:, c], "o", color=col, ms=6.5,
+                markeredgecolor="white", markeredgewidth=0.5, zorder=3)
+
+
 def teneur_et_nombre(etudes):
-    """Teneur locale et nombre de particules par cellule : DEM vs Markov
-    (découpage de Voronoï, code librairie)."""
+    """Teneur locale et nombre de particules par cellule : DEM (trait
+    continu) et prédiction markovienne (marqueurs épais) superposées sur
+    une même figure, une couleur distincte par cellule (découpage de
+    Voronoï, code librairie)."""
     from postprocessing.metrics import concentration_from_S
 
     et = etudes["voronoi"]
@@ -703,50 +883,44 @@ def teneur_et_nombre(etudes):
     trajs, t_mk, acts = et.markov_traj(cfg)
     act = acts["small"] & acts["large"]
     rows = np.searchsorted(et.times, t_mk)
-    S_s_dem = et.S_matrices["small"][rows]
-    S_l_dem = et.S_matrices["large"][rows]
     n = min(len(trajs["small"]), len(trajs["large"]), len(rows))
-
-    C_dem = concentration_from_S(S_s_dem[:n], S_l_dem[:n])
-    C_mk = concentration_from_S(trajs["small"][:n], trajs["large"][:n])
-    N_dem = S_s_dem[:n] + S_l_dem[:n]
-    N_mk = trajs["small"][:n] + trajs["large"][:n]
     t = t_mk[:n] / 100
     cells = np.where(act)[0]
-    cmap = plt.get_cmap("viridis")
 
-    # ── teneur locale ──
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5.2), sharey=True)
-    for ax, M, ttl in ((axes[0], C_dem, "(a) DEM"),
-                       (axes[1], C_mk, "(b) Markov homogène")):
-        for kk, c in enumerate(cells):
-            ax.plot(t, M[:, c], color=cmap(kk / max(1, len(cells) - 1)),
-                    lw=1.4, label=f"cellule {c}")
-        ax.set_xlabel("Temps (s)")
-        ax.set_title(ttl)
-        ax.grid(alpha=0.3)
-    axes[0].set_ylabel("Teneur locale en petites particules (–)")
-    axes[1].legend(fontsize=8, ncol=2)
-    fig.suptitle("Teneur locale en petites particules par cellule — "
-                 f"découpage de Voronoï ({_cfg_str(cfg)})")
+    # référence DEM échantillonnée finement (trait continu)
+    t_dem_idx = np.arange(START, N_T, 20)
+    rows_dem = np.searchsorted(et.times, t_dem_idx)
+    S_s_fin = et.S_matrices["small"][rows_dem]
+    S_l_fin = et.S_matrices["large"][rows_dem]
+    t_dem = t_dem_idx / 100
+
+    C_dem = concentration_from_S(S_s_fin, S_l_fin)
+    C_mk = concentration_from_S(trajs["small"][:n], trajs["large"][:n])
+    N_dem = S_s_fin + S_l_fin
+    N_mk = trajs["small"][:n] + trajs["large"][:n]
+
+    # ── teneur locale : DEM et Markov superposées ──
+    fig, ax = plt.subplots(figsize=(12.5, 6.2))
+    _plot_superpose(ax, t_dem, C_dem, t, C_mk, cells)
+    ax.set_xlabel("Temps (s)")
+    ax.set_ylabel("Teneur locale en petites particules (–)")
+    ax.grid(alpha=0.3)
+    leg = ax.legend(ncol=5, fontsize=10, loc="upper right",
+                    title="DEM : trait continu — Markov : points épais")
+    leg.get_title().set_fontsize(10)
     fig.tight_layout()
     fig.savefig(FIGDIR / "teneur_locale_cellules.png", dpi=200)
     plt.close(fig)
 
-    # ── nombre de particules ──
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5.2), sharey=True)
-    for ax, M, ttl in ((axes[0], N_dem, "(a) DEM"),
-                       (axes[1], N_mk, "(b) Markov homogène")):
-        for kk, c in enumerate(cells):
-            ax.plot(t, M[:, c], color=cmap(kk / max(1, len(cells) - 1)),
-                    lw=1.4, label=f"cellule {c}")
-        ax.set_xlabel("Temps (s)")
-        ax.set_title(ttl)
-        ax.grid(alpha=0.3)
-    axes[0].set_ylabel("Nombre de particules par cellule")
-    axes[1].legend(fontsize=8, ncol=2)
-    fig.suptitle("Nombre de particules par cellule — "
-                 f"découpage de Voronoï ({_cfg_str(cfg)})")
+    # ── nombre de particules : DEM et Markov superposées ──
+    fig, ax = plt.subplots(figsize=(12.5, 6.2))
+    _plot_superpose(ax, t_dem, N_dem, t, N_mk, cells)
+    ax.set_xlabel("Temps (s)")
+    ax.set_ylabel("Nombre de particules par cellule")
+    ax.grid(alpha=0.3)
+    leg = ax.legend(ncol=5, fontsize=10, loc="upper right",
+                    title="DEM : trait continu — Markov : points épais")
+    leg.get_title().set_fontsize(10)
     fig.tight_layout()
     fig.savefig(FIGDIR / "nombre_particules_cellules.png", dpi=200)
     plt.close(fig)
@@ -883,14 +1057,15 @@ def matrices_annotees(etudes):
             print(f"  {et.nom} {sp}: NaN={n_nan} | "
                   f"homogénéisation={'OK' if homog and n_nan == 0 else 'NON'}")
         vmax = max(np.nanmax(P_small), np.nanmax(P_large))
-        fig, axes = plt.subplots(1, 2, figsize=(14.5, 6.4))
+        # Une seule barre de couleur, commune aux deux espèces.
+        fig, axes = plt.subplots(1, 2, figsize=(14.0, 6.2))
         for ax, P, ttl in ((axes[0], P_large.T, "Grandes particules (8 mm)"),
                            (axes[1], P_small.T, "Petites particules (4 mm)")):
             im = ax.imshow(P, cmap="YlOrRd", vmin=0, vmax=vmax)
             for i in range(P.shape[0]):
                 for j in range(P.shape[1]):
                     v = P[i, j]
-                    txt = "NaN" if np.isnan(v) else f"{v:.2f}".replace("0.", ".")
+                    txt = "NaN" if np.isnan(v) else f"{v:.2f}"
                     ax.text(j, i, txt, ha="center", va="center", fontsize=6.5,
                             color="black" if (np.isnan(v) or v < 0.55 * vmax)
                             else "white")
@@ -899,13 +1074,10 @@ def matrices_annotees(etudes):
             ax.set_xlabel("Cellule source $j$")
             ax.set_ylabel("Cellule d'arrivée $i$")
             ax.set_title(ttl)
-            fig.colorbar(im, ax=ax, label="$P_{i,j}$", shrink=0.85)
-        fig.suptitle(f"Matrices de transition — découpage {et.nom.lower()} "
-                     f"(10 cellules, nlt=2, start=1,57 s, step=tau=1,57 s, "
-                     f"dt=8 pas) — probabilités arrondies au centième ; "
-                     f"chaque colonne somme à un")
-        fig.tight_layout()
-        fig.savefig(FIGDIR / f"matrice_{key}_especes.png", dpi=200)
+        fig.colorbar(im, ax=axes, label="$P_{i,j}$", shrink=0.85,
+                     fraction=0.046, pad=0.02)
+        fig.savefig(FIGDIR / f"matrice_{key}_especes.png", dpi=200,
+                    bbox_inches="tight")
         plt.close(fig)
     print("matrices annotées ok")
 
@@ -913,11 +1085,12 @@ def matrices_annotees(etudes):
 def table_erreurs(etudes):
     """Figures d'écart |Markov - DEM| par méthode et par espèce (table 4)."""
     noms_sp = {"large": "grandes", "small": "petites"}
-    for key in ("cartesien", "voronoi", "physique"):
+    for key in ("cartesien", "cylindrique", "voronoi", "physique"):
         et = etudes[key]
         cfg = config_for(et.method)
         for sp in ("large", "small"):
-            P_clean, act = clean_transition_matrix(et.build_P(cfg, sp))
+            P_clean, act = clean_transition_matrix(
+                np.nan_to_num(et.build_P(cfg, sp), nan=0.0))
             row0 = int(np.searchsorted(et.times, cfg.start_index))
             S0 = et.S_matrices[sp][row0].astype(float)
             traj, t_mk = propagate_markov(
@@ -929,14 +1102,14 @@ def table_erreurs(etudes):
 
             fig, axes = plt.subplots(1, 2, figsize=(12.5, 4.6),
                                      width_ratios=[1, 1.25])
-            axes[0].plot(t_mk / 100, rms, "-", color="#d62728", lw=2)
-            axes[0].fill_between(t_mk / 100, 0, rms, color="#d62728",
+            axes[0].plot(t_mk / 100, rms, "-", color="#cc4c02", lw=2)
+            axes[0].fill_between(t_mk / 100, 0, rms, color="#cc4c02",
                                  alpha=0.25)
             axes[0].set_xlabel("Temps (s)")
             axes[0].set_ylabel("Écart RMS (particules)")
             axes[0].set_title("Écart temporel RMS $|$Markov $-$ DEM$|$")
             axes[0].grid(alpha=0.3)
-            im = axes[1].imshow(err.T, cmap="viridis", aspect="auto",
+            im = axes[1].imshow(err.T, cmap="YlOrRd", aspect="auto",
                                 origin="lower",
                                 extent=[t_mk[0] / 100, t_mk[-1] / 100,
                                         -0.5, err.shape[1] - 0.5])
@@ -948,7 +1121,7 @@ def table_erreurs(etudes):
             fig.suptitle(
                 f"Découpage {et.nom.lower()} — {noms_sp[sp]} particules "
                 f"(nlt=2, start=1,57 s, step=tau=1,57 s, dt=8 pas)",
-                fontsize=11)
+                fontsize=13)
             fig.tight_layout()
             fig.savefig(FIGDIR / f"erreur_lib_{key}_{sp}.png", dpi=200)
             plt.close(fig)
@@ -985,6 +1158,8 @@ if __name__ == "__main__":
     matrices_annotees(etudes)
     table_erreurs(etudes)
     teneur_et_nombre(etudes)
+    chaines_inhomogenes(etudes)
+    teneur_nlt_extremes(etudes)
     dump_labels_3d(etudes)
     print("\n✅ toutes les figures écrites (calculs 100 % librairie) dans",
           FIGDIR)

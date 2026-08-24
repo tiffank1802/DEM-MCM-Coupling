@@ -44,9 +44,11 @@ BG = "#8a8d90"          # fond gris ParaView
 BLEU_PETITES = "#2166ac"
 ROUGE_GRANDES = "#b2182b"
 
-# palette tab10 pour les cell_id
-TAB10 = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
-         "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+# couleurs distinctes des cellules (vert, rouge, orange, jaune, noir,
+# bleu, violet, marron, rose, cyan) — mêmes couleurs que les courbes de
+# teneur/nombre par cellule du rapport (une couleur par cell_id).
+TAB10 = ["#2ca02c", "#d62728", "#ff7f0e", "#e6b800", "#000000",
+         "#1f77b4", "#9467bd", "#8c564b", "#e377c2", "#17becf"]
 
 LIGHTING = dict(ambient=0.55, diffuse=0.85, specular=0.35,
                 roughness=0.55, fresnel=0.05)
@@ -234,7 +236,7 @@ def fig_melangeur_especes(X, small_p):
     fig.update_scenes(**scene_kwargs(CAM_3Q))
     fig.update_layout(
         paper_bgcolor=BG, margin=dict(l=0, r=0, t=50, b=30),
-        font=dict(color="white", size=15),
+        font=dict(color="white", size=17),
         showlegend=False,
         annotations=list(fig.layout.annotations) + [
             dict(x=0.35, y=0.02, xref="paper", yref="paper", showarrow=False,
@@ -267,6 +269,13 @@ def fig_cellules(X, small_p, key, nom, lab):
     )
     fig.add_trace(spheres_mesh(X[START], diam / 2, colors), row=1, col=1)
     fig.add_trace(spheres_mesh(X[START], diam / 2, colors), row=1, col=2)
+    # numéros de cellule au barycentre, sur les deux vues
+    for tr in _cell_id_labels(X[START], lab, view="face",
+                              per_cell_colors=TAB10):
+        fig.add_trace(tr, row=1, col=1)
+    for tr in _cell_id_labels(X[START], lab, view="cote",
+                              per_cell_colors=TAB10):
+        fig.add_trace(tr, row=1, col=2)
     # barre de couleurs discrète simulée par un scatter invisible
     fig.add_trace(go.Scatter3d(
         x=[None], y=[None], z=[None], mode="markers",
@@ -275,9 +284,10 @@ def fig_cellules(X, small_p, key, nom, lab):
                             for i in range(10)], []),
             cmin=-0.5, cmax=9.5,
             color=[0],
-            colorbar=dict(title=dict(text="cell_id", font=dict(color="white")),
+            colorbar=dict(title=dict(text="cell_id",
+                                     font=dict(color="white", size=17)),
                           tickvals=list(range(10)),
-                          tickfont=dict(color="white"),
+                          tickfont=dict(color="white", size=16),
                           len=0.8, thickness=22),
             showscale=True, size=0.0001,
         ),
@@ -287,10 +297,10 @@ def fig_cellules(X, small_p, key, nom, lab):
     fig.update_scenes(camera=CAM_COTE, row=1, col=2)
     fig.update_layout(
         paper_bgcolor=BG, margin=dict(l=0, r=0, t=64, b=0),
-        font=dict(color="white", size=14),
+        font=dict(color="white", size=17),
         title=dict(text=f"Découpage {nom} — particules colorées par cellule "
-                        f"(t = 1,57 s)",
-                   font=dict(color="white", size=17), x=0.5),
+                        f"(t = 1,57 s), numéro de cellule au barycentre",
+                   font=dict(color="white", size=18), x=0.5),
     )
     add_triad_all_scenes(fig)
     fig.write_image(FIGDIR / f"pv_cellules_{key}.png",
@@ -322,7 +332,7 @@ def fig_contenu_cellule(X, small_p, labels):
             text=(f"Contenu de la cellule {cell} (découpage physique, "
                   f"t = 1,57 s) : {ns} petites + {ntot - ns} grandes "
                   f"\u21d2 teneur c = {ns}/{ntot} = {c:.2f}"),
-            font=dict(color="white", size=16), x=0.5),
+            font=dict(color="white", size=18), x=0.5),
         annotations=[
             dict(x=0.32, y=0.02, xref="paper", yref="paper", showarrow=False,
                  text="\u25cf petites de la cellule",
@@ -360,7 +370,7 @@ def fig_melange_instants(X, small_p):
     fig.update_scenes(**scene_kwargs(CAM_FACE))
     fig.update_layout(
         paper_bgcolor=BG, margin=dict(l=0, r=0, t=40, b=8),
-        font=dict(color="white", size=14), showlegend=False,
+        font=dict(color="white", size=17), showlegend=False,
     )
     add_triad_all_scenes(fig)
     fig.write_image(FIGDIR / "pv_melange_instants.png",
@@ -386,7 +396,7 @@ def fig_melange_instants_voronoi(X, small_p):
     fig.update_scenes(**scene_kwargs(CAM_FACE))
     fig.update_layout(
         paper_bgcolor=BG, margin=dict(l=0, r=0, t=42, b=8),
-        font=dict(color="white", size=14), showlegend=False,
+        font=dict(color="white", size=17), showlegend=False,
     )
     add_triad_all_scenes(fig)
     fig.write_image(FIGDIR / "pv_melange_instants_voronoi.png",
@@ -394,10 +404,68 @@ def fig_melange_instants_voronoi(X, small_p):
     print("pv_melange_instants_voronoi ok")
 
 
+def _label_text_color(c, per_cell_colors=None):
+    """Couleur de texte contrastée avec la couleur de la cellule."""
+    if per_cell_colors is None:
+        return "black"
+    h = per_cell_colors[int(c) % len(per_cell_colors)]
+    r, g, b = _hex2rgb(h)
+    lum = 0.299 * r + 0.587 * g + 0.114 * b
+    return "white" if lum < 110 else "black"
+
+
+def _cell_id_labels(X_t, lab, view="face", per_cell_colors=None):
+    """Étiquettes cell_id positionnées au barycentre de chaque cellule et
+    projetées devant le lit (vers la caméra) pour rester lisibles :
+    la cellule concernée s'identifie directement sur la vue 3D. Les
+    étiquettes qui se superposeraient dans le plan de projection sont
+    écartées par une courte répulsion 2D."""
+    cells = np.unique(lab)
+    # coordonnées 2D dans le plan de projection
+    pos2 = []
+    for c in cells:
+        bc = X_t[lab == c].mean(axis=0)
+        pos2.append([bc[0], bc[1]] if view == "face" else [bc[2], bc[1]])
+    pos2 = np.array(pos2)
+    # répulsion simple pour éviter les chevauchements
+    d_min = 0.011
+    for _ in range(60):
+        moved = False
+        for i in range(len(pos2)):
+            for j in range(i + 1, len(pos2)):
+                d = pos2[j] - pos2[i]
+                dist = np.linalg.norm(d)
+                if dist < d_min:
+                    push = (d / (dist + 1e-9)) * (d_min - dist) / 2
+                    pos2[i] -= push
+                    pos2[j] += push
+                    moved = True
+        if not moved:
+            break
+    traces = []
+    if view == "face":
+        z_front = X_t[:, 2].max() + 0.012
+    else:
+        x_front = X_t[:, 0].max() + 0.012
+    for k, c in enumerate(cells):
+        if view == "face":
+            x, y, z = pos2[k, 0], pos2[k, 1], z_front
+        else:
+            x, y, z = x_front, pos2[k, 1], pos2[k, 0]
+        traces.append(go.Scatter3d(
+            x=[x], y=[y], z=[z], mode="text",
+            text=[str(int(c))],
+            textfont=dict(color=_label_text_color(c, per_cell_colors),
+                          size=24, family="Arial Black"),
+            showlegend=False, hoverinfo="skip"))
+    return traces
+
+
 def fig_teneur_3d(X, small_p):
     """Mélangeur discrétisé (Voronoï) coloré par la teneur locale de la
     cellule, vues de face et de côté, régime établi et instant tardif.
-    Met en évidence les cellules sensibles (teneur haute/basse)."""
+    Chaque cellule porte son numéro (cell_id) au barycentre : la teneur et
+    la cellule concernée se lisent sur la même figure."""
     d = np.load(ROOT / "data" / "labels_librairie.npz")
     diam = np.where(small_p, D_SMALL, D_BIG)
     cmap = plt_cmap_viridis()
@@ -413,6 +481,16 @@ def fig_teneur_3d(X, small_p):
         )
         fig.add_trace(spheres_mesh(X[t], diam / 2, colors), row=1, col=1)
         fig.add_trace(spheres_mesh(X[t], diam / 2, colors), row=1, col=2)
+        # numéros de cellule au barycentre, sur les deux vues (couleur de
+        # texte contrastée avec la teinte de teneur de la cellule)
+        ten_colors = ["#%02x%02x%02x" % tuple(
+            (np.array(cmap(ten[c]))[:3] * 255).astype(int)) for c in range(10)]
+        for tr in _cell_id_labels(X[t], lab, view="face",
+                                  per_cell_colors=ten_colors):
+            fig.add_trace(tr, row=1, col=1)
+        for tr in _cell_id_labels(X[t], lab, view="cote",
+                                  per_cell_colors=ten_colors):
+            fig.add_trace(tr, row=1, col=2)
         fig.update_scenes(**scene_kwargs(CAM_FACE))
         fig.update_scenes(camera=CAM_COTE, row=1, col=2)
         # colorbar continue viridis
@@ -421,8 +499,8 @@ def fig_teneur_3d(X, small_p):
             marker=dict(colorscale="Viridis", cmin=0, cmax=1, color=[0],
                         colorbar=dict(
                             title=dict(text="teneur locale",
-                                       font=dict(color="white")),
-                            tickfont=dict(color="white"),
+                                       font=dict(color="white", size=17)),
+                            tickfont=dict(color="white", size=16),
                             len=0.75, thickness=20),
                         showscale=True, size=0.0001),
             showlegend=False), row=1, col=2)
@@ -430,13 +508,15 @@ def fig_teneur_3d(X, small_p):
         imin, imax = int(np.argmin(ten)), int(np.argmax(ten))
         fig.update_layout(
             paper_bgcolor=BG, margin=dict(l=0, r=0, t=64, b=8),
-            font=dict(color="white", size=14),
+            font=dict(color="white", size=17),
             title=dict(text=(f"Teneur locale par cellule (Voronoï, "
                              f"t = {t / 100:g} s) — min : cellule {imin} "
                              f"({cmin:.2f}), max : cellule {imax} "
-                             f"({cmax:.2f})"),
-                       font=dict(color="white", size=16), x=0.5),
+                             f"({cmax:.2f}) — numéro de cellule au "
+                             f"barycentre"),
+                       font=dict(color="white", size=18), x=0.5),
         )
+        add_triad_all_scenes(fig)
         fig.write_image(FIGDIR / f"pv_teneur_voronoi_t{t}.png",
                         width=1700, height=780, scale=1)
         print(f"pv_teneur_voronoi_t{t} ok")
