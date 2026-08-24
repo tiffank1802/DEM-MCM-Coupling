@@ -331,7 +331,8 @@ S_i(t_{k+1}) =\sum_{j=0}^{N-1}  \gamma_{j \to i}S_j(t_k).
 \label{eq:principe_projection}
 \end{align}
 Le modèle de Markov est construit sur ce vecteur de \emph{comptage} ; pour évaluer le modèle et observer la ségrégation, on construira en fin de chaîne un vecteur en termes de \emph{teneur} en une espèce (\S\ref{subsubsec:vecteur_etat}).
-
+% remplace ces figures par le mélangeur avec les particules de tailles distinctes d'une part;
+% d'autres part, ajoute le mélangeur en des instants distincts pour faire une idée au lecteur du mélange(discretisé(voronoi) et non discretisé)
 \begin{figure}[H]
   \centering
   \begin{minipage}{0.48\textwidth}
@@ -686,7 +687,8 @@ L'algorithme de partitionnement reste un k-means, mais opéré dans un espace de
 
 \section{Résultats}
 \label{sec:resultats}
-
+%% Mes à jour tous les resultats en retraçant les courbes de teneur locale, nombre de particules, les matrices de transition d'une part et d'autre part
+% illustrer les commentaires par les images du mélangeur discretisé suivant deux vues (face et de côté), montrer le cellules sensibles plus ou moins de teneur local et expliquer
 Cette section expose les résultats suivant deux approches complémentaires, directement reliées à la problématique du mémoire : l'influence du choix de la méthode de discrétisation sur la qualité du modèle de Markov (\S\ref{subsec:res_discretisation}), puis l'apport des chaînes inhomogènes par rapport aux chaînes homogènes (\S\ref{subsec:res_inhomogene}). Les résultats relatifs à la justification des paramètres du modèle ($\tau$, $NLT$, $start$, $step$) sont regroupés en annexe~\ref{annexe:parametres}.
 
 Pour quantifier le degré d'homogénéité, nous utilisons l'écart-type relatif (\textit{Relative Standard Deviation}, RSD) :
@@ -1032,7 +1034,7 @@ Plusieurs axes de prolongement se dessinent. Une question ouverte, directement i
 
 \section{Justification des paramètres du modèle de Markov}
 \label{annexe:parametres}
-
+%% se referer à l'etude comparative de Doucet pour mener cette étude choix des grandeurs pour la comparaison
 Cette annexe rassemble les études comparatives qui justifient les valeurs des paramètres de construction du modèle (tableau~\ref{tab:parametres} du corps du texte) : le pas de temps de Markov $\tau$ (\S\ref{annexe:tau}), le nombre de blocs d'apprentissage $NLT$ (\S\ref{annexe:nlt}), l'instant de départ $start$ (\S\ref{annexe:start}) et l'écart entre blocs $step$ (\S\ref{annexe:step}). Tous les temps sont exprimés en secondes ; on rappelle que le pas d'extraction DEM vaut \SI{0.01}{s}, si bien que $\SI{1.57}{s}$ correspond à 157 pas DEM.
 
 % ------------------------------------------------------------
@@ -1056,7 +1058,8 @@ soit 157 pas d'extraction DEM ($\Delta t_{\mathrm{DEM}} = \SI{0.01}{s}$). La fig
 \end{figure}
 
 Ce choix répond à un double impératif. D'une part, $\tau$ doit être suffisamment grand pour que les particules aient le temps de changer de cellule entre deux observations : un $\tau$ trop court produit des matrices quasi identitaires (fortes diagonales artificielles) qui figent la prédiction. D'autre part, $\tau$ doit rester suffisamment court pour résoudre la dynamique du phénomène : un $\tau$ trop long saute des étapes de la cinétique et lisse artificiellement les courbes de RSD. L'étude paramétrique de la figure~\ref{fig:etude_tau}, menée sur les données DEM pour des valeurs de $\tau$ allant de \SI{0.1}{s} à \SI{10}{s} (découpage physique, 10 cellules, RSD de la teneur en petites particules), illustre ce compromis : les très petites valeurs ($\tau = \SI{0.1}{s}$, \SI{0.25}{s}) figent le RSD prédit à un niveau élevé --- entre deux observations si rapprochées, les particules n'ont pas quitté leur cellule et la matrice, quasi identitaire, n'encode presque aucun échange ---, tandis que les grandes valeurs ($\tau = \SI{5}{s}$, \SI{10}{s}) dégradent la résolution temporelle de la prédiction (segments anguleux, peu de points). Le choix $\tau = \SI{1.57}{s}$ (courbe épaisse), en plus de sa signification physique --- un tour de tambour ---, se situe dans la gamme intermédiaire qui suit correctement la descente initiale du RSD DEM et son niveau de palier.
-
+% il ne s'agit pas d'un \tau_{DEM} mais du pas de temps de sortie des résultats de la DEM
+% Utilise des couleurs viridis de matplotlib pour montrer la difference de couleurs
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/etude_tau_rsd.png}
@@ -1087,6 +1090,8 @@ Ce choix répond à un double impératif. D'une part, $\tau$ doit être suffisam
 % ------------------------------------------------------------
 \subsection{Choix du nombre de blocs d'apprentissage \texorpdfstring{$NLT$}{NLT}}
 \label{annexe:nlt}
+% Utilise l'erreur relative sur la matrice de transition pour faire l'étude de sensibilité du NLT
+% Expliciter les configurations des modèles par exemple pour etude de \tau mettre nlt=.., start=...,step=...,tau=...
 
 Le paramètre $NLT$ contrôle le nombre de blocs d'apprentissage sur lesquels les probabilités de transition sont observées, puis moyennées (chaîne homogène) ou conservées séparément (chaîne inhomogène).
 
