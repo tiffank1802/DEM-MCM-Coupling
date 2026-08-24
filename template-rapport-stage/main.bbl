@@ -19,6 +19,54 @@
 
 \refsection{0}
   \datalist[entry]{none/global//global/global}
+    \entry{ndiaye2010}{article}{}
+      \name{author}{5}{}{%
+        {{hash=4a0faa04f8cc260c8f7633ea0001cdef}{%
+           family={Ndiaye},
+           familyi={N\bibinitperiod},
+           given={L.\bibnamedelimi G.},
+           giveni={L\bibinitperiod\bibinitdelim G\bibinitperiod}}}%
+        {{hash=306c174148deaa544624915e8caf0bbf}{%
+           family={Caillat},
+           familyi={C\bibinitperiod},
+           given={S.},
+           giveni={S\bibinitperiod}}}%
+        {{hash=d45143ece37dbbdb5f8534fce43b35f0}{%
+           family={Chinnayya},
+           familyi={C\bibinitperiod},
+           given={A.},
+           giveni={A\bibinitperiod}}}%
+        {{hash=c87391aabe522ace8467b5083009840c}{%
+           family={Gambier},
+           familyi={G\bibinitperiod},
+           given={D.},
+           giveni={D\bibinitperiod}}}%
+        {{hash=5b4825ad72bb24f4e50f11b308c6122a}{%
+           family={Baudoin},
+           familyi={B\bibinitperiod},
+           given={B.},
+           giveni={B\bibinitperiod}}}%
+      }
+      \strng{namehash}{faeda3dc0385c2338d97307a76fb9d15}
+      \strng{fullhash}{7e60e85f2e39fb318ecf24c18cc834da}
+      \strng{bibnamehash}{faeda3dc0385c2338d97307a76fb9d15}
+      \strng{authorbibnamehash}{faeda3dc0385c2338d97307a76fb9d15}
+      \strng{authornamehash}{faeda3dc0385c2338d97307a76fb9d15}
+      \strng{authorfullhash}{7e60e85f2e39fb318ecf24c18cc834da}
+      \field{sortinit}{2}
+      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Waste Management}
+      \field{title}{Application of the dynamic model of {S}aeman to an industrial rotary kiln incinerator: numerical and experimental results}
+      \field{volume}{30}
+      \field{year}{2010}
+      \field{pages}{1188\bibrangedash 1195}
+      \range{pages}{8}
+      \verb{doi}
+      \verb 10.1016/j.wasman.2009.09.023
+      \endverb
+    \endentry
     \entry{cundall1979}{article}{}
       \name{author}{2}{}{%
         {{hash=d5dd574aba8f7acf574d7a33b2a3c9ed}{%
@@ -38,8 +86,8 @@
       \strng{authorbibnamehash}{95c063cb8336718e96baaceeced88d01}
       \strng{authornamehash}{95c063cb8336718e96baaceeced88d01}
       \strng{authorfullhash}{95c063cb8336718e96baaceeced88d01}
-      \field{sortinit}{1}
-      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{sortinit}{3}
+      \field{sortinithash}{ad6fe7482ffbd7b9f99c9e8b5dccd3d7}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{journaltitle}{Géotechnique}
@@ -72,8 +120,8 @@
       \strng{authorbibnamehash}{b6cdb7dca006d00c910853cc81cebd55}
       \strng{authornamehash}{b6cdb7dca006d00c910853cc81cebd55}
       \strng{authorfullhash}{b6cdb7dca006d00c910853cc81cebd55}
-      \field{sortinit}{2}
-      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
+      \field{sortinit}{4}
+      \field{sortinithash}{9381316451d1b9788675a07e972a12a7}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{journaltitle}{The Canadian Journal of Chemical Engineering}
@@ -116,8 +164,8 @@
       \strng{authorbibnamehash}{aa1bd6e9f389bbea6d39c19a4c765eba}
       \strng{authornamehash}{aa1bd6e9f389bbea6d39c19a4c765eba}
       \strng{authorfullhash}{5d0aad53cf8164a268f5959c4ff22948}
-      \field{sortinit}{3}
-      \field{sortinithash}{ad6fe7482ffbd7b9f99c9e8b5dccd3d7}
+      \field{sortinit}{5}
+      \field{sortinithash}{20e9b4b0b173788c5dace24730f47d8c}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{journaltitle}{Computers {\&} Chemical Engineering}
@@ -150,8 +198,8 @@
       \strng{authorbibnamehash}{f4d8cd44f1280c2dd6a1bdc22aec71b9}
       \strng{authornamehash}{f4d8cd44f1280c2dd6a1bdc22aec71b9}
       \strng{authorfullhash}{f4d8cd44f1280c2dd6a1bdc22aec71b9}
-      \field{sortinit}{4}
-      \field{sortinithash}{9381316451d1b9788675a07e972a12a7}
+      \field{sortinit}{6}
+      \field{sortinithash}{b33bc299efb3c36abec520a4c896a66d}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{journaltitle}{Powder Technology}
@@ -193,8 +241,8 @@
       \strng{authorbibnamehash}{a2b061c4606cb553c6952a0d6dfba3b3}
       \strng{authornamehash}{a2b061c4606cb553c6952a0d6dfba3b3}
       \strng{authorfullhash}{94f33dad34ac285857d4e327b5340378}
-      \field{sortinit}{5}
-      \field{sortinithash}{20e9b4b0b173788c5dace24730f47d8c}
+      \field{sortinit}{7}
+      \field{sortinithash}{108d0be1b1bee9773a1173443802c0a3}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{journaltitle}{Powder Technology}
@@ -236,8 +284,8 @@
       \strng{authorbibnamehash}{6eff14fde192db524fc8dcbaf0d5678e}
       \strng{authornamehash}{6eff14fde192db524fc8dcbaf0d5678e}
       \strng{authorfullhash}{9a6264a383767530b53a02a4e9c47e71}
-      \field{sortinit}{6}
-      \field{sortinithash}{b33bc299efb3c36abec520a4c896a66d}
+      \field{sortinit}{8}
+      \field{sortinithash}{a231b008ebf0ecbe0b4d96dcc159445f}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{journaltitle}{Chemical Engineering Science}
@@ -264,8 +312,8 @@
       \strng{authorbibnamehash}{949d513af349453f1f6b9c9b82522d5d}
       \strng{authornamehash}{949d513af349453f1f6b9c9b82522d5d}
       \strng{authorfullhash}{949d513af349453f1f6b9c9b82522d5d}
-      \field{sortinit}{7}
-      \field{sortinithash}{108d0be1b1bee9773a1173443802c0a3}
+      \field{sortinit}{9}
+      \field{sortinithash}{0a5ebc79d83c96b6579069544c73c7d4}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{journaltitle}{Powder Technology}

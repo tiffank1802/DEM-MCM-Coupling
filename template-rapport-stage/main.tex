@@ -441,7 +441,7 @@ où $NLT$ est le nombre d'instants d'apprentissage, $\phi_p(i,t_n)$ la fonction 
     \bottomrule
   \end{tabular}
 \end{table}
-
+% le bloc "regime transitoire" n'est pas centré dans cette figure
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/schema_parametres_temporels.png}
@@ -479,19 +479,19 @@ Ces deux conditions sont vérifiées et validées pour chacun des modèles const
   \label{eq:prediction_inhomogene}
 \end{equation}
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.75\textwidth]{figures/representation_melangeur.png}
-  \caption{Construction de la matrice de transition à partir des déplacements inter-cellules observés dans le mélangeur discrétisé.}
-  \label{fig:representation_melangeur}
-\end{figure}
+% \begin{figure}[H]
+%   \centering
+%   \includegraphics[width=0.75\textwidth]{figures/representation_melangeur.png}
+%   \caption{Construction de la matrice de transition à partir des déplacements inter-cellules observés dans le mélangeur discrétisé.}
+%   \label{fig:representation_melangeur}
+% \end{figure}
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.85\textwidth]{figures/representation_chaine_inhomogene.png}
-  \caption{Principe de la chaîne inhomogène : une matrice de transition distincte est associée à chaque intervalle de temps.}
-  \label{fig:representation_chaine_inhomogene}
-\end{figure}
+% \begin{figure}[H]
+%   \centering
+%   \includegraphics[width=0.85\textwidth]{figures/representation_chaine_inhomogene.png}
+%   \caption{Principe de la chaîne inhomogène : une matrice de transition distincte est associée à chaque intervalle de temps.}
+%   \label{fig:representation_chaine_inhomogene}
+% \end{figure}
 
 % ============================================================
 % MÉTHODES DE DISCRÉTISATION
@@ -685,6 +685,10 @@ L'algorithme de partitionnement reste un k-means, mais opéré dans un espace de
 
 \section{Résultats}
 \label{sec:resultats}
+
+% Résultats 
+% Le but est de montrer que le choix de la méthode de découpage influence la prédiction du modèle.dans un second temps montrer que le modèle statistique nécessite peu de temps d’apprentissage, …, du coup. Faire l’étude paramétrique pour voir quel modèle est plus robuste aussi en terme de paramètres (penser en terme de cours de la construction du modèle).
+% D’autres par montrer que les chaines inhomogènes influencent pas ou peux les modèles statistiques; ce qui n’est pas le cas pour les modèles géométriques.
 Cette section expose les résultats suivant deux approches complémentaires, directement reliées à la problématique du mémoire : l'influence du choix de la méthode de discrétisation sur la qualité du modèle de Markov (\S\ref{subsec:res_discretisation}), puis l'apport des chaînes inhomogènes par rapport aux chaînes homogènes (\S\ref{subsec:res_inhomogene}). Les résultats relatifs à la justification des paramètres du modèle ($\tau$, $NLT$, $start$, $step$) sont regroupés en annexe~\ref{annexe:parametres}.
 
 Pour quantifier le degré d'homogénéité, nous utilisons l'écart-type relatif (\textit{Relative Standard Deviation}, RSD) :
@@ -710,21 +714,28 @@ où $N_c$ est le nombre de cellules et $\bar{c}$ la teneur moyenne en petites pa
 
 Chaque méthode de découpage est d'abord illustrée par une vue du mélangeur --- particules aux diamètres réels colorées par le label de leur cellule --- qui sert de base visuelle aux justifications et validations qui suivent : ces vues permettent de vérifier la labélisation, d'identifier les cellules sur- ou sous-peuplées et de relier les propriétés des matrices de transition à la géométrie effective des cellules. La figure~\ref{fig:melangeur_partitions} en donne un premier aperçu : chaque couleur correspond à une cellule du découpage, et l'on distingue immédiatement que certaines partitions sont plus peuplées que d'autres. Ce déséquilibre est physique : la gravité concentre les particules dans la moitié basse du tambour, la zone passive au cœur du lit reçoit et piège davantage de grains que la zone active de surface, et la ségrégation en cours enrichit certaines cellules en petites particules --- celles-ci percolent à travers les interstices du lit vers la paroi et le cœur, tandis que les grandes remontent en surface. C'est précisément cette hétérogénéité spatiale, variable dans le temps, que le modèle de Markov doit reproduire.
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.85\textwidth]{figures/melangeur_partitions_labels.png}
-  \caption{Mélangeur discrétisé en cours de simulation : chaque couleur identifie une cellule (\textit{cell\_id}) du découpage. Les cellules du bas, en zone passive, sont nettement plus peuplées que celles de la surface ; les petites particules (mises en évidence) se concentrent dans certaines cellules, signature de la ségrégation.}
-  \label{fig:melangeur_partitions}
-\end{figure}
+% \begin{figure}[H] pas necessaire
+%   \centering
+%   \includegraphics[width=0.85\textwidth]{figures/melangeur_partitions_labels.png}
+%   \caption{Mélangeur discrétisé en cours de simulation : chaque couleur identifie une cellule (\textit{cell\_id}) du découpage. Les cellules du bas, en zone passive, sont nettement plus peuplées que celles de la surface ; les petites particules (mises en évidence) se concentrent dans certaines cellules, signature de la ségrégation.}
+%   \label{fig:melangeur_partitions}
+% \end{figure}
 
-% ------------------------------------------------------------
-\subsection{Influence du choix de la méthode de discrétisation}
-\label{subsec:res_discretisation}
+% % ------------------------------------------------------------
+% \subsection{Influence du choix de la méthode de discrétisation}
+% \label{subsec:res_discretisation}
+% Dans cette partie mets l'image de la matrice de transition, le vecteur d'état nombre de particules et teneur locale
+% puis image du mélangeur discrétisé sur des plans x-y y-z en des instants multiples de tau (3 instants)
+% Rassure toi que la matrice de transition respecte la condition d'homogénité d'une part, d'autre part dans le code de compute_state_matrix_torch ne remplace pas de nan par des 0
+% ce qui aura pour effet de voir véritablement pour quelle valeur de dt on a plus de nan. Du coup refait l'analyse  d'influence de dt.
+
+% Je suis serieux enlève les commentaires sur les couleurs comme viridis dans le figure et dans le. texte. je dis sois formel et structuré.
 
 \subsubsection{Découpage cartésien}
 
 La figure~\ref{fig:pv_cellules_cartesien} montre le résultat du découpage cartésien : chaque grain, représenté à son diamètre réel, est coloré par le label \textit{cell\_id} de la cellule qui le contient, en vue de face et en vue de côté. On y vérifie la labélisation en grille $5 \times 2 \times 1$ : cinq bandes verticales en $x$, deux niveaux en $y$, chaque cellule couvrant toute la longueur axiale. On note que les bornes de la grille étant ajustées sur l'enveloppe de l'ensemble des positions observées, le lit incliné ne peuple pas uniformément les dix cellules : les cellules hautes côté droit (8, 9) sont très peuplées, la cellule basse extrême (0) reste quasiment vide.
-
+% mettre le repère sur les images du mélangeur ( dans toutes car elles permettent de faire une idée de non pas seulement de la direction mais aussi du sens )
+% peux-tu faire un changement de repère pour les coordonnées des positions des particules avant la labellisation ce qui aura pour effet d'avoir des particules mieux réparties dans les cellules 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.85\textwidth]{figures/pv_cellules_cartesien.png}
@@ -747,14 +758,14 @@ L'évolution du nombre total de particules par cellule fait apparaître des zone
 
 Le découpage cylindrique remédie à ce défaut en épousant la géométrie du tambour : toutes les cellules sont incluses dans l'enceinte, et le mode à aire de section constante équilibre les volumes. La figure~\ref{fig:cylindrique_resolutions} montre les partitions obtenues pour plusieurs résolutions $(n_r, n_\theta, n_z)$, avec le rapport $\sigma/\mu$ (écart-type sur moyenne des populations de cellules) comme indicateur d'équilibre des populations : les résolutions intermédiaires offrent le meilleur compromis entre finesse spatiale et robustesse statistique, tandis qu'un maillage trop fin multiplie les cellules faiblement peuplées.
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=\linewidth]{figures/decoupage_cylindrique_resolutions.png}
-  \caption{Découpage cylindrique : partitions obtenues pour différentes résolutions (de 36 à 3600 cellules) sur les 1030 particules, en vue 3D (haut) et en coupe $z$ (bas). L'indicateur $\sigma/\mu$ quantifie le déséquilibre des populations de cellules.}
-  \label{fig:cylindrique_resolutions}
-\end{figure}
+% \begin{figure}[H]
+%   \centering
+%   \includegraphics[width=\linewidth]{figures/decoupage_cylindrique_resolutions.png}
+%   \caption{Découpage cylindrique : partitions obtenues pour différentes résolutions (de 36 à 3600 cellules) sur les 1030 particules, en vue 3D (haut) et en coupe $z$ (bas). L'indicateur $\sigma/\mu$ quantifie le déséquilibre des populations de cellules.}
+%   \label{fig:cylindrique_resolutions}
+% \end{figure}
 
-La figure~\ref{fig:pv_cellules_cylindrique} montre la labélisation du découpage cylindrique pour la résolution retenue dans la suite ($n_r = 2$, $n_\theta = 5$, 10 cellules) : les cinq secteurs angulaires, tournés autour de l'axe du tambour, découpent le lit en quartiers, et les deux couronnes radiales séparent une couronne interne (cellules 0 à 4, peu peuplées car le cœur géométrique du tambour est en partie au-dessus du lit) d'une couronne externe contre la paroi (cellules 5 à 9, qui concentrent l'essentiel des particules). Chaque cellule regroupe ainsi des particules de la zone active et de la zone passive --- première indication visuelle de la limite de ce maillage pour la ségrégation.
+% La figure~\ref{fig:pv_cellules_cylindrique} montre la labélisation du découpage cylindrique pour la résolution retenue dans la suite ($n_r = 2$, $n_\theta = 5$, 10 cellules) : les cinq secteurs angulaires, tournés autour de l'axe du tambour, découpent le lit en quartiers, et les deux couronnes radiales séparent une couronne interne (cellules 0 à 4, peu peuplées car le cœur géométrique du tambour est en partie au-dessus du lit) d'une couronne externe contre la paroi (cellules 5 à 9, qui concentrent l'essentiel des particules). Chaque cellule regroupe ainsi des particules de la zone active et de la zone passive --- première indication visuelle de la limite de ce maillage pour la ségrégation.
 
 \begin{figure}[H]
   \centering
@@ -764,7 +775,8 @@ La figure~\ref{fig:pv_cellules_cylindrique} montre la labélisation du découpag
 \end{figure}
 
 Les matrices de transition construites par espèce pour un découpage cylindrique à 10 cellules ($n_r = 2$, $n_\theta = 5$, mode à aire constante, $\tau = \SI{1.57}{s}$) --- même nombre de cellules que les autres méthodes afin de permettre une comparaison à résolution égale --- sont données à la figure~\ref{fig:matrice_cylindrique}. La structure en blocs, alignée sur la numérotation radiale $\to$ angulaire, traduit la physique de l'écoulement : les transitions dominantes relient des cellules angulairement voisines --- signature de l'entraînement en rotation solide dans la zone passive ---, tandis que les cellules radialement internes échangent avec les cellules externes via l'écoulement de surface. Certaines colonnes concentrent une forte probabilité sur une seule cellule d'arrivée (jusqu'à $\approx 0{,}6$) : elles correspondent aux cellules du cœur du lit, dont les particules sont transportées en bloc vers une destination quasi déterministe en un tour de tambour. La comparaison des deux espèces retrouve l'asymétrie déjà observée : les petites particules répartissent leurs probabilités sur davantage de cellules d'arrivée que les grandes. À l'inverse du découpage cartésien, aucune colonne vide n'apparaît : chaque cellule est visitée durant l'apprentissage, et la condition de stochasticité en colonne~\eqref{eq:stochastique} est vérifiée sur l'ensemble de la matrice.
-
+% cette matrice comporte des Nan pour dt=8. revoit ton étude pour dt
+% Pareillement pour le cartésien la matrice de transition contient des NaN, du moins la somme d'une colonne doit valoir 1: c'est condition d'homogénisation
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/matrice_cylindrique_especes.png}
@@ -847,7 +859,7 @@ Les vues 3D du mélangeur discrétisé (figures~\ref{fig:teneur_3d_debut} et~\re
 \subsubsection{Découpage physique}
 
 La figure~\ref{fig:pv_cellules_physique} montre la labélisation du découpage physique : par rapport au Voronoï purement spatial, la quatrième caractéristique $\|\mathbf{v}_p\|$ déforme les cellules le long des iso-vitesses de l'écoulement --- les cellules du cœur du lit, lentes, se distinguent des cellules de la surface libre, rapides, alors même qu'elles peuvent être spatialement voisines. La figure~\ref{fig:pv_cellule_contenu} zoome sur le contenu d'une cellule : les particules qui la composent y sont dénombrées par espèce, ce qui matérialise visuellement le comptage $S_i$ et la teneur locale $c_i$ utilisés dans toute la suite.
-
+% fait reference à la figure sur la méthode de découpage physique où tu montre le champ de norme de vitesse pour comparer et commenter les résultats
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.85\textwidth]{figures/pv_cellules_physique.png}
@@ -882,6 +894,7 @@ La figure~\ref{fig:comparaison_methodes_rsd} confronte, pour les quatre méthode
   \caption{Influence de la méthode de découpage sur la prédiction : RSD DEM vs prédiction markovienne homogène pour les quatre méthodes, à nombre de cellules identique (10 cellules) et à configuration identique ($nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas). L'écart moyen est indiqué dans le titre de chaque cadran.}
   \label{fig:comparaison_methodes_rsd}
 \end{figure}
+% Utilise le dégradé jaune rouge pour mettre à jour cette étude 
 
 \begin{table}[H]
   \centering
