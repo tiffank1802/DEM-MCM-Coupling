@@ -1,6 +1,6 @@
 {
     "python.testing.pytestArgs": [
-        "DEM_MCM"
+        "tests"
     ],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,

@@ -1,0 +1,156 @@
+[project]
+name = "dem-mcm-coupling"
+version = "0.2.0"
+description = "Markov chain models (homogeneous and inhomogeneous) coupled to DEM simulations of granular mixers"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "DEM-MCM-Coupling contributors" }]
+keywords = [
+    "markov-chain",
+    "DEM",
+    "granular",
+    "mixing",
+    "segregation",
+    "partitioner",
+    "simulation",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Typing :: Typed",
+]
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "pyarrow>=12",
+    "scipy>=1.10",
+    "scikit-learn>=1.3",
+    "tqdm>=4.65",
+]
+
+[project.urls]
+Homepage = "https://github.com/tiffank1802/DEM-MCM-Coupling"
+Documentation = "https://github.com/tiffank1802/DEM-MCM-Coupling/wiki"
+Repository = "https://github.com/tiffank1802/DEM-MCM-Coupling"
+
+[project.optional-dependencies]
+# Hugging Face Hub backend (bucket I/O).
+hf = ["huggingface_hub>=0.24"]
+# GPU/CPU transition-matrix computation.
+torch = ["torch>=2.0"]
+# Matplotlib-based analysis figures.
+viz = ["matplotlib>=3.7"]
+# Streamlit/PyVista interactive viewer (Markov.visualize).
+app = ["streamlit>=1.30", "pyvista>=0.43", "stpyvista>=0.2"]
+# Everything, for convenience.
+full = [
+    "huggingface_hub>=0.24",
+    "torch>=2.0",
+    "matplotlib>=3.7",
+    "streamlit>=1.30",
+    "pyvista>=0.43",
+    "stpyvista>=0.2",
+]
+# Development tools.
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "mypy>=1.10",
+]
+
+[project.scripts]
+dem-mcm-sweep = "dem_mcm_coupling.run_sweep:main"
+
+# ── Build / packaging ────────────────────────────────────────────────────────
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["dem_mcm_coupling*"]
+exclude = ["docs*", "tests*", "postprocessing*"]
+
+# ── Ruff (linting + formatting) ──────────────────────────────────────────────
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+exclude = [
+    "*.ipynb",
+    "docs/",
+    "postprocessing/",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.ruff.lint]
+select = [
+    "F",    # Pyflakes — logical errors
+    "I",    # isort — import order
+    "E",    # pycodestyle — style errors (PEP 8)
+    "W",    # pycodestyle — style warnings (PEP 8)
+    "N",    # PEP 8 naming conventions
+    "UP",   # pyupgrade — syntax modernisation
+    "YTT",  # flake8-2020 — time compatibility
+    "ANN",  # flake8-annotations — type annotations (PEP 484)
+    "D",    # pydocstyle — docstrings (PEP 257)
+    "SIM",  # flake8-simplify — simplifications
+    "C4",   # flake8-comprehensions — comprehensions
+    "RUF",  # Ruff-specific rules
+]
+ignore = [
+    "D100",  # missing module docstring — too verbose
+    "D104",  # missing docstring on package __init__
+    "D105",  # missing docstring on magic methods
+    "D107",  # missing docstring on __init__
+    "D203",  # one blank line before docstring (conflicts with D211)
+    "D212",  # multi-line docstring (conflicts with D213)
+    "D213",  # multi-line docstring (conflicts with D212)
+    "ANN401", # Any type — too strict
+    "N802",   # function names like compute_P_matrix_torch are public API
+    "N803",   # argument names (P, S, M, phi_A, ...) stay uppercase
+    "N806",   # mathematical variables (P, S, M, phi_A, ...) stay uppercase
+    "N812",   # lower-case import — too strict
+    "SIM108", # ternary — sometimes less readable
+    "SIM117", # merge with statements — less clear
+    "E501",   # long lines — freedom kept
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "D104"]
+"tests/*.py" = ["D", "ANN", "N", "F811"]
+# Legacy French docstrings keep their historical layout (D205/W505); the
+# matplotlib Agg backend must be selected before importing pyplot (E402).
+"postprocessing/postprocess.py" = ["D205", "W505", "E402"]
+"postprocessing/postprocess_inhomogeneous.py" = ["E402", "D205", "W505"]
+# One-off maintenance scripts.
+"postprocessing/tools/*.py" = ["D", "E402", "E741", "F601", "N816", "F841", "W505", "E722", "SIM102"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["dem_mcm_coupling"]
+known-third-party = ["huggingface_hub", "pyvista"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 88
+
+# ── Mypy (static typing) ─────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_redundant_casts = false
+warn_unused_ignores = false
+exclude = ["docs/", "postprocessing/", "tests/"]

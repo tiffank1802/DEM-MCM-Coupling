@@ -1,0 +1,54 @@
+\babel@toc {french}{}\relax 
+\contentsline {section}{\numberline {1}Nomenclature}{1}{section.1}%
+\contentsline {section}{\numberline {2}Introduction}{1}{section.2}%
+\contentsline {section}{\numberline {3}Contexte et état de l'art}{2}{section.3}%
+\contentsline {paragraph}{La méthode des éléments discrets.}{2}{paragraph*.1}%
+\contentsline {paragraph}{Les chaînes de Markov dans les procédés particulaires.}{2}{paragraph*.2}%
+\contentsline {section}{\numberline {4}Matériel et méthodes}{3}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Matériau de référence}{3}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Principe de la simulation DEM}{5}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}Du déterminisme particulaire au formalisme markovien}{6}{subsection.4.3}%
+\contentsline {subsubsection}{\numberline {4.3.1}Définition et construction du vecteur d'état}{8}{subsubsection.4.3.1}%
+\contentsline {subsubsection}{\numberline {4.3.2}Construction de la matrice de transition}{9}{subsubsection.4.3.2}%
+\contentsline {paragraph}{Pourquoi moyenner les probabilités de transition ?}{10}{paragraph*.10}%
+\contentsline {paragraph}{Paramètres de construction et justification.}{10}{paragraph*.11}%
+\contentsline {paragraph}{Vérifications de cohérence.}{11}{paragraph*.14}%
+\contentsline {paragraph}{Deux matrices distinctes par espèce.}{12}{paragraph*.15}%
+\contentsline {paragraph}{Chaîne homogène.}{12}{paragraph*.16}%
+\contentsline {paragraph}{Chaîne inhomogène.}{12}{paragraph*.17}%
+\contentsline {subsection}{\numberline {4.4}Méthodes de discrétisation}{12}{subsection.4.4}%
+\contentsline {paragraph}{Changement de repère pour les découpages géométriques}{13}{paragraph*.18}%
+\contentsline {paragraph}{Découpage cartésien}{14}{paragraph*.20}%
+\contentsline {paragraph}{Découpage cylindrique}{14}{paragraph*.22}%
+\contentsline {paragraph}{Découpage de Voronoï par algorithme des k-moyennes}{15}{paragraph*.24}%
+\contentsline {subparagraph}{Initialisation des centres.}{15}{subparagraph*.25}%
+\contentsline {subparagraph}{Étape d'affectation.}{16}{subparagraph*.26}%
+\contentsline {subparagraph}{Étape de mise à jour.}{16}{subparagraph*.27}%
+\contentsline {subparagraph}{Convergence et critère d'arrêt.}{16}{subparagraph*.28}%
+\contentsline {paragraph}{Découpage physique}{17}{paragraph*.29}%
+\contentsline {section}{\numberline {5}Résultats}{17}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Influence du choix de la méthode de discrétisation}{18}{subsection.5.1}%
+\contentsline {subsubsection}{\numberline {5.1.1}Découpage cartésien}{18}{subsubsection.5.1.1}%
+\contentsline {subsubsection}{\numberline {5.1.2}Découpage cylindrique}{20}{subsubsection.5.1.2}%
+\contentsline {subsubsection}{\numberline {5.1.3}Découpage de Voronoï}{22}{subsubsection.5.1.3}%
+\contentsline {paragraph}{Vecteur d'état par comptage.}{23}{paragraph*.39}%
+\contentsline {paragraph}{Vecteur d'état par teneur locale.}{24}{paragraph*.41}%
+\contentsline {paragraph}{Validation par le RSD.}{26}{paragraph*.45}%
+\contentsline {subsubsection}{\numberline {5.1.4}Découpage physique}{26}{subsubsection.5.1.4}%
+\contentsline {subsubsection}{\numberline {5.1.5}Comparaison des méthodes}{28}{subsubsection.5.1.5}%
+\contentsline {subsection}{\numberline {5.2}Apport des chaînes inhomogènes}{30}{subsection.5.2}%
+\contentsline {section}{\numberline {6}Discussion}{34}{section.6}%
+\contentsline {paragraph}{Dualité de comportement entre espèces.}{34}{paragraph*.56}%
+\contentsline {paragraph}{Rôle déterminant de la discrétisation et du repère de labélisation.}{34}{paragraph*.57}%
+\contentsline {paragraph}{Pertinence de la variable d'état.}{34}{paragraph*.58}%
+\contentsline {section}{\numberline {7}Conclusion et perspectives}{34}{section.7}%
+\contentsline {section}{Références bibliographiques}{36}{section*.59}%
+\contentsline {section}{Annexes}{37}{section*.60}%
+\contentsline {section}{\numberline {A}Justification des paramètres du modèle de Markov}{37}{appendix.A}%
+\contentsline {subsection}{\numberline {A.1}Choix du pas de temps de Markov $\tau = \SI {1.57}{s}$}{37}{subsection.A.1}%
+\contentsline {subsection}{\numberline {A.2}Choix du nombre de blocs d'apprentissage $NLT$}{38}{subsection.A.2}%
+\contentsline {subsection}{\numberline {A.3}Choix de l'instant de départ $start = \SI {1.57}{s}$}{42}{subsection.A.3}%
+\contentsline {subsection}{\numberline {A.4}Choix de l'écart entre blocs $step = \SI {1.57}{s}$}{46}{subsection.A.4}%
+\contentsline {subsection}{\numberline {A.5}Conformité de la matrice de transition : repère de labélisation et raffinage temporel $dt$}{47}{subsection.A.5}%
+\contentsline {subsection}{\numberline {A.6}Justification des matrices distinctes par espèce}{48}{subsection.A.6}%
+\contentsline {subsection}{\numberline {A.7}Illustration de la teneur locale}{50}{subsection.A.7}%

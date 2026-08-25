@@ -1,0 +1,4 @@
+Cartésien      0.0782
+Cylindrique    0.0975
+Voronoï        0.0834
+Physique       0.1034

@@ -1,0 +1,5 @@
+dt        157     78     39     16      8      4      2
+Cartésien       0      0      0      0      0      0      0
+Cylindrique     0      0      0      0      0      0      0
+Voronoï         0      0      0      0      0      0      0
+Physique        0      0      0      0      0      0      0
