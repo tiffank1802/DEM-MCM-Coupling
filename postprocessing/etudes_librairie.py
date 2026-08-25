@@ -101,6 +101,18 @@ COLORS = {
 #: découpages géométriques : labellisation dans le repère du lit
 GEO_METHODS = {"cartesien", "cylindrique"}
 
+#: durée d'un tour de tambour en secondes (omega = 4 rad/s)
+T_TOUR = 1.57
+
+
+def add_tours_axis(ax):
+    """Axe secondaire en nombre de tours du tambour (1 tour = 1,57 s),
+    en plus de l'axe des temps en secondes (lecture industrielle)."""
+    sec = ax.secondary_xaxis(
+        "top", functions=(lambda s: s / T_TOUR, lambda n: n * T_TOUR))
+    sec.set_xlabel("Nombre de tours du tambour")
+    return sec
+
 #: couleurs distinctes des cellules (vecteur d'état), conservées dans tout
 #: le rapport : vert, rouge, orange, jaune, noir, bleu, violet, marron,
 #: rose, cyan — une couleur par cellule (10 cellules).
@@ -425,6 +437,8 @@ def comparaison_methodes(etudes):
         ax.set_xlabel("Temps (s)")
     for ax in axes[:, 0]:
         ax.set_ylabel("RSD teneur petites (–)")
+    for ax in axes[0]:
+        add_tours_axis(ax)
     fig.suptitle(
         "Influence de la méthode de découpage : RSD DEM vs prédiction "
         "markovienne homogène ($\\tau = 1{,}57$ s, 2 blocs d'apprentissage)"
@@ -469,6 +483,8 @@ def etude_start(etudes):
         ax.set_xlabel("Temps (s)")
     for ax in axes[:, 0]:
         ax.set_ylabel("RSD teneur petites (–)")
+    for ax in axes[0]:
+        add_tours_axis(ax)
     fig.suptitle(
         "Justification du choix de start : RSD DEM vs prédictions markoviennes "
         "(propagées depuis $t = 0$ s) apprises avec ou sans le régime transitoire"
@@ -499,10 +515,11 @@ def etude_tau(etudes):
                       + (" (retenu)" if tau == TAU else ""))
     ax.set_xlabel("Temps (s)")
     ax.set_ylabel("RSD (–)")
+    add_tours_axis(ax)
     ax.set_title(
         "Influence du pas de temps de Markov $\\tau$ sur la cinétique prédite\n"
         "(découpage physique, 10 cellules, nlt=2, start=1,57 s, "
-        "step=$\\tau$, dt=$\\tau$/10)"
+        "step=$\\tau$, dt=$\\tau$/10)", pad=30,
     )
     ax.legend(ncol=2, fontsize=9)
     ax.grid(alpha=0.3)
@@ -519,9 +536,12 @@ def _erreur(et, cfg):
 
 
 def etude_nlt(etudes):
+    # dt = 1 pour cette étude : le raffinage maximal n'introduit aucun NaN
+    # (toutes les cellules sont observées comme sources) et fournit la
+    # statistique de transitions la plus riche par bloc.
     et = etudes["physique"]
     nlts = [1, 2, 3, 5, 8, 12, 18]
-    errs = [_erreur(et, config_for(et.method, nlt=n)) for n in nlts]
+    errs = [_erreur(et, config_for(et.method, nlt=n, dt=1)) for n in nlts]
     for n, e in zip(nlts, errs):
         print(f"  NLT={n} -> {e:.4f}")
     fig, ax = plt.subplots(figsize=(8.6, 5))
@@ -531,7 +551,7 @@ def etude_nlt(etudes):
     ax.set_title(
         "Influence de $NLT$ sur la qualité du modèle\n"
         "(découpage physique, 10 cellules, start=1,57 s, "
-        "step=tau=1,57 s, dt=8 pas)"
+        "step=tau=1,57 s, dt=1 pas)"
     )
     ax.grid(alpha=0.3)
     fig.tight_layout()
@@ -592,6 +612,8 @@ def etude_especes(etudes):
         ax.set_xlabel("Temps (s)")
     for ax in axes[:, 0]:
         ax.set_ylabel("RSD teneur petites (–)")
+    for ax in axes[0]:
+        add_tours_axis(ax)
     fig.suptitle(
         "Matrice unique (sans distinction d'espèce) vs matrices par espèce "
         "($\\tau = 1{,}57$ s, 2 blocs)"
@@ -613,10 +635,12 @@ def resultats_cylindrique(etudes):
     cfg = config_for(et.method)
     # (les matrices annotées sont produites par matrices_annotees)
 
-    # RSD DEM vs homogène vs inhomogène
+    # RSD DEM vs homogène vs inhomogène (blocs inhomogènes espacés de
+    # 7 tours -> step = 6*tau, soit 5 matrices sur la simulation)
     rsd_h, t_h, acts = et.markov_rsd(cfg)
-    nlt_max = (N_T - START) // (2 * TAU)
-    cfg_inh = config_for(et.method, nlt=nlt_max)
+    STEP_INH = 6 * TAU
+    NLT_INH = int((N_T - START) // (STEP_INH + TAU))
+    cfg_inh = config_for(et.method, nlt=NLT_INH, step=STEP_INH)
     rsd_i, t_i = et.markov_rsd_inhomogeneous(cfg_inh)
     t_dem = np.arange(START, N_T, 20)
     fig, ax = plt.subplots(figsize=(10, 5.6))
@@ -628,7 +652,9 @@ def resultats_cylindrique(etudes):
             label="Markov inhomogène")
     ax.set_xlabel("Temps (s)")
     ax.set_ylabel("RSD de la teneur en petites particules (–)")
-    ax.set_title("Découpage cylindrique : RSD DEM vs prédictions markoviennes")
+    add_tours_axis(ax)
+    ax.set_title("Découpage cylindrique : RSD DEM vs prédictions markoviennes",
+                 pad=30)
     ax.legend()
     ax.grid(alpha=0.3)
     fig.tight_layout()
@@ -649,12 +675,17 @@ def chaines_inhomogenes(etudes):
     """
     from postprocessing.metrics import concentration_from_S
 
-    nlt_max = (N_T - START) // (2 * TAU)
+    # chaînes inhomogènes : blocs espacés de 7 tours de tambour
+    # (librairie : le bloc k démarre à start + k*(step + tau), d'où
+    # step = 6*tau), soit (60 - 1,57)/(1,57 x 7) = 5 matrices, chacune
+    # couvrant une phase distincte de la ségrégation.
+    STEP_INH = 6 * TAU
+    NLT_INH = int((N_T - START) // (STEP_INH + TAU))
     fig, axes = plt.subplots(2, 2, figsize=(12.5, 8.6), sharex=True)
     resume = {}
     for ax, (key, et) in zip(axes.flat, etudes.items()):
         cfg = config_for(et.method)
-        cfg_inh = config_for(et.method, nlt=nlt_max)
+        cfg_inh = config_for(et.method, nlt=NLT_INH, step=STEP_INH)
         rsd_h, t_h, acts = et.markov_rsd(cfg)
         rsd_i, t_i = et.markov_rsd_inhomogeneous(cfg_inh)
         n = min(len(rsd_h), len(rsd_i))
@@ -679,6 +710,8 @@ def chaines_inhomogenes(etudes):
         ax.set_xlabel("Temps (s)")
     for ax in axes[:, 0]:
         ax.set_ylabel("RSD teneur petites (–)")
+    for ax in axes[0]:
+        add_tours_axis(ax)
     fig.tight_layout()
     fig.savefig(FIGDIR / "rsd_homogene_inhomogene_methodes.png", dpi=200)
     plt.close(fig)
@@ -689,7 +722,7 @@ def chaines_inhomogenes(etudes):
 
     # teneur locale par cellule, chaîne inhomogène (physique)
     et = etudes["physique"]
-    cfg_inh = config_for(et.method, nlt=nlt_max)
+    cfg_inh = config_for(et.method, nlt=NLT_INH, step=STEP_INH)
     trajs, t_mk, acts = et.markov_traj_inhomogeneous(cfg_inh)
     act = acts["small"] & acts["large"]
     cells = np.where(act)[0]
@@ -703,6 +736,7 @@ def chaines_inhomogenes(etudes):
     _plot_superpose(ax, t_dem_idx / 100, C_dem, t_mk[:n] / 100, C_mk, cells)
     ax.set_xlabel("Temps (s)")
     ax.set_ylabel("Teneur locale en petites particules (–)")
+    add_tours_axis(ax)
     ax.grid(alpha=0.3)
     leg = ax.legend(ncol=5, fontsize=10, loc="upper right",
                     title="DEM : trait continu — Markov inhomogène : "
@@ -727,7 +761,8 @@ def teneur_nlt_extremes(etudes):
     C_dem = concentration_from_S(et.S_matrices["small"][rows_dem],
                                  et.S_matrices["large"][rows_dem])
     for nlt in (1, 18):
-        cfg = config_for(et.method, nlt=nlt)
+        # dt = 1 : cohérent avec l'étude NLT (aucun NaN, statistique max)
+        cfg = config_for(et.method, nlt=nlt, dt=1)
         trajs, t_mk, acts = et.markov_traj(cfg)
         act = acts["small"] & acts["large"]
         cells = np.where(act)[0]
@@ -738,6 +773,7 @@ def teneur_nlt_extremes(etudes):
                         cells)
         ax.set_xlabel("Temps (s)")
         ax.set_ylabel("Teneur locale en petites particules (–)")
+        add_tours_axis(ax)
         ax.grid(alpha=0.3)
         leg = ax.legend(ncol=5, fontsize=10, loc="upper right",
                         title=f"NLT = {nlt} — DEM : trait continu, "
@@ -751,7 +787,7 @@ def teneur_nlt_extremes(etudes):
     # écart RMS + carte des écarts par cellule, NLT = 1 vs NLT = 18
     fig, axes = plt.subplots(2, 2, figsize=(13, 8.6), width_ratios=[1, 1.25])
     for r, nlt in enumerate((1, 18)):
-        cfg = config_for(et.method, nlt=nlt)
+        cfg = config_for(et.method, nlt=nlt, dt=1)
         P_clean, act = clean_transition_matrix(
             np.nan_to_num(et.build_P(cfg, "small"), nan=0.0))
         row0 = int(np.searchsorted(et.times, cfg.start_index))
@@ -766,6 +802,9 @@ def teneur_nlt_extremes(etudes):
                                 alpha=0.25)
         axes[r, 0].set_ylabel(f"NLT = {nlt}\nÉcart RMS (particules)")
         axes[r, 0].grid(alpha=0.3)
+        if r == 0:
+            add_tours_axis(axes[r, 0])
+            add_tours_axis(axes[r, 1])
         im = axes[r, 1].imshow(err.T, cmap="YlOrRd", aspect="auto",
                                origin="lower",
                                extent=[t_mk[0] / 100, t_mk[-1] / 100,
@@ -904,6 +943,7 @@ def teneur_et_nombre(etudes):
     _plot_superpose(ax, t_dem, C_dem, t, C_mk, cells)
     ax.set_xlabel("Temps (s)")
     ax.set_ylabel("Teneur locale en petites particules (–)")
+    add_tours_axis(ax)
     ax.grid(alpha=0.3)
     leg = ax.legend(ncol=5, fontsize=10, loc="upper right",
                     title="DEM : trait continu — Markov : points épais")
@@ -917,6 +957,7 @@ def teneur_et_nombre(etudes):
     _plot_superpose(ax, t_dem, N_dem, t, N_mk, cells)
     ax.set_xlabel("Temps (s)")
     ax.set_ylabel("Nombre de particules par cellule")
+    add_tours_axis(ax)
     ax.grid(alpha=0.3)
     leg = ax.legend(ncol=5, fontsize=10, loc="upper right",
                     title="DEM : trait continu — Markov : points épais")
@@ -934,14 +975,16 @@ def etude_nlt_erreur_relative(etudes):
     """Sensibilité au NLT par l'erreur relative sur la matrice de transition
     (grandeur de comparaison de Doucet et al. 2008) :
     E(NLT) = ||P(NLT) - P(NLT_ref)||_F / ||P(NLT_ref)||_F."""
+    # dt = 1 : aucun NaN pour cette valeur (chaque cellule est observée
+    # comme source) et nombre maximal de paires d'observation par bloc.
     et = etudes["physique"]
     nlts = [1, 2, 3, 5, 8, 12, 18]
     nlt_ref = nlts[-1]
-    P_ref = {sp: et.build_P(config_for(et.method, nlt=nlt_ref), sp)
+    P_ref = {sp: et.build_P(config_for(et.method, nlt=nlt_ref, dt=1), sp)
              for sp in ("small", "large")}
     errs = {sp: [] for sp in ("small", "large")}
     for nlt in nlts:
-        cfg = config_for(et.method, nlt=nlt)
+        cfg = config_for(et.method, nlt=nlt, dt=1)
         for sp in ("small", "large"):
             P = et.build_P(cfg, sp)
             e = (np.linalg.norm(P - P_ref[sp], "fro")
@@ -959,7 +1002,7 @@ def etude_nlt_erreur_relative(etudes):
     ax.set_title(
         "Convergence de la matrice de transition avec $NLT$ "
         f"(découpage physique, 10 cellules,\n"
-        f"start=1,57 s, step=tau=1,57 s, dt=8 pas ; référence NLT={nlt_ref})"
+        f"start=1,57 s, step=tau=1,57 s, dt=1 pas ; référence NLT={nlt_ref})"
     )
     ax.legend()
     ax.grid(alpha=0.3)
@@ -968,6 +1011,142 @@ def etude_nlt_erreur_relative(etudes):
     plt.close(fig)
     print("nlt erreur relative ok")
     return errs, nlts
+
+
+
+
+def comparaison_methodes_teneur(etudes):
+    """Approche globale : comparaison des courbes de teneur locale entre
+    méthodes --- écart absolu moyen de teneur par cellule
+    mean_i |C_Markov - C_DEM|(t) pour les quatre découpages."""
+    from postprocessing.metrics import concentration_from_S
+
+    fig, ax = plt.subplots(figsize=(10.5, 5.8))
+    resume = {}
+    for key, et in etudes.items():
+        cfg = config_for(et.method)
+        trajs, t_mk, acts = et.markov_traj(cfg)
+        act = acts["small"] & acts["large"]
+        n = min(len(trajs["small"]), len(trajs["large"]))
+        C_mk = concentration_from_S(trajs["small"][:n], trajs["large"][:n])
+        rows = np.searchsorted(et.times, t_mk[:n])
+        C_dem = concentration_from_S(et.S_matrices["small"][rows],
+                                     et.S_matrices["large"][rows])
+        err_t = np.abs(C_mk[:, act] - C_dem[:, act]).mean(axis=1)
+        resume[et.nom] = float(err_t[1:].mean())
+        ax.plot(t_mk[:n] / 100, err_t, "o-", color=COLORS[et.nom], ms=4.5,
+                lw=1.6, label=f"{et.nom} (moyenne {err_t[1:].mean():.3f})")
+        print(f"  teneur {et.nom}: écart moyen {err_t[1:].mean():.4f}")
+    ax.set_xlabel("Temps (s)")
+    ax.set_ylabel("Écart absolu moyen de teneur par cellule (–)")
+    add_tours_axis(ax)
+    ax.legend()
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(FIGDIR / "comparaison_methodes_teneur.png", dpi=200)
+    plt.close(fig)
+    print("comparaison teneur ok", resume)
+    return resume
+
+
+def figure_repere_avant_apres(timestep_dict, sample_coords, s_velocities,
+                              frame):
+    """Labélisation cartésienne avant/après changement de repère :
+    mêmes particules (t = 1,57 s), grille 10x1x1 de la librairie ajustée
+    (a) dans le repère du tambour, (b) dans le repère du lit."""
+    c, R2 = frame
+    permanent_rows = PERMANENT_START * N_PARTICLES_PER_TIMESTEP
+    df = timestep_dict[START]
+    pts = df[["coordinates:0", "coordinates:1", "coordinates:2"]].to_numpy()
+
+    # (a) repère du tambour : fit librairie sur les coordonnées brutes
+    part_tambour = create_partitioner("cartesian", nx=10, ny=1, nz=1)
+    cfg_fit = ExperimentConfig(method="cartesian",
+                               method_kwargs=dict(nx=10, ny=1, nz=1))
+    _fit_partitioner_for_sweep(part_tambour, cfg_fit, sample_coords,
+                               s_velocities, permanent_rows)
+    lab_tambour = np.asarray(part_tambour.compute_states(
+        pts[:, 0], pts[:, 1], pts[:, 2]))
+
+    # (b) repère du lit : fit librairie sur les coordonnées transformées
+    part_lit = create_partitioner("cartesian", nx=10, ny=1, nz=1)
+    part_lit.fit(transform_coords(sample_coords, c, R2)[permanent_rows:])
+    pts_lit = transform_coords(pts, c, R2)
+    lab_lit = np.asarray(part_lit.compute_states(
+        pts_lit[:, 0], pts_lit[:, 1], pts_lit[:, 2]))
+
+    fig, axes = plt.subplots(1, 2, figsize=(12.8, 6.0), sharey=True)
+    for ax, lab, ttl in (
+        (axes[0], lab_tambour,
+         "(a) Avant : repère du tambour\n(bandes verticales, "
+         "cellules marginales vides)"),
+        (axes[1], lab_lit,
+         "(b) Après : repère du lit\n(bandes alignées sur la surface "
+         "libre, toutes occupées)"),
+    ):
+        occup = np.bincount(lab, minlength=10)
+        for cell in range(10):
+            m = lab == cell
+            col = CELL_COLORS[cell % len(CELL_COLORS)]
+            if m.any():
+                ax.scatter(pts[m, 0], pts[m, 1], s=14, color=col, lw=0,
+                           label=f"cellule {cell}")
+        ax.set_title(ttl + f"\ncellules vides : "
+                     f"{int((occup == 0).sum())}/10")
+        ax.set_xlabel("$x$ (m)")
+        ax.set_aspect("equal")
+        ax.grid(alpha=0.25)
+    axes[0].set_ylabel("$y$ (m)")
+    axes[1].legend(fontsize=9, ncol=2, loc="upper left")
+    fig.tight_layout()
+    fig.savefig(FIGDIR / "repere_avant_apres.png", dpi=200)
+    plt.close(fig)
+    print("repère avant/après ok — vides tambour :",
+          int((np.bincount(lab_tambour, minlength=10) == 0).sum()),
+          "| vides lit :",
+          int((np.bincount(lab_lit, minlength=10) == 0).sum()))
+
+
+def etude_start_ecarts(etudes):
+    """Figures d'écart de l'annexe start recalculées avec la librairie
+    (axes en secondes + tours) : découpage de Voronoï, grandes particules,
+    NLT = 1, start = 1,57 s / 3,14 s / 15,7 s."""
+    et = etudes["voronoi"]
+    for start in (157, 314, 1570):
+        cfg = config_for(et.method, nlt=1, start_index=start)
+        P_clean, act = clean_transition_matrix(
+            np.nan_to_num(et.build_P(cfg, "large"), nan=0.0))
+        row0 = int(np.searchsorted(et.times, start))
+        S0 = et.S_matrices["large"][row0].astype(float)
+        traj, t_mk = propagate_markov(
+            S0, P_clean, et.times, start, cfg.tau, act)
+        rows = np.searchsorted(et.times, t_mk)
+        err = np.abs(traj - et.S_matrices["large"][rows])
+        rms = np.sqrt((err ** 2).mean(axis=1))
+
+        fig, axes = plt.subplots(1, 2, figsize=(12.5, 4.8),
+                                 width_ratios=[1, 1.25])
+        axes[0].plot(t_mk / 100, rms, "-", color="#cc4c02", lw=2)
+        axes[0].fill_between(t_mk / 100, 0, rms, color="#cc4c02",
+                             alpha=0.25)
+        axes[0].set_xlabel("Temps (s)")
+        axes[0].set_ylabel("Écart RMS (particules)")
+        axes[0].grid(alpha=0.3)
+        add_tours_axis(axes[0])
+        im = axes[1].imshow(err.T, cmap="YlOrRd", aspect="auto",
+                            origin="lower",
+                            extent=[t_mk[0] / 100, t_mk[-1] / 100,
+                                    -0.5, err.shape[1] - 0.5])
+        axes[1].set_xlabel("Temps (s)")
+        axes[1].set_ylabel("Indice de cellule")
+        add_tours_axis(axes[1])
+        fig.colorbar(im, ax=axes[1],
+                     label="$|$Markov $-$ DEM$|$ (particules)")
+        fig.tight_layout()
+        fig.savefig(FIGDIR / f"ecart_voronoi_start{start}_lib.png", dpi=200)
+        plt.close(fig)
+        print(f"  start={start}: RMS moyen {rms[1:].mean():.2f}")
+    print("écarts start ok")
 
 
 def dump_labels_3d(etudes):
@@ -1107,15 +1286,18 @@ def table_erreurs(etudes):
                                  alpha=0.25)
             axes[0].set_xlabel("Temps (s)")
             axes[0].set_ylabel("Écart RMS (particules)")
-            axes[0].set_title("Écart temporel RMS $|$Markov $-$ DEM$|$")
+            axes[0].set_title("Écart temporel RMS $|$Markov $-$ DEM$|$",
+                              pad=30)
             axes[0].grid(alpha=0.3)
+            add_tours_axis(axes[0])
             im = axes[1].imshow(err.T, cmap="YlOrRd", aspect="auto",
                                 origin="lower",
                                 extent=[t_mk[0] / 100, t_mk[-1] / 100,
                                         -0.5, err.shape[1] - 0.5])
             axes[1].set_xlabel("Temps (s)")
             axes[1].set_ylabel("Indice de cellule")
-            axes[1].set_title("Écart absolu par cellule")
+            axes[1].set_title("Écart absolu par cellule", pad=30)
+            add_tours_axis(axes[1])
             fig.colorbar(im, ax=axes[1],
                          label="$|$Markov $-$ DEM$|$ (particules)")
             fig.suptitle(
@@ -1146,8 +1328,12 @@ if __name__ == "__main__":
         etudes[key] = EtudeMethode(key, timestep_dict, sample_coords,
                                    s_velocities, frame=frame)
 
+    figure_repere_avant_apres(timestep_dict, sample_coords,
+                              s_velocities, frame)
     comparaison_methodes(etudes)
+    comparaison_methodes_teneur(etudes)
     etude_start(etudes)
+    etude_start_ecarts(etudes)
     etude_tau(etudes)
     etude_nlt(etudes)
     etude_nlt_erreur_relative(etudes)

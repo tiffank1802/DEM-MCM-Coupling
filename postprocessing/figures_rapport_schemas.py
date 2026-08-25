@@ -220,16 +220,16 @@ def schema_cartesien():
             cx = 0.5 * (xs[i] + xs[i + 1])
             cy = 0.5 * (ys[j] + ys[j + 1])
             if cx * cx + cy * cy < 1.15 * R * R:
-                ax.text(cx, cy, str(k), fontsize=9, ha="center",
+                ax.text(cx, cy, str(k), fontsize=14, ha="center",
                         va="center", color="k",
                         bbox=dict(fc="white", ec="none", alpha=0.65,
                                   pad=0.15), zorder=5)
             k += 1
-    ax.text(0, 0.55, "ciel (peu de particules)", fontsize=10,
+    ax.text(0, 0.55, "ciel (peu de particules)", fontsize=13,
             ha="center", color=BLEU)
     ax.annotate(r"pas $\Delta x = \frac{x_{max}-x_{min}}{n_x}$",
                 xy=(xs[1], 0.05), xytext=(-1.6, 0.85),
-                fontsize=11, arrowprops=dict(arrowstyle="->", color=GRIS))
+                fontsize=13, arrowprops=dict(arrowstyle="->", color=GRIS))
     ax.set_xlim(-1.75, 1.75)
     ax.set_ylim(-1.45, 1.35)
     ax.set_aspect("equal")
@@ -237,7 +237,7 @@ def schema_cartesien():
     ax.set_title(
         "Découpage cartésien : cellules parallélépipédiques de volume "
         "constant,\nnumérotation lexicographique $x \\to y \\to z$",
-        fontsize=11,
+        fontsize=13,
     )
     fig.tight_layout()
     fig.savefig(FIGDIR / "schema_decoupage_cartesien.png", dpi=200)

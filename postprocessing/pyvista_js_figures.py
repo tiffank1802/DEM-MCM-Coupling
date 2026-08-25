@@ -147,7 +147,7 @@ def axes_triad(scale=0.02, origin=(-0.055, -0.055, -0.01)):
         lab = o + d * scale * 1.55
         traces.append(go.Scatter3d(
             x=[lab[0]], y=[lab[1]], z=[lab[2]], mode="text",
-            text=[name], textfont=dict(color=color, size=16),
+            text=[name], textfont=dict(color=color, size=20),
             showlegend=False, hoverinfo="skip"))
     return traces
 
@@ -236,16 +236,16 @@ def fig_melangeur_especes(X, small_p):
     fig.update_scenes(**scene_kwargs(CAM_3Q))
     fig.update_layout(
         paper_bgcolor=BG, margin=dict(l=0, r=0, t=50, b=30),
-        font=dict(color="white", size=17),
+        font=dict(color="white", size=21),
         showlegend=False,
         annotations=list(fig.layout.annotations) + [
             dict(x=0.35, y=0.02, xref="paper", yref="paper", showarrow=False,
                  text="\u25cf petites (4 mm)",
-                 font=dict(color=BLEU_PETITES, size=16),
+                 font=dict(color=BLEU_PETITES, size=20),
                  bgcolor="white"),
             dict(x=0.65, y=0.02, xref="paper", yref="paper", showarrow=False,
                  text="\u25cf grandes (8 mm)",
-                 font=dict(color=ROUGE_GRANDES, size=16),
+                 font=dict(color=ROUGE_GRANDES, size=20),
                  bgcolor="white"),
         ],
     )
@@ -285,9 +285,9 @@ def fig_cellules(X, small_p, key, nom, lab):
             cmin=-0.5, cmax=9.5,
             color=[0],
             colorbar=dict(title=dict(text="cell_id",
-                                     font=dict(color="white", size=17)),
+                                     font=dict(color="white", size=20)),
                           tickvals=list(range(10)),
-                          tickfont=dict(color="white", size=16),
+                          tickfont=dict(color="white", size=19),
                           len=0.8, thickness=22),
             showscale=True, size=0.0001,
         ),
@@ -297,10 +297,10 @@ def fig_cellules(X, small_p, key, nom, lab):
     fig.update_scenes(camera=CAM_COTE, row=1, col=2)
     fig.update_layout(
         paper_bgcolor=BG, margin=dict(l=0, r=0, t=64, b=0),
-        font=dict(color="white", size=17),
+        font=dict(color="white", size=21),
         title=dict(text=f"Découpage {nom} — particules colorées par cellule "
                         f"(t = 1,57 s), numéro de cellule au barycentre",
-                   font=dict(color="white", size=18), x=0.5),
+                   font=dict(color="white", size=22), x=0.5),
     )
     add_triad_all_scenes(fig)
     fig.write_image(FIGDIR / f"pv_cellules_{key}.png",
@@ -332,14 +332,14 @@ def fig_contenu_cellule(X, small_p, labels):
             text=(f"Contenu de la cellule {cell} (découpage physique, "
                   f"t = 1,57 s) : {ns} petites + {ntot - ns} grandes "
                   f"\u21d2 teneur c = {ns}/{ntot} = {c:.2f}"),
-            font=dict(color="white", size=18), x=0.5),
+            font=dict(color="white", size=22), x=0.5),
         annotations=[
             dict(x=0.32, y=0.02, xref="paper", yref="paper", showarrow=False,
                  text="\u25cf petites de la cellule",
-                 font=dict(color=BLEU_PETITES, size=15), bgcolor="white"),
+                 font=dict(color=BLEU_PETITES, size=19), bgcolor="white"),
             dict(x=0.68, y=0.02, xref="paper", yref="paper", showarrow=False,
                  text="\u25cf grandes de la cellule",
-                 font=dict(color=ROUGE_GRANDES, size=15), bgcolor="white"),
+                 font=dict(color=ROUGE_GRANDES, size=19), bgcolor="white"),
         ],
     )
     add_triad_all_scenes(fig)
@@ -370,7 +370,7 @@ def fig_melange_instants(X, small_p):
     fig.update_scenes(**scene_kwargs(CAM_FACE))
     fig.update_layout(
         paper_bgcolor=BG, margin=dict(l=0, r=0, t=40, b=8),
-        font=dict(color="white", size=17), showlegend=False,
+        font=dict(color="white", size=21), showlegend=False,
     )
     add_triad_all_scenes(fig)
     fig.write_image(FIGDIR / "pv_melange_instants.png",
@@ -396,7 +396,7 @@ def fig_melange_instants_voronoi(X, small_p):
     fig.update_scenes(**scene_kwargs(CAM_FACE))
     fig.update_layout(
         paper_bgcolor=BG, margin=dict(l=0, r=0, t=42, b=8),
-        font=dict(color="white", size=17), showlegend=False,
+        font=dict(color="white", size=21), showlegend=False,
     )
     add_triad_all_scenes(fig)
     fig.write_image(FIGDIR / "pv_melange_instants_voronoi.png",
@@ -456,22 +456,32 @@ def _cell_id_labels(X_t, lab, view="face", per_cell_colors=None):
             x=[x], y=[y], z=[z], mode="text",
             text=[str(int(c))],
             textfont=dict(color=_label_text_color(c, per_cell_colors),
-                          size=24, family="Arial Black"),
+                          size=34, family="Arial Black"),
             showlegend=False, hoverinfo="skip"))
     return traces
 
 
+NOMS_METHODES = {
+    "cartesien": "cartésien",
+    "cylindrique": "cylindrique",
+    "voronoi": "Voronoï",
+    "physique": "physique",
+}
+
+
 def fig_teneur_3d(X, small_p):
-    """Mélangeur discrétisé (Voronoï) coloré par la teneur locale de la
-    cellule, vues de face et de côté, régime établi et instant tardif.
-    Chaque cellule porte son numéro (cell_id) au barycentre : la teneur et
-    la cellule concernée se lisent sur la même figure."""
+    """Mélangeur discrétisé coloré par la teneur locale de la cellule,
+    vues de face et de côté : régime établi (t = 1,57 s) pour les quatre
+    méthodes de découpage, plus l'instant tardif (t = 30 s) pour le
+    Voronoï. Chaque cellule porte son numéro (cell_id) au barycentre :
+    la teneur et la cellule concernée se lisent sur la même figure."""
     d = np.load(ROOT / "data" / "labels_librairie.npz")
     diam = np.where(small_p, D_SMALL, D_BIG)
     cmap = plt_cmap_viridis()
-    for t in (157, 3000):
-        lab = d[f"voronoi_{t}"].astype(int)
-        ten = d[f"voronoi_teneur_{t}"]
+    cas = [(key, 157) for key in NOMS_METHODES] + [("voronoi", 3000)]
+    for key, t in cas:
+        lab = d[f"{key}_{t}"].astype(int)
+        ten = d[f"{key}_teneur_{t}"]
         vals = ten[lab]
         colors = (np.array([cmap(v) for v in vals])[:, :3] * 255).astype(int)
         fig = make_subplots(
@@ -499,8 +509,8 @@ def fig_teneur_3d(X, small_p):
             marker=dict(colorscale="Viridis", cmin=0, cmax=1, color=[0],
                         colorbar=dict(
                             title=dict(text="teneur locale",
-                                       font=dict(color="white", size=17)),
-                            tickfont=dict(color="white", size=16),
+                                       font=dict(color="white", size=20)),
+                            tickfont=dict(color="white", size=19),
                             len=0.75, thickness=20),
                         showscale=True, size=0.0001),
             showlegend=False), row=1, col=2)
@@ -508,18 +518,19 @@ def fig_teneur_3d(X, small_p):
         imin, imax = int(np.argmin(ten)), int(np.argmax(ten))
         fig.update_layout(
             paper_bgcolor=BG, margin=dict(l=0, r=0, t=64, b=8),
-            font=dict(color="white", size=17),
-            title=dict(text=(f"Teneur locale par cellule (Voronoï, "
+            font=dict(color="white", size=21),
+            title=dict(text=(f"Teneur locale par cellule "
+                             f"({NOMS_METHODES[key]}, "
                              f"t = {t / 100:g} s) — min : cellule {imin} "
                              f"({cmin:.2f}), max : cellule {imax} "
                              f"({cmax:.2f}) — numéro de cellule au "
                              f"barycentre"),
-                       font=dict(color="white", size=18), x=0.5),
+                       font=dict(color="white", size=22), x=0.5),
         )
         add_triad_all_scenes(fig)
-        fig.write_image(FIGDIR / f"pv_teneur_voronoi_t{t}.png",
+        fig.write_image(FIGDIR / f"pv_teneur_{key}_t{t}.png",
                         width=1700, height=780, scale=1)
-        print(f"pv_teneur_voronoi_t{t} ok")
+        print(f"pv_teneur_{key}_t{t} ok")
 
 
 def plt_cmap_viridis():
