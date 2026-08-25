@@ -1,3 +1,1 @@
 *.parquet filter=lfs diff=lfs merge=lfs -text
-
-data/chunks/*.parquet.gz !filter !diff !merge -text

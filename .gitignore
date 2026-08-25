@@ -33,12 +33,5 @@ env/
 outputs/
 RaffinageTemporel/
 
-# Large data files
-simulation_complete.parquet
-simulation_complete.parquet.gz
-
-# Large data files
-simulation_complete.parquet
-simulation_complete.parquet.gz
-
-_temp_*.parquet
+# Données DEM locales (disponibles sur la branche arena/01a0231f / dataset HF)
+data/

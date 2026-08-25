@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 CHUNKS_DIR  = Path("data/chunks")
-NUM_CHUNKS  = 15
+NUM_CHUNKS  = 8
 
 
 def load_simulation_data() -> pd.DataFrame:

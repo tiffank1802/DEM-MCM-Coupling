@@ -769,9 +769,12 @@ def compute_P_matrix_torch(
     # denominator[i] = number of pairs starting from state i.
     denominator = phi_prev.sum(dim=0)
 
-    # Row-stochastic: P[i, j] = #(i -> j) / #(i).
+    # Row-stochastic: P[i, j] = #(i -> j) / #(i). Rows never observed as
+    # source keep NaN entries (division by zero): they signal a
+    # non-conforming matrix instead of being silently zeroed, so that the
+    # homogenisation condition (each column of the report convention sums
+    # to one) can be genuinely checked downstream.
     P = transitions / denominator.unsqueeze(1)
-    P[denominator == 0] = 0.0
 
     return P.to(torch.float64)
 
