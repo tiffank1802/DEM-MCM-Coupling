@@ -738,10 +738,7 @@ def chaines_inhomogenes(etudes):
     ax.set_ylabel("Teneur locale en petites particules (–)")
     add_tours_axis(ax)
     ax.grid(alpha=0.3)
-    leg = ax.legend(ncol=5, fontsize=10, loc="upper right",
-                    title="DEM : trait continu — Markov inhomogène : "
-                          "points épais")
-    leg.get_title().set_fontsize(10)
+    ax.legend(ncol=5, fontsize=10, loc="upper right")
     fig.tight_layout()
     fig.savefig(FIGDIR / "teneur_physique_inhomogene_lib.png", dpi=200)
     plt.close(fig)
@@ -775,10 +772,7 @@ def teneur_nlt_extremes(etudes):
         ax.set_ylabel("Teneur locale en petites particules (–)")
         add_tours_axis(ax)
         ax.grid(alpha=0.3)
-        leg = ax.legend(ncol=5, fontsize=10, loc="upper right",
-                        title=f"NLT = {nlt} — DEM : trait continu, "
-                              f"Markov : points épais")
-        leg.get_title().set_fontsize(10)
+        ax.legend(ncol=5, fontsize=10, loc="upper right", title=f"NLT = {nlt}")
         fig.tight_layout()
         fig.savefig(FIGDIR / f"teneur_nlt{nlt}_lib.png", dpi=200)
         plt.close(fig)
@@ -899,15 +893,16 @@ def matrices_par_methode(etudes):
 
 
 def _plot_superpose(ax, t_dem, M_dem, t_mk, M_mk, cells):
-    """Superpose la référence DEM (trait continu) et la prédiction de
-    Markov (marqueurs de points épais), une couleur distincte par cellule
-    (palette de cellules conservée dans tout le rapport)."""
+    """Superpose la référence DEM (trait continu fin) et la prédiction de
+    Markov (marqueurs fins, pointillés de taille réduite), avec légende
+    normale et palette de cellules conservée."""
+    # Trace avec légende normale : chaque cellule a sa couleur, DEM et Markov distingués
     for c in cells:
         col = CELL_COLORS[int(c) % len(CELL_COLORS)]
-        ax.plot(t_dem, M_dem[:, c], "-", color=col, lw=1.6,
+        ax.plot(t_dem, M_dem[:, c], "-", color=col, lw=1.2,
                 label=f"cellule {c}")
-        ax.plot(t_mk, M_mk[:, c], "o", color=col, ms=6.5,
-                markeredgecolor="white", markeredgewidth=0.5, zorder=3)
+        ax.plot(t_mk, M_mk[:, c], "o--", color=col, ms=3.5, lw=0.8,
+                markeredgecolor="white", markeredgewidth=0.4, zorder=3)
 
 
 def teneur_et_nombre(etudes):
@@ -939,15 +934,14 @@ def teneur_et_nombre(etudes):
     N_mk = trajs["small"][:n] + trajs["large"][:n]
 
     # ── teneur locale : DEM et Markov superposées ──
+    # Pour chaque méthode de découpage, trace uniquement la teneur et la vue du mélangeur discrétisé (zoom cadré)
     fig, ax = plt.subplots(figsize=(12.5, 6.2))
     _plot_superpose(ax, t_dem, C_dem, t, C_mk, cells)
     ax.set_xlabel("Temps (s)")
     ax.set_ylabel("Teneur locale en petites particules (–)")
     add_tours_axis(ax)
     ax.grid(alpha=0.3)
-    leg = ax.legend(ncol=5, fontsize=10, loc="upper right",
-                    title="DEM : trait continu — Markov : points épais")
-    leg.get_title().set_fontsize(10)
+    ax.legend(ncol=5, fontsize=10, loc="upper right")
     fig.tight_layout()
     fig.savefig(FIGDIR / "teneur_locale_cellules.png", dpi=200)
     plt.close(fig)
@@ -959,9 +953,7 @@ def teneur_et_nombre(etudes):
     ax.set_ylabel("Nombre de particules par cellule")
     add_tours_axis(ax)
     ax.grid(alpha=0.3)
-    leg = ax.legend(ncol=5, fontsize=10, loc="upper right",
-                    title="DEM : trait continu — Markov : points épais")
-    leg.get_title().set_fontsize(10)
+    ax.legend(ncol=5, fontsize=10, loc="upper right")
     fig.tight_layout()
     fig.savefig(FIGDIR / "nombre_particules_cellules.png", dpi=200)
     plt.close(fig)
