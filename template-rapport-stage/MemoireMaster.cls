@@ -19,24 +19,43 @@
 \LoadClass[a4paper,12pt]{article}
 
 % ------------------------------------------------------------
-% Paquets essentiels
+% Paquets essentiels - compatibilite moteur (pdfLaTeX, XeLaTeX, LuaLaTeX)
 % ------------------------------------------------------------
-\RequirePackage{fontspec}
+\RequirePackage{ifxetex,ifluatex}
+\newif\ifxetexorluatex
+\ifxetex
+  \xetexorluatextrue
+\else
+  \ifluatex
+    \xetexorluatextrue
+  \else
+    \xetexorluatexfalse
+  \fi
+\fi
+
+\ifxetexorluatex
+  \RequirePackage{fontspec}
+\else
+  \RequirePackage[T1]{fontenc}
+  \RequirePackage[utf8]{inputenc}
+  \RequirePackage{lmodern}
+\fi
 \RequirePackage[french]{babel}
 
-% Police Garamond 12 (imposée par les règles de présentation).
-% EB Garamond doit être installée sur le système (paquet "fonts-ebgaramond"
-% sous Debian/Ubuntu, ou "EB Garamond" via votre gestionnaire de polices).
-% Si la police n'est pas trouvée, remplacez par une police Garamond
-% disponible sur votre machine (ex: \setmainfont{Garamond}).
-\setmainfont{EBGaramond12}[
-  Path=/usr/share/fonts/truetype/ebgaramond/,
-  Extension=.ttf,
-  UprightFont=*-Regular,
-  BoldFont=*-Bold,
-  ItalicFont=*-Italic,
-  Ligatures=TeX
-]
+\ifxetexorluatex
+  \IfFileExists{/usr/share/fonts/truetype/ebgaramond/EBGaramond12-Regular.ttf}{
+    \setmainfont{EBGaramond12}[
+      Path=/usr/share/fonts/truetype/ebgaramond/,
+      Extension=.ttf,
+      UprightFont=*-Regular,
+      BoldFont=*-Bold,
+      ItalicFont=*-Italic,
+      Ligatures=TeX
+    ]
+  }{}
+\else
+  \IfFileExists{ebgaramond.sty}{\RequirePackage{ebgaramond}}{}
+\fi
 
 % Géométrie
 \RequirePackage[
