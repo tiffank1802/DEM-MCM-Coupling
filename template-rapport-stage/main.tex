@@ -698,7 +698,8 @@ L'algorithme de partitionnement reste un k-means, mais opéré dans un espace de
 
 \section{Résultats}
 \label{sec:resultats}
-
+% pour les snapshots du mélangeur, prends les à differents tours (1, fin-15,fin-5,fin) pour toutes les méthodes de découpage.
+% Reference les figures: elles sont mal referencées (erreur de referencement(??))
 Dans une optique industrielle, toutes les figures dont l'abscisse est le temps portent une double graduation : le temps en secondes (axe inférieur) et le nombre de tours du tambour correspondant (axe supérieur, un tour valant \SI{1.57}{s}) --- l'avancement d'un procédé de mélange en tambour s'exprimant usuellement en tours plutôt qu'en secondes.
 
 Cette section expose les résultats en suivant le fil de la problématique du mémoire, en trois temps. D'abord, l'influence du choix de la méthode de discrétisation sur la prédiction du modèle (\S\ref{subsec:res_discretisation}) : pour chaque découpage sont présentés la matrice de transition, les vecteurs d'état en nombre de particules et en teneur locale, et des vues du mélangeur discrétisé permettant de relier ces grandeurs à la géométrie effective des cellules. Ensuite, la robustesse des modèles vis-à-vis de leurs paramètres de construction : les études paramétriques (annexe~\ref{annexe:parametres}) montrent notamment que les découpages statistiques exigent peu de temps d'observation pour produire une matrice conforme, là où les découpages géométriques en réclament davantage (annexe~\ref{annexe:dt}). Enfin, l'apport des chaînes inhomogènes (\S\ref{subsec:res_inhomogene}) : on montre qu'elles modifient peu la prédiction des modèles statistiques, dont la matrice homogène capture déjà l'essentiel de la dynamique, alors qu'elles corrigent sensiblement les modèles géométriques.
