@@ -1142,21 +1142,27 @@ def etude_start_ecarts(etudes):
 
 
 def dump_labels_3d(etudes):
-    """Labels et teneurs par cellule pour les vues 3D (pyvista_js)."""
+    """Labels et teneurs par cellule pour les vues 3D (pyvista_js).
+    Snapshots demandés : tour 1 (157), fin-15 (3645), fin-5 (5215), fin (5999) pour toutes méthodes.
+    """
     out = {}
     from postprocessing.metrics import concentration_from_S
+    # instants pour snapshots : tour1, fin-15, fin-5, fin + 0 pour ref
+    times_snap = (0, 157, 3645, 5215, 5999, 3000)
     for key, et in etudes.items():
-        for t in (0, 157, 3000):
-            row = et.idx_to_row[t]
-            out[f"{key}_{t}"] = et.states_matrix[row]
-        # teneur par cellule au regime etabli et tardif (pour annotations)
-        for t in (157, 3000):
-            row = et.idx_to_row[t]
-            S_s = et.S_matrices["small"][row][None]
-            S_l = et.S_matrices["large"][row][None]
-            out[f"{key}_teneur_{t}"] = concentration_from_S(S_s, S_l)[0]
+        for t in times_snap:
+            if t in et.idx_to_row:
+                row = et.idx_to_row[t]
+                out[f"{key}_{t}"] = et.states_matrix[row]
+        # teneur par cellule à ces instants
+        for t in times_snap:
+            if t in et.idx_to_row:
+                row = et.idx_to_row[t]
+                S_s = et.S_matrices["small"][row][None]
+                S_l = et.S_matrices["large"][row][None]
+                out[f"{key}_teneur_{t}"] = concentration_from_S(S_s, S_l)[0]
     np.savez(ROOT / "data" / "labels_librairie.npz", **out)
-    print("labels 3D ok")
+    print("labels 3D ok – instants:", times_snap)
 
 
 def etude_dt(etudes):

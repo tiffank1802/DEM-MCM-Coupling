@@ -352,12 +352,12 @@ def fig_contenu_cellule(X, small_p, labels):
 
 def fig_melange_instants(X, small_p):
     """Mélangeur à des instants distincts : évolution du mélange
-    (non discrétisé, espèces distinctes)."""
+    (non discrétisé, espèces distinctes) – snapshots à différents tours : 1, fin-15, fin-5, fin."""
     diam = np.where(small_p, D_SMALL, D_BIG)
     colors = np.where(small_p[:, None],
                       [_hex2rgb(BLEU_PETITES)], [_hex2rgb(ROUGE_GRANDES)])
-    instants = [(0, "t = 0 s"), (157, "t = 1,57 s"),
-                (1000, "t = 10 s"), (3000, "t = 30 s")]
+    instants = [(157, "tour 1 (t = 1,57 s)"), (3645, "fin-15 (t = 36,45 s)"),
+                (5215, "fin-5 (t = 52,15 s)"), (5999, "fin (t = 60 s)")]
     fig = make_subplots(
         rows=2, cols=2,
         specs=[[{"type": "scene"}] * 2] * 2,
@@ -380,19 +380,20 @@ def fig_melange_instants(X, small_p):
 
 def fig_melange_instants_voronoi(X, small_p):
     """Mélangeur discrétisé (Voronoï) à des instants distincts :
-    particules colorées par cellule."""
+    particules colorées par cellule – snapshots tour1, fin-15, fin-5, fin."""
     d = np.load(ROOT / "data" / "labels_librairie.npz")
     diam = np.where(small_p, D_SMALL, D_BIG)
-    instants = [(0, "t = 0 s"), (157, "t = 1,57 s"), (3000, "t = 30 s")]
+    instants = [(157, "tour 1 (t = 1,57 s)"), (3645, "fin-15 (t = 36,45 s)"),
+                (5215, "fin-5 (t = 52,15 s)"), (5999, "fin (t = 60 s)")]
     fig = make_subplots(
-        rows=1, cols=3, specs=[[{"type": "scene"}] * 3],
+        rows=2, cols=2, specs=[[{"type": "scene"}] * 2] * 2,
         subplot_titles=[t for _, t in instants],
-        horizontal_spacing=0.005,
+        horizontal_spacing=0.005, vertical_spacing=0.04,
     )
     for k, (t, _) in enumerate(instants):
         lab = d[f"voronoi_{t}"].astype(int)
         colors = np.array([_hex2rgb(TAB10[l % 10]) for l in lab])
-        fig.add_trace(spheres_mesh(X[t], diam / 2, colors), row=1, col=k + 1)
+        fig.add_trace(spheres_mesh(X[t], diam / 2, colors), row=k//2+1, col=k%2+1)
     fig.update_scenes(**scene_kwargs(CAM_FACE))
     fig.update_layout(
         paper_bgcolor=BG, margin=dict(l=0, r=0, t=42, b=8),
@@ -471,14 +472,17 @@ NOMS_METHODES = {
 
 def fig_teneur_3d(X, small_p):
     """Mélangeur discrétisé coloré par la teneur locale de la cellule,
-    vues de face et de côté : régime établi (t = 1,57 s) pour les quatre
-    méthodes de découpage, plus l'instant tardif (t = 30 s) pour le
-    Voronoï. Chaque cellule porte son numéro (cell_id) au barycentre :
-    la teneur et la cellule concernée se lisent sur la même figure."""
+    vues de face et de côté : snapshots à différents tours (tour1, fin-15, fin-5, fin)
+    pour les quatre méthodes de découpage. Chaque cellule porte son numéro au barycentre.
+    Figures pyvista_js avec particules réelles."""
     d = np.load(ROOT / "data" / "labels_librairie.npz")
     diam = np.where(small_p, D_SMALL, D_BIG)
     cmap = plt_cmap_viridis()
-    cas = [(key, 157) for key in NOMS_METHODES] + [("voronoi", 3000)]
+    # snapshots demandés pour toutes méthodes
+    times_snap = [157, 3645, 5215, 5999]
+    cas = [(key, t) for key in NOMS_METHODES for t in times_snap]
+    # garder aussi 3000 pour compatibilité
+    cas += [("voronoi", 3000)]
     for key, t in cas:
         lab = d[f"{key}_{t}"].astype(int)
         ten = d[f"{key}_teneur_{t}"]
@@ -540,6 +544,43 @@ def plt_cmap_viridis():
     return plt.get_cmap("viridis")
 
 
+
+def fig_snapshots_all_methods(X, small_p):
+    """Snapshots pyvista_js avec particules réelles pour chaque méthode à 4 tours : tour1, fin-15, fin-5, fin.
+    Chaque figure combine 4 instants (2x2) avec particules colorées par teneur locale, zoom cadré.
+    """
+    d = np.load(ROOT / "data" / "labels_librairie.npz")
+    diam = np.where(small_p, D_SMALL, D_BIG)
+    cmap = plt_cmap_viridis()
+    times_snap = [(157, "tour 1"), (3645, "fin-15"), (5215, "fin-5"), (5999, "fin")]
+    for key in NOMS_METHODES:
+        fig = make_subplots(
+            rows=2, cols=2, specs=[[{"type": "scene"}]*2]*2,
+            subplot_titles=[f"{name} (t={t/100:.2f}s)" for t,name in times_snap],
+            horizontal_spacing=0.01, vertical_spacing=0.04,
+        )
+        for k,(t,name) in enumerate(times_snap):
+            if f"{key}_{t}" not in d or f"{key}_teneur_{t}" not in d:
+                continue
+            lab = d[f"{key}_{t}"].astype(int)
+            ten = d[f"{key}_teneur_{t}"]
+            vals = ten[lab]
+            colors = (np.array([cmap(v) for v in vals])[:,:3]*255).astype(int)
+            fig.add_trace(spheres_mesh(X[t], diam/2, colors), row=k//2+1, col=k%2+1)
+        fig.update_scenes(**scene_kwargs(CAM_FACE))
+        fig.update_layout(
+            paper_bgcolor=BG, margin=dict(l=0,r=0,t=60,b=0),
+            font=dict(color="white", size=18),
+            title=dict(text=f"Snapshots pyvista – découpage {NOMS_METHODES[key]} – particules réelles colorées par teneur locale (tour1, fin-15, fin-5, fin)",
+                       font=dict(color="white", size=20), x=0.5),
+            showlegend=False,
+        )
+        add_triad_all_scenes(fig)
+        out = FIGDIR / f"pv_snapshot_{key}_teneur.png"
+        fig.write_image(out, width=1600, height=1400, scale=1)
+        print(f"pv_snapshot_{key} ok -> {out}")
+
+
 if __name__ == "__main__":
     X, V, small_p = load_frames()
     labels = partition_labels(X, V, small_p)
@@ -547,7 +588,8 @@ if __name__ == "__main__":
     fig_melange_instants(X, small_p)
     fig_melange_instants_voronoi(X, small_p)
     fig_teneur_3d(X, small_p)
+    fig_snapshots_all_methods(X, small_p)
     for key, (nom, lab) in labels.items():
         fig_cellules(X, small_p, key, nom, lab)
     fig_contenu_cellule(X, small_p, labels)
-    print("✅ figures WebGL écrites dans", FIGDIR)
+    print("✅ figures WebGL (pyvista_js) avec particules réelles écrites dans", FIGDIR)
