@@ -220,22 +220,22 @@
     % Logos : placez vos fichiers dans un dossier ./logos/
     % Vous pouvez remplacer les noms de fichiers par les vrais logos.
     % ------------------------------------------------------------
-    % \begin{minipage}{0.30\linewidth}
-    %   \centering
-    %   \logoouplaceholder{logos/logo_ECL_ENISE.jpg}{Centrale Lyon\\ ENISE}
-    % \end{minipage}
-    \begin{minipage}{0.30\linewidth}
+    \begin{minipage}{0.20\linewidth}
       \centering
-      \logoouplaceholder{logos/logo_ECL_ENISE.png}{Centrale Lyon\\ ENISE}
+      \logoouplaceholder{logos/centrale-lyon-enise.png}{Centrale Lyon\\ ENISE}
     \end{minipage}
-    \begin{minipage}{0.30\linewidth}
+    \begin{minipage}{0.20\linewidth}
       \centering
-      \logoouplaceholder{logos/logo_ENSM_SE.png}{ENSM\\ Saint-Étienne}
+      \logoouplaceholder{logos/emse.png}{ENSM\\ Saint-Étienne}
     \end{minipage}%
-    \hfill
-    \begin{minipage}{0.30\linewidth}
+    \begin{minipage}{0.20\linewidth}
       \centering
-      \logoouplaceholder{logos/logo_Mines_Albi.png}{Mines\\ Albi}
+      \logoouplaceholder{logos/centrale-lyon.png}{Centrale Lyon\\ ENISE}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.20\linewidth}
+      \centering
+      \logoouplaceholder{logos/univ-lyon.png}{Mines\\ Albi}
     \end{minipage}%
     \hfill
 

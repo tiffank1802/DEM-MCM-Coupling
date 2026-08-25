@@ -19,6 +19,7 @@
   \usepackage{ebgaramond}
 }{}
 
+\usepackage{rotating} % pour sidewaystable
 \usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{float}
@@ -162,7 +163,7 @@ The model relies on a spatial discretization of the mixer followed by estimation
 % ============================================================
 % Nommenclature
 % ============================================================
-\section{Nommenclature}
+\section{Nomenclature}
 
 $S(t_k)$ : vecteur d'état, vecteur de taille $N$ dont chacune des composantes $S_i(t_k)$ represente le nombre de particules (ou la teneur en une espèce) dans la cellule $i$ à l'instant $t_k$
 
@@ -745,7 +746,7 @@ Les matrices de transition (figure~\ref{fig:matrice_cartesien}) révèlent d'emb
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/matrice_cartesien_especes.png}
-  \caption{Matrices de transition du découpage cartésien (10 bandes dans le repère du lit ; configuration : $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas), séparément pour chaque espèce ; probabilités arrondies au centième, barre de couleur commune aux deux espèces, chaque colonne somme à un.}
+  \caption{Matrices de transition du découpage cartésien (10 bandes dans le repère du lit ; configuration : $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
   \label{fig:matrice_cartesien}
 \end{figure}
 
@@ -778,7 +779,7 @@ La figure~\ref{fig:pv_cellules_cylindrique} montre la labélisation du découpag
   \label{fig:pv_cellules_cylindrique}
 \end{figure}
 
-Les matrices de transition construites par espèce pour le découpage cylindrique (10 secteurs, $\tau = \SI{1.57}{s}$) --- même nombre de cellules que les autres méthodes afin de permettre une comparaison à résolution égale --- sont données à la figure~\ref{fig:matrice_cylindrique}. La structure en blocs, alignée sur la numérotation radiale $\to$ angulaire, traduit la physique de l'écoulement : les transitions dominantes relient des cellules angulairement voisines --- signature de l'entraînement en rotation solide dans la zone passive ---, tandis que les cellules radialement internes échangent avec les cellules externes via l'écoulement de surface. Certaines colonnes concentrent une forte probabilité sur une seule cellule d'arrivée (jusqu'à $\approx 0{,}6$) : elles correspondent aux cellules du cœur du lit, dont les particules sont transportées en bloc vers une destination quasi déterministe en un tour de tambour. La comparaison des deux espèces retrouve l'asymétrie déjà observée : les petites particules répartissent leurs probabilités sur davantage de cellules d'arrivée que les grandes. À l'inverse du découpage cartésien, aucune colonne vide n'apparaît : chaque cellule est visitée durant l'apprentissage, et la condition de stochasticité en colonne~\eqref{eq:stochastique} est vérifiée sur l'ensemble de la matrice.
+Les matrices de transition construites par espèce pour le découpage cylindrique (10 secteurs, $\tau = \SI{1.57}{s}$) --- même nombre de cellules que les autres méthodes afin de permettre une comparaison à résolution égale --- sont données à la figure~\ref{fig:matrice_cylindrique}. La structure en blocs, alignée sur la numérotation radiale $\to$ angulaire, traduit la physique de l'écoulement : les transitions dominantes relient des cellules angulairement voisines --- signature de l'entraînement en rotation solide dans la zone passive ---, tandis que les cellules radialement internes échangent avec les cellules externes via l'écoulement de surface. Certaines colonnes concentrent une forte probabilité sur une seule cellule d'arrivée : elles correspondent aux cellules du cœur du lit, dont les particules sont transportées en bloc vers une destination quasi déterministe en un tour de tambour. La comparaison des deux espèces retrouve l'asymétrie déjà observée : les petites particules répartissent leurs probabilités sur davantage de cellules d'arrivée que les grandes. À l'inverse du découpage cartésien, aucune colonne vide n'apparaît : chaque cellule est visitée durant l'apprentissage, et la condition de stochasticité en colonne~\eqref{eq:stochastique} est vérifiée sur l'ensemble de la matrice.
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/matrice_cylindrique_especes.png}
@@ -817,14 +818,22 @@ Deux matrices distinctes sont estimées en appliquant un masque sur les labels a
   \label{fig:matrices_voronoi}
 \end{figure}
 
-\paragraph{Vecteur d'état par comptage.} La figure~\ref{fig:vecteur_etat_nb} superpose, pour chaque cellule, l'évolution du nombre de particules dans la référence DEM (trait continu) et dans la prédiction markovienne homogène (marqueurs de points épais), avec une couleur distincte par cellule --- ce code couleur des cellules est conservé dans l'ensemble du rapport, y compris sur les vues 3D du mélangeur discrétisé. L'occupation des cellules est stable et bien reproduite par le modèle --- la conservation du nombre total de particules est assurée par la stochasticité de la matrice --- mais cette représentation ne permet pas de discriminer les zones enrichies en une espèce.
+% \paragraph{Vecteur d'état par comptage.} La figure~\ref{fig:vecteur_etat_nb} superpose, pour chaque cellule, l'évolution du nombre de particules dans la référence DEM (trait continu) et dans la prédiction markovienne homogène (marqueurs de points épais), avec une couleur distincte par cellule --- ce code couleur des cellules est conservé dans l'ensemble du rapport, y compris sur les vues 3D du mélangeur discrétisé. L'occupation des cellules est stable et bien reproduite par le modèle --- la conservation du nombre total de particules est assurée par la stochasticité de la matrice --- mais cette représentation ne permet pas de discriminer les zones enrichies en une espèce.
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=\linewidth]{figures/nombre_particules_cellules.png}
-  \caption{Nombre de particules par cellule (toutes espèces), configuration $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas.}
-  \label{fig:vecteur_etat_nb}
-\end{figure}
+% \begin{figure}[H]
+%   \centering
+%   \includegraphics[width=\linewidth]{figures/nombre_particules_cellules.png}
+%   \caption{Nombre de particules par cellule (toutes espèces), configuration $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas.}
+%   \label{fig:vecteur_etat_nb}
+% \end{figure}
+
+% pour chaque méthode de découpage, trace le vecteur d'état en teneur uniquement et la vue du mélangeur discrétisé(zoom sur la caméra de sorte que l'image soit bien cadrée (du moins les deux images(vue de face et vue de profil)))
+% À partir de l'analyse de cette evolution de la teneur au fil des tours( au cours du temps), identifie les cellules les plus ou les moins peuplées et c'est celle là qui seront la source de notre attention
+% je rappelle que la teneur donne une idée de la repartition des espèces dans chaque cellule, au cours du temps; elle permet de savoir l'état de mélange d'une cellule.
+% le rsd quant à lui a une vision plus globale, dans la moyenne des cellules.
+
+% reduit la taille des pointillés pour le tracé de la teneur de markov. Mets une legende normale et non pas du texte(ne mets plus: 'DEM: trait continu','Markov:points épais')
+
 
 \paragraph{Vecteur d'état par teneur locale.} En substituant au comptage la teneur en petites particules, des écarts significatifs entre cellules émergent (figure~\ref{fig:teneur_petites}) : certaines cellules s'enrichissent durablement en petits grains tandis que d'autres s'appauvrissent. Cette hétérogénéité, invisible dans le comptage, traduit la ségrégation en cours : les petites particules percolent vers la paroi et le cœur du lit, d'où elles ne remontent que difficilement. La superposition des deux tracés montre que la prédiction markovienne (marqueurs) restitue les niveaux moyens de teneur de chaque cellule mais lisse les fluctuations rapides de la DEM (trait continu).
 
@@ -930,30 +939,38 @@ La comparaison est ensuite portée sur les courbes de teneur locale, second indi
 
 Le tableau~\ref{tab:erreur_methodes} complète cette analyse en rassemblant, pour les quatre méthodes de découpage et pour chaque espèce, l'écart temporel RMS $|\text{Markov}-\text{DEM}|$ et la carte des écarts absolus par cellule (configuration : $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas). Les écarts RMS moyens en régime établi s'échelonnent de 3,2 à 3,8 particules pour les grandes et de 6,1 à 8,6 particules pour les petites, ces dernières étant systématiquement plus difficiles à prédire du fait de leur mobilité par percolation.
 
-\begin{table}[H]
+
+
+
+
+
+
+\begin{sidewaystable}
   \centering
   \caption{Erreur de prédiction markovienne par méthode de discrétisation et par espèce : écart temporel RMS et carte des écarts absolus par cellule.}
   \label{tab:erreur_methodes}
   \begin{tabular}{@{}c@{}}
     \toprule
     \textbf{Cartésien} --- grandes particules (gauche), petites particules (droite)\\
-    \includegraphics[width=0.495\textwidth]{figures/erreur_lib_cartesien_large.png}%
-    \includegraphics[width=0.495\textwidth]{figures/erreur_lib_cartesien_small.png}\\
+    \includegraphics[width=0.45\textheight]{figures/erreur_lib_cartesien_large.png}%
+    \includegraphics[width=0.45\textheight]{figures/erreur_lib_cartesien_small.png}\\
     \midrule
     \textbf{Cylindrique} --- grandes particules (gauche), petites particules (droite)\\
-    \includegraphics[width=0.495\textwidth]{figures/erreur_lib_cylindrique_large.png}%
-    \includegraphics[width=0.495\textwidth]{figures/erreur_lib_cylindrique_small.png}\\
+    \includegraphics[width=0.45\textheight]{figures/erreur_lib_cylindrique_large.png}%
+    \includegraphics[width=0.45\textheight]{figures/erreur_lib_cylindrique_small.png}\\
     \midrule
     \textbf{Voronoï} --- grandes particules (gauche), petites particules (droite)\\
-    \includegraphics[width=0.495\textwidth]{figures/erreur_lib_voronoi_large.png}%
-    \includegraphics[width=0.495\textwidth]{figures/erreur_lib_voronoi_small.png}\\
+    \includegraphics[width=0.45\textheight]{figures/erreur_lib_voronoi_large.png}%
+    \includegraphics[width=0.45\textheight]{figures/erreur_lib_voronoi_small.png}\\
     \midrule
     \textbf{Physique} --- grandes particules (gauche), petites particules (droite)\\
-    \includegraphics[width=0.495\textwidth]{figures/erreur_lib_physique_large.png}%
-    \includegraphics[width=0.495\textwidth]{figures/erreur_lib_physique_small.png}\\
+    \includegraphics[width=0.45\textheight]{figures/erreur_lib_physique_large.png}%
+    \includegraphics[width=0.45\textheight]{figures/erreur_lib_physique_small.png}\\
     \bottomrule
   \end{tabular}
-\end{table}
+\end{sidewaystable}
+
+
 
 La comparaison des quatre rangées révèle des différences substantielles tant en amplitude qu'en morphologie de l'erreur. Le modèle de Markov est donc fortement conditionné par la manière dont l'espace est partitionné : la robustesse de la prédiction ne dépend pas uniquement de la physique du mélange, mais aussi --- et peut-être surtout --- du choix de maillage. Les méthodes statistiques, qui adaptent les cellules à l'occupation réelle du mélangeur, réduisent nettement l'erreur par rapport aux références géométriques. Le cas du découpage cylindrique est instructif : bien qu'il respecte la géométrie de l'enceinte et élimine les cellules vides du cartésien, il produit le plus grand écart de RSD (tableau~\ref{tab:ecart_rsd_methodes}) --- ses cellules, solidaires de la symétrie de révolution, moyennent les zones enrichies et appauvries en petites particules. Respecter la géométrie du contenant ne suffit donc pas : c'est la structure de l'écoulement, et non celle de l'enceinte, que le maillage doit épouser.
 
