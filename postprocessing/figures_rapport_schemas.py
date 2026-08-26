@@ -495,11 +495,11 @@ def schema_construction_markov():
     boite(0.0, 2.6, 2.6, 1.5, "1. Données DEM",
           "positions, vitesses,\ndiamètres\n(6000 instants)")
     boite(3.4, 2.6, 2.9, 1.5, "2. Ajustement du\npartitionneur",
-          "fit sur le régime\npermanent\n(limites, centres)")
+          "entrainement sur le régime\npermanent des\ncoordonnées des \nparticules")
     boite(7.1, 2.6, 2.9, 1.5, "3. Labélisation",
           "label $l_p(t_k)$ de chaque\nparticule à chaque instant")
     boite(10.8, 2.6, 3.0, 1.5, "4. Vecteurs d'état",
-          "comptage par cellule\net par espèce\n$S_i(t_k)$")
+          "Calcul du nombre de particules de\n chaque espèces\npar cellule\net par espèce\n$S_i(t_k)$")
     fleche(2.6, 3.35, 3.4, 3.35)
     fleche(6.3, 3.35, 7.1, 3.35)
     fleche(10.0, 3.35, 10.8, 3.35)
@@ -513,7 +513,7 @@ def schema_construction_markov():
     boite(1.6, 0.3, 3.6, 1.5, "7. Validation vs DEM",
           "teneur locale en petites\nparticules, RSD,\nécart $|$Markov $-$ DEM$|$",
           fc="#fdeeee", ec=ROUGE)
-    fleche(12.3, 2.6, 12.3, 1.8, "apprentissage\n($start$, $\\tau$, $step$, $dt$, $NLT$)", dy=0.0)
+    fleche(12.3, 2.6, 12.3, 1.8, "statistique des transitions entre cellules\n($start$, $\\tau$, $step$, $dt$, $NLT$)", dy=0.0)
     fleche(10.8, 1.05, 9.8, 1.05)
     fleche(6.4, 1.05, 5.2, 1.05, "comparaison à la\nréférence DEM", dy=0.35)
 

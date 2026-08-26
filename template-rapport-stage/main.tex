@@ -165,9 +165,9 @@ The model relies on a spatial discretization of the mixer followed by estimation
 % ============================================================
 \section{Nomenclature}
 
-$S(t_k)$ : vecteur d'état, vecteur de taille $N$ dont chacune des composantes $S_i(t_k)$ represente le nombre de particules (ou la teneur en une espèce) dans la cellule $i$ à l'instant $t_k$
+$S(t_k)$ : vecteur d'état, vecteur de taille $N$ dont chacune des composantes $S_i(t_k)$ represente le nombre de particules  dans la cellule $i$ à l'instant $t_k$
 
-$S_i(t_k)$ : composante du vecteur d'état $S(t_k)$, represente le nombre de particules dans la cellule $i$ à l'instant $t_k$
+$C(t_k)$ : vecteur d'état, vecteur de taille $N$ dont chacune des composantes $c_i(t_k)$ represente la teneur locale en  particules de type $a$ ou $b$ dans la cellule $i$ à l'instant $t_k$
 
 $t_k$ : instant d'observation du mélangeur, instant de prédiction du modèle de markov
 
@@ -199,15 +199,21 @@ $\mathrm{RSD}$ : écart-type relatif (\textit{Relative Standard Deviation}), ind
 % ============================================================
 \section{Introduction}
 
-Qu'il s'agisse de comprimer des poudres pharmaceutiques, de doser des granulats pour la construction, de conditionner des céréales ou d'incinérer des déchets en four rotatif industriel~\cite{ndiaye2010}, les milieux granulaires interviennent dans un spectre industriel remarquablement large. Or, dès que des particules de tailles ou de densités différentes cohabitent, la ségrégation menace l'homogénéité du produit et, par là même, la qualité du procédé. Comprendre, prédire afin de contrôler ces phénomènes de tri spontané constitue donc un enjeu à la fois scientifique et économique de premier plan.
+Qu'il s'agisse de comprimer des poudres pharmaceutiques, de doser des granulats pour la construction, de conditionner des céréales ou d'incinérer des déchets en four rotatif industriel~\cite{ndiaye2010}, les milieux granulaires interviennent dans un spectre industriel remarquablement large. Or, dès que des particules de tailles ou de densités différentes cohabitent, la ségrégation menace l'homogénéité du produit et, par là même, sa qualité. Comprendre, prédire et contrôler ces phénomènes de tri spontané constitue donc un enjeu à la fois scientifique et économique .
 
-La simulation par la méthode des éléments discrets (DEM, \textit{Discrete Element Method}) offre une description exhaustive de la dynamique particulaire en résolvant, à chaque pas de temps de l'ordre de $10^{-6}$\,s, l'ensemble des contacts inter-grains et grain-paroi. Cette finesse a toutefois un coût en ressources numériques qui rend la méthode prohibitive dès que le nombre de particules atteint des ordres de grandeur industriels. D'où l'idée de substituer à la trajectoire déterministe de chaque grain un modèle probabiliste opéré à l'échelle de cellules spatiales.
+La simulation par la méthode des éléments discrets (DEM, \textit{Discrete Element Method}) offre une description exhaustive de la dynamique particulaire en résolvant, à chaque pas de temps, l'ensemble des contacts inter-grains et grains-paroi. Cette précision a toutefois un coût en ressources numériques qui rend la méthode prohibitive dès que le nombre de particules atteint des ordres de grandeur industriels. 
+D'où l'idée de substituer à la trajectoire déterministe de chaque grain par un modèle stochastique opéré à l'échelle de cellules spatiales suffisamment larges et dont le nombre reste faible devant le nombre de particules.
 
-L'objectif de ce travail est précisément de construire et d'évaluer un tel modèle stochastique --- une chaîne de Markov --- capable de reproduire les mécanismes de ségrégation observés dans une simulation DEM de référence. Or la qualité d'un tel modèle dépend d'abord de la manière dont le mélangeur est discrétisé : c'est le maillage qui définit les états de la chaîne, et donc la finesse avec laquelle la physique du mélange est capturée. La problématique qui sert de fil conducteur à ce mémoire peut alors se formuler ainsi : \textbf{quelle est l'influence des méthodes de découpage du mélangeur sur la construction du modèle de Markov, et dans quelle mesure les chaînes inhomogènes doivent-elles être préconisées par rapport aux chaînes homogènes ?}
+L'objectif de ce travail est précisément de construire, observer et emettre des interprétations sur un tel modèle stochastique --- une chaîne de Markov --- capable de reproduire les mécanismes de ségrégation observés dans une simulation DEM de référence. 
+Un tel modèle dépend d'abord de la manière dont le mélangeur est discrétisé : c'est le maillage qui définit les états de la chaîne, et donc la résolution spatiale avec laquelle la physique du mélange est capturée. 
+La problématique qui sert de fil conducteur à ce mémoire peut alors se formuler ainsi : \textbf{Quelle est l'influence du maillage spatial et de la dépendance temporelle des paramètres d'une chaine de Markov sur la prédiction de l'évolution d'un mélange ségrégeant dans un tambour tournant ? }
 
-Pour y répondre, nous disposons d'une simulation DEM issue des travaux de thèse sur lesquels s'appuie ce stage~\cite{chachia2025}, portant sur 1030 particules bidisperses (350 de diamètre \SI{4}{mm}, 680 de diamètre \SI{8}{mm}), représentatives d'un mélange semoule/blé, confinées dans un tambour tournant à \SI{4}{rad/s}. Les positions sont enregistrées tous les \SI{0.01}{s} pendant \SI{60}{s}, soit 6000 instants d'observation.
+Pour y répondre, nous disposons d'une simulation DEM issue des travaux de thèse sur lesquels s'appuie ce stage~\cite{chachia2025}, portant sur 1030 particules bidisperses (350 de diamètre \SI{4}{mm}, 680 de diamètre \SI{8}{mm}), représentatives d'un mélange semoule/couscous, confinées dans un tambour tournant à \SI{4}{rad/s}. 
+Les positions sont enregistrées tous les \SI{0.01}{s} pendant \SI{60}{s}, soit 6000 instants d'observation.
 
-Le mémoire s'organise comme suit. La section~\ref{sec:contexte} replace l'étude dans son contexte bibliographique. La section~\ref{sec:methode} détaille le matériau de référence, le formalisme markovien et les stratégies de discrétisation, en justifiant chacun des choix méthodologiques ; la justification quantitative des paramètres du modèle ($\tau$, $NLT$, $start$, $step$) est reportée en annexe~\ref{annexe:parametres}. La section~\ref{sec:resultats} expose les résultats obtenus, structurés autour de la double question de l'influence du découpage et de l'apport des chaînes inhomogènes. La section~\ref{sec:conclusion} conclut et ouvre plusieurs perspectives.
+Le mémoire s'organise comme suit. La section~\ref{sec:contexte} replace l'étude dans son contexte bibliographique. 
+La section~\ref{sec:methode} détaille le matériau de référence, le formalisme markovien et les stratégies de discrétisation, en justifiant chacun des choix méthodologiques ; la justification quantitative des paramètres temporels du modèle ($\tau$, $NLT$, $start$, $step$) est reportée en annexe~\ref{annexe:parametres}. 
+La section~\ref{sec:resultats} expose les résultats obtenus pour différents maillages et en considérant une dépendance temporelle des paramètres de la chaine de Markov. La section~\ref{sec:conclusion} conclut et ouvre plusieurs perspectives.
 
 % ============================================================
 % CONTEXTE BIBLIOGRAPHIQUE
@@ -223,7 +229,7 @@ La modélisation du mélange granulaire par des approches markoviennes adossées
 
 Hu et Liu~\cite{hu2021} ont étendu cette démarche à des tambours rotatifs fonctionnant à différentes vitesses de rotation, mettant en évidence la capacité des modèles markoviens à réduire drastiquement le coût de simulation tout en préservant une information macroscopique pertinente sur la cinétique de mélange. Tjakra et al.~\cite{tjakra2013} ont, de leur côté, analysé la dynamique collective de systèmes particulaires par chaînes de Markov, confirmant l'intérêt de ces approches lorsque le nombre de grains interdit une simulation DEM exhaustive.
 
-Plus récemment, Chachia et al.~\cite{chachia2025} --- travaux de thèse sur lesquels s'appuie directement ce stage --- ont couplé un modèle DEM à une chaîne de Markov homogène pour accélérer la simulation du mélange de poudres en tambour tournant : la zone dense du mélange y est découpée en cellules en coordonnées cylindriques, les probabilités de transition sont calculées à chaque pas de temps, et plusieurs essais déterminent les paramètres pertinents de la matrice homogène moyenne, en recherchant l'équilibre entre le temps de mélange DEM nécessaire à l'apprentissage et la précision de la prédiction par rapport à la référence. L'homogénéité y est suivie par des indices de mélange adaptés, pour plusieurs configurations initiales et échelles d'observation. Le présent travail prolonge cette démarche vers le cas ségrégant, qui en constituait la perspective.
+Plus récemment, Chachia et al.~\cite{chachia2025} --- travaux sur lesquels s'appuie directement ce stage --- ont couplé un modèle DEM à une chaîne de Markov homogène pour accélérer la simulation du mélange de poudres en tambour tournant : la zone dense du mélange y est découpée en respectant une géométrie axi-symétrique, les probabilités de transition sont calculées à chaque pas de temps, et plusieurs essais déterminent les paramètres pertinents de la matrice homogène moyenne, en recherchant l'équilibre entre le temps de mélange DEM nécessaire à l'apprentissage et la précision de la prédiction par rapport à la référence. L'homogénéité y est suivie par des indices de mélange adaptés, pour plusieurs configurations initiales et échelles d'observation. Le présent travail prolonge cette démarche vers le cas ségrégant, qui en constituait la perspective.
 
 Ces travaux convergent vers un constat : la qualité d'un modèle markovien granulaire dépend étroitement de trois choix --- la méthode de maillage, la variable d'état retenue et la capacité du modèle à distinguer les dynamiques propres à chaque classe granulométrique. C'est sur ce triple constat que s'appuie la présente étude.
 
@@ -239,7 +245,7 @@ Cette section décrit successivement : le matériau de référence et la géomé
 \subsection{Matériau de référence}
 \label{subsec:materiau}
 
-La simulation de référence met en scène un mélange bidisperse représentatif d'un couple semoule/blé dans un tambour tournant. Les caractéristiques du mélange sont résumées au tableau~\ref{tab:particules}.
+La simulation de référence met en scène un mélange bidisperse représentatif d'un couple semoule/couscous dans un tambour tournant. Les caractéristiques du mélange sont résumées au tableau~\ref{tab:particules}.
 
 \begin{table}[ht]
   \centering
@@ -255,9 +261,9 @@ La simulation de référence met en scène un mélange bidisperse représentatif
 \end{table}
 
 Le mélangeur est un tambour cylindrique tournant autour de son axe horizontal $z$ à la vitesse de rotation constante $\omega = \SI{4}{rad/s}$. 
-La figure~\ref{fig:schema_tambour} en donne la géométrie : la vue de face (plan $x$--$y$) montre le lit de particules incliné par l'entraînement de la paroi, avec sa zone active de surface, lit du mélange où les grains dévalent et sa zone passive, zone d'équilibre en profondeur où ils sont transportés en bloc comme précisé par Morrison et al.~\cite{morrison2016} ; 
-la vue de côté (plan $y$--$z$) précise les dimensions caractéristiques, le diamètre $D = 2R= 0.1 m$ et la longueur axiale $L=0.1 m$.
-Dans la pratique, les limites exactes de la partie utile ne sont pas imposées a priori : elles sont recalées sur l'enveloppe des positions des particules observées durant le régime permanent de la simulation DEM (phase dite de \textit{fit}), ce qui évite de découper dans le vide et garantit que chaque cellule du maillage a une chance d'être peuplée.
+La figure~\ref{fig:schema_tambour} en donne la géométrie : la vue de face (plan $x$--$y$) montre le lit de particules incliné par la rotation de la paroi, avec sa zone active proche de la surface libre (entourée en bleue sur la figure~\ref{fig:schema_tambour} gauche), lit du mélange où les grains sont entrainés par la gravité et sa zone passive, zone d'équilibre en profondeur où ils sont transportés en bloc comme précisé par Morrison et al.~\cite{morrison2016} ; 
+dans le plan $x$--$y$ ---(figure~\ref{fig:schema_tambour} gauche) et de 3/4 (figure~\ref{fig:schema_tambour} droite)--- précise les dimensions caractéristiques du tambour, le diamètre $D = 2R= 0.1 m$ et la longueur axiale $L=0.1 m$.
+% Dans la pratique, les limites exactes de la partie utile ne sont pas imposées a priori : elles sont recalées sur l'enveloppe des positions des particules observées durant le régime permanent de la simulation DEM (phase dite de \textit{fit}), ce qui évite de découper dans le vide et garantit que chaque cellule du maillage a une chance d'être peuplée.
 
 \begin{figure}[H]
   \centering
@@ -266,7 +272,9 @@ Dans la pratique, les limites exactes de la partie utile ne sont pas imposées a
   \label{fig:schema_tambour}
 \end{figure}
 
-Les positions de l'ensemble des grains sont enregistrées tous les \SI{0.01}{s} sur \SI{60}{s}, soit 6000 instants d'observation. Cette base constitue la référence à partir de laquelle les matrices de transition sont estimées et les prédictions markoviennes sont validées. La figure~\ref{fig:pv_melangeur_especes} montre le système simulé, particules représentées à leur diamètre réel : à l'état initial, les 350 petites particules occupent une couche distincte sous les 680 grandes ; après un tour, le lit est en écoulement et l'inclinaison de la surface libre apparaît.
+Les positions de l'ensemble des grains sont enregistrées tous les \SI{0.01}{s} sur \SI{60}{s}, soit 6000 instants d'observation. Cette base constitue la référence à partir de laquelle les matrices de transition sont estimées et les prédictions markoviennes sont validées. 
+La figure~\ref{fig:pv_melangeur_especes} montre le système de particules représentées avec leur diamètre réel :à l'instant initial (figure~\ref{fig:pv_melangeur_especes} gauche), 
+les 350 petites particules occupent une couche distincte sous les 680 grandes ; après une rotation du tambour (figure~\ref{fig:pv_melangeur_especes} droite), le lit est en écoulement et l'inclinaison de la surface libre apparaît.
 
 \begin{figure}[H]
   \centering
@@ -309,7 +317,7 @@ La figure~\ref{fig:schema_forces} illustre ce bilan dans le cas du tambour tourn
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.7\textwidth]{figures/principe_simulation_DEM.png}
-  \caption{Bilan des actions mécaniques sur une particule de la zone d'équilibre du granulaire : force de contact normale $\mathbf{F}_{n,ij}$ et tangentielle $\mathbf{F}_{t,ij}$ au contact inter-grains, moment de rotation $\mathbf{M}_{r,ij}$, pesanteur $m_i\mathbf{g}$ et frottement tangentiel à la paroi entraînante.}
+  \caption{Bilan des actions mécaniques sur une particule de la zone d'équilibre du granulaire : force de contact normale $\mathbf{F}_{n,ij}$ et tangentielle $\mathbf{F}_{t,ij}$ au contact inter-grains, moment de rotation $\mathbf{M}_{r,ij}$, pesanteur $m_i\mathbf{g}$ .}
   \label{fig:schema_forces}
 \end{figure}
 
@@ -319,23 +327,41 @@ La figure~\ref{fig:schema_forces} illustre ce bilan dans le cas du tambour tourn
 % \caption{Principe de la simulation DEM}
 % \end{figure}
 
-Pour capturer fidèlement ces interactions de contact, le pas de temps de simulation est très faible (de l'ordre de $10^{-6}$\,s), ce qui rend la méthode difficilement applicable à l'échelle industrielle où des milliards de particules sont en interaction. C'est cette limite qui justifie le passage à l'approche stochastique décrite ci-après.
+Pour capturer fidèlement ces interactions de contact et éviter des instabilités qui proviendraient d'une interpénétration des particules à cause d'un pas de temps trop grand, le pas de temps de simulation est très faible (de l'ordre de $10^{-6}$\,s), ce qui rend la méthode difficilement applicable à une échelle industrielle où des milliards de particules sont en interaction. 
+
 
 % ------------------------------------------------------------
 \subsection{Du déterminisme particulaire au formalisme markovien}
 \label{subsec:markov}
 
 Plutôt que de suivre individuellement chaque grain, l'approche stochastique regroupe les particules dans des cellules issues d'une discrétisation spatiale de la \textbf{zone utile} du mélangeur constituée par la zone active et la zone passive, comme le montre la figure~\ref{fig:maillage_melangeur},
-permettant de suivre l'évolution du mélange à l'échelle des cellules. Le modèle de Markov est le couple (vecteur d'état initial, matrice de transition).
-Des probabilités de saut entre cellules sont alors appliquées afin de reproduire la dynamique des particules dans le mélangeur sur une série d'instants discrets. Ce changement d'échelle autorise un pas de temps de prédiction nettement plus grand et un coût en ressources computationnelles réduit.
+permettant de suivre l'évolution du mélange à l'échelle des cellules.
+Des probabilités de saut entre cellules sont alors appliquées afin de reproduire la dynamique des particules dans le mélangeur sur une série d'instants discrets. 
+Ce changement d'échelle autorise un pas de temps de prédiction nettement plus grand et et un vecteur d'état de taille bien plus faible que le nombre total de particules dans le tambour, ce qui engendre un coût en ressources computationnelles réduit.
 
-En quelques mots, le principe est le suivant --- chacun de ces éléments est détaillé dans les paragraphes qui suivent. L'état du mélangeur à un instant $t_k$ est décrit par un vecteur $\mathbf{S}(t_k)$ dont chaque composante représente le nombre de particules contenues dans une cellule. À partir des probabilités de saut $\gamma_{j \to i}$ d'une cellule $j$ vers une cellule $i$, le nombre de particules dans la cellule $i$ à l'instant suivant s'obtient par :
+L'état du mélangeur à un instant $t_k$ est décrit par un vecteur $\mathbf{S}(t_k)$ dont chaque composante représente le nombre de particules contenues dans chaque cellule. À partir des probabilités de saut $\gamma_{j \to i}$ d'une cellule $j$ vers une cellule $i$, le nombre de particules dans la cellule $i$ à l'instant suivant s'obtient par :
 \begin{align}
 S_i(t_{k+1}) =\sum_{j=0}^{N-1}  \gamma_{j \to i}S_j(t_k).
 \label{eq:principe_projection}
 \end{align}
-Le modèle de Markov est construit sur ce vecteur de \emph{comptage} ; pour évaluer le modèle et observer la ségrégation, on construira en fin de chaîne un vecteur en termes de \emph{teneur} en une espèce (\S\ref{subsubsec:vecteur_etat}).
-La figure~\ref{fig:maillage_melangeur} donne au lecteur une idée du processus de mélange que le modèle doit reproduire : le mélangeur non discrétisé, avec ses particules de tailles distinctes, est montré à quatre instants --- configuration initiale séparée, lit en écoulement après un tour, mélange avancé, régime tardif où les petites particules se concentrent au cœur et contre la paroi. La figure~\ref{fig:maillage_melangeur_voronoi} montre les mêmes particules après discrétisation (découpage de Voronoï) : chaque grain porte la couleur de sa cellule, et c'est à l'échelle de ces cellules que la dynamique est agrégée.
+Le modèle de Markov est construit sur ce vecteur de nombre de particules par cellule ; pour évaluer le modèle et observer la ségrégation d'une population de grains bi-disperses, on construira en fin de chaîne un vecteur de \emph{teneur}:
+\begin{equation}
+  C(t_k) 
+= 
+\begin{bmatrix}
+  
+  c_0(t_k)=N^a_1(t_k) / ( N^a_1(t_k) + N^b_1(t_k) )\\
+\vdots\\ 
+  c_{N-1}(t_k)=N^a_{N-1}(t_k) / ( N^a_{N-1}(t_k) + N^b_{N-1}(t_k) ) 
+   
+\end{bmatrix}
+\label{eq:def_teneur_locale}
+\end{equation}
+avec $N^a_i(t_k)$, respectivement $N^b_i(t_k)$, le nombre de particules de type $a$ ou $b$, dans la cellule $i$ à l'instant $t_k$.
+
+La figure~\ref{fig:maillage_melangeur} donne au lecteur une idée du processus de mélange que le modèle doit reproduire : le mélangeur non discrétisé, avec ses particules de tailles distinctes, est montré à quatre instants --- configuration initiale séparée, lit en écoulement à $t=\SI{1.57}{s}$ après un tour, mélange avancé à $t = \SI{10}{s}$ après environ 6 tours , régime tardif $t = \SI{30}{s}$ où les petites particules se concentrent au cœur et contre la paroi. 
+La figure~\ref{fig:maillage_melangeur_voronoi} montre les  particules à trois instants $t=\SI{1.57}{s}$, $t=\SI{10}{s}$ et $t=\SI{30}{s}$ après discrétisation (découpage de Voronoï) : chaque grain porte la couleur de sa cellule.
+
 
 \begin{figure}[H]
   \centering
@@ -356,14 +382,14 @@ La construction du modèle se fait suivant trois étapes principales, détaillé
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/schema_construction_markov.png}
-  \caption{Algorithme de construction et d'exploitation du modèle de Markov : les données DEM servent d'abord à ajuster le partitionneur sur le régime permanent, puis à labelliser chaque particule à chaque instant ; les vecteurs d'état de comptage qui en découlent alimentent l'apprentissage de la ou des matrices de transition, la prédiction, et enfin la validation par confrontation à la référence DEM.}
+  \caption{Algorithme de construction et d'exploitation du modèle de Markov : les données DEM servent d'abord à ajuster la méthode de maillage sur le régime permanent, puis à labelliser chaque particule à chaque instant ; les vecteurs d'état de comptage qui en découlent alimentent l'apprentissage de la ou des matrices de transition, la prédiction, et enfin la validation par confrontation à la référence DEM.}
   \label{fig:schema_construction_markov}
 \end{figure}
 
 \subsubsection{Définition et construction du vecteur d'état}
 \label{subsubsec:vecteur_etat}
 
-On considère l'état du mélangeur à un instant $t_k$ défini par le contenu de chacune des $N$ cellules issues de la discrétisation, rassemblé dans un vecteur colonne $\mathbf{S}$ de taille $N$ :
+On considère l'état du mélangeur à un instant $t_k$ défini par le contenu de chacune des $N$ cellules issues de la discrétisation, rassemcouscous dans un vecteur colonne $\mathbf{S}$ de taille $N$ :
 
 \begin{equation}
   \mathbf{S}(t_k)
@@ -376,11 +402,12 @@ On considère l'état du mélangeur à un instant $t_k$ défini par le contenu d
   \end{bmatrix},
   \label{eq:vecteur_etat}
 \end{equation}
-où la composante $S_i(t_k)$, $i \in [0, N-1]$, est le \textbf{nombre de particules} présentes dans la cellule $i$ à l'instant $t_k$. C'est ce vecteur de comptage --- et lui seul --- qui sert à construire le modèle de Markov : les matrices de transition étant estimées séparément pour chaque espèce (\S\ref{subsubsec:matrice}), le comptage est effectué par espèce (nombre de petites particules par cellule pour la matrice des petites, nombre de grandes pour celle des grandes).
+où la composante $S_i(t_k)$, $i \in [0, N-1]$, est le \textbf{nombre de particules} présentes dans la cellule $i$ à l'instant $t_k$. C'est ce vecteur nombre de particules qui sert à construire le modèle de Markov : les matrices de transition étant estimées séparément pour chaque espèce (\S\ref{subsubsec:matrice}), le comptage est effectué par espèce (nombre de petites particules par cellule pour la matrice des petites, nombre de grandes pour celle des grandes).
 
-On définit par ailleurs la \textbf{teneur locale} en une espèce de la cellule $i$, c'est-à-dire le nombre de particules de cette espèce rapporté au nombre total de particules de la cellule. Cette grandeur ne participe pas à la construction du modèle : elle est reconstruite en fin de chaîne, à partir des comptages prédits pour chaque espèce, afin d'évaluer le modèle et d'observer la ségrégation --- elle discrimine les zones enrichies ou appauvries en une espèce là où le comptage brut ne renseigne que sur l'occupation du mélangeur. La figure~\ref{fig:schema_teneur_locale}, en annexe~\ref{annexe:teneur}, illustre cette teneur locale sur un découpage cartésien.
+On définit par ailleurs la \textbf{teneur locale} en une espèce de la cellule $i$ (Annexe~\ref{annexe:teneur}), c'est-à-dire le nombre de particules de cette espèce rapporté au nombre total de particules de la cellule. 
+Elle est reconstruite en fin de chaîne, à partir des nombres de particules prédits pour chaque espèce, afin d'évaluer le modèle et d'observer la ségrégation --- elle discrimine les zones enrichies ou appauvries en une espèce là où le comptage brut ne renseigne que sur l'occupation du mélangeur. La figure~\ref{fig:schema_teneur_locale}, en annexe~\ref{annexe:teneur}, illustre cette teneur locale sur un découpage cartésien.
 
-Concrètement, le vecteur d'état se construit de la manière suivante. Une fois le mélangeur discrétisé, chaque particule se voit attribuer un \textbf{label} dépendamment de son appartenance à une cellule : à l'instant $t_k$, la particule $p$ de coordonnées $(x_p, y_p, z_p)$ reçoit le label $l_p(t_k) \in [0, N-1]$ de la cellule qui la contient. Cette labélisation est effectuée par un objet \textit{partitionneur}, propre à chaque méthode de découpage (\S\ref{subsec:discretisation}), qui est ajusté une seule fois sur le régime permanent puis appliqué à l'identique sur tous les pas de temps : les labels ainsi produits constituent la référence DEM avec laquelle la prédiction de Markov sera comparée. Le vecteur d'état de comptage s'obtient alors en dénombrant, pour chaque cellule $i$, les particules dont le label vaut $i$ :
+Concrètement, le vecteur d'état se construit de la manière suivante. Une fois le mélangeur discrétisé, chaque particule se voit attribuer un \textbf{label} qui dépend de son appartenance à une cellule : à l'instant $t_k$, la particule $p$ de coordonnées $(x_p, y_p, z_p)$ reçoit le label $l_p(t_k) \in [0, N-1]$ de la cellule qui la contient. Cette labélisation est effectuée par un objet \textit{partitionneur}, propre à chaque méthode de découpage (\S\ref{subsec:discretisation}), qui est ajusté une seule fois sur le régime permanent puis appliqué à l'identique sur tous les pas de temps : les labels ainsi produits constituent la référence DEM avec laquelle la prédiction de Markov sera comparée. Le vecteur d'état de comptage s'obtient alors en dénombrant, pour chaque cellule $i$, les particules dont le label vaut $i$ :
 \begin{equation}
   S_i(t_k) = \sum_{p=1}^{N_p} \phi_p(i, t_k),
   \qquad
@@ -391,18 +418,14 @@ Concrètement, le vecteur d'état se construit de la manière suivante. Une fois
   \end{cases}
   \label{eq:comptage}
 \end{equation}
-où $\phi_p(i,t_k)$ est la fonction indicatrice de l'appartenance de la particule $p$ à la cellule $i$, et $N_p$ le nombre de particules. Le vecteur de type teneur s'en déduit en rapportant le comptage d'une espèce au comptage total de la cellule.
+où $\phi_p(i,t_k)$ est la fonction qui indique de l'appartenance de la particule $p$ à la cellule $i$, et $N_p$ le nombre de particules.
 
-À partir des probabilités de saut $\gamma_{j \to i}$ des cellules $j$ vers une cellule $i$, on peut calculer le nombre de particules dans la cellule $i$ à l'instant $t_{k+1}$ :
-\begin{align}
-S_i(t_{k+1}) =\sum_{j=0}^{N-1}  \gamma_{j \to i}S_j(t_k).
-\label{eq:projection}
-\end{align}
+À partir des probabilités de saut $\gamma_{j \to i}$ des cellules $j$ vers une cellule $i$, on peut calculer le nombre de particules dans la cellule $i$ à l'instant $t_{k+1}$ avec l'équation~\ref{eq:principe_projection}
 
 \subsubsection{Construction de la matrice de transition}
 \label{subsubsec:matrice}
 
-La matrice de transition $\mathbf{P}$ encode la probabilité qu'une particule quitte la cellule source $j$ (colonne) pour rejoindre la cellule d'arrivée $i$ (ligne) durant un intervalle $\tau=t_{k+1}-t_k$, appelé \textbf{pas de temps de Markov} : son terme général est précisément la probabilité de saut introduite en~\eqref{eq:principe_projection}, $P_{i,j} = \gamma_{j \to i}$. Elle est estimée en observant, entre deux instants séparés de $\tau$, les déplacements des particules d'une cellule vers une autre : deux vecteurs d'états --- $\mathbf{S}(t_k)$ et $\mathbf{S}(t_{k+1})$ --- sont construits aux instants $t_k$ et $t_{k+1}$ respectivement, et les paires de labels $(l_p(t_k),\, l_p(t_{k+1}))$ fournissent les comptages de transition. Cette observation est répétée sur une période dite \textbf{temps d'apprentissage} couvrant $NLT$ paires d'instants, et les probabilités obtenues sont moyennées :
+La matrice de transition $\mathbf{P}$ contient les probabilités qu'une particule quitte la cellule source $j$ (colonne) pour rejoindre la cellule d'arrivée $i$ (ligne) durant un intervalle $\tau=t_{k+1}-t_k$, appelé \textbf{pas de temps de Markov} : son terme général est précisément la probabilité de saut introduite en~\eqref{eq:principe_projection}, $P_{i,j} = \gamma_{j \to i}$. Elle est estimée en observant, entre deux instants séparés de $\tau$, les déplacements des particules d'une cellule vers une autre : deux vecteurs d'états --- $\mathbf{S}(t_k)$ et $\mathbf{S}(t_{k+1})$ --- sont construits aux instants $t_k$ et $t_{k+1}$ respectivement, et les paires de labels $(l_p(t_k),\, l_p(t_{k+1}))$ fournissent les comptages de transition. Cette observation est répétée sur une période dite \textbf{temps d'apprentissage} couvrant $NLT$ paires d'instants, et les probabilités obtenues sont moyennées :
 
 \begin{equation}
   P_{i,j}
@@ -699,7 +722,7 @@ L'algorithme de partitionnement reste un k-means, mais opéré dans un espace de
 \section{Résultats}
 \label{sec:resultats}
 
-Dans une optique industrielle, toutes les figures dont l'abscisse est le temps portent une double graduation : le temps en secondes (axe inférieur) et le nombre de tours du tambour correspondant (axe supérieur, un tour valant \SI{1.57}{s}) --- l'avancement d'un procédé de mélange en tambour s'exprimant usuellement en tours plutôt qu'en secondes.
+% Dans une optique industrielle, toutes les figures dont l'abscisse est le temps portent une double graduation : le temps en secondes (axe inférieur) et le nombre de tours du tambour correspondant (axe supérieur, un tour valant \SI{1.57}{s}) --- l'avancement d'un procédé de mélange en tambour s'exprimant usuellement en tours plutôt qu'en secondes.
 
 Cette section expose les résultats en suivant le fil de la problématique du mémoire, en trois temps. D'abord, l'influence du choix de la méthode de discrétisation sur la prédiction du modèle (\S\ref{subsec:res_discretisation}) : pour chaque découpage sont présentés la matrice de transition, les vecteurs d'état en nombre de particules et en teneur locale, et des vues du mélangeur discrétisé permettant de relier ces grandeurs à la géométrie effective des cellules. Ensuite, la robustesse des modèles vis-à-vis de leurs paramètres de construction : les études paramétriques (annexe~\ref{annexe:parametres}) montrent notamment que les découpages statistiques exigent peu de temps d'observation pour produire une matrice conforme, là où les découpages géométriques en réclament davantage (annexe~\ref{annexe:dt}). Enfin, l'apport des chaînes inhomogènes (\S\ref{subsec:res_inhomogene}) : on montre qu'elles modifient peu la prédiction des modèles statistiques, dont la matrice homogène capture déjà l'essentiel de la dynamique, alors qu'elles corrigent sensiblement les modèles géométriques.
 
@@ -733,15 +756,23 @@ Cette sous-section procède en deux temps. Dans un premier temps, chaque méthod
 
 \subsubsection{Découpage cartésien}
 
-La figure~\ref{fig:pv_cellules_cartesien} montre le résultat du découpage cartésien, opéré dans le repère du lit : chaque grain, représenté à son diamètre réel, est coloré par le label \textit{cell\_id} de la cellule qui le contient, en vue de face et en vue de côté. La grille retenue ($10 \times 1 \times 1$) découpe le lit en dix bandes le long de sa direction principale --- parallèle à la surface libre --- de sorte que chaque bande traverse l'épaisseur du lit et reste occupée en permanence ; toutes les cellules participent au modèle.
+La figure~\ref{fig:pv_cellules_cartesien} montre le résultat du découpage cartésien , opéré dans le repère du lit : chaque grain, représenté à son diamètre réel, est coloré par le label \textit{cell\_id} de la cellule qui le contient, en vue de face et en vue de côté. La grille retenue ($10 \times 1 \times 1$) découpe le lit en dix bandes le long de sa direction principale --- parallèle à la surface libre --- de sorte que chaque bande traverse l'épaisseur du lit et reste occupée en permanence ; toutes les cellules participent au modèle.
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.85\textwidth]{figures/pv_cellules_cartesien.png}
-  \caption{Découpage cartésien (10 bandes dans le repère du lit) : particules aux diamètres réels colorées par le label \textit{cell\_id} (numéro de cellule au barycentre), vue de face et vue de côté, à $t = \SI{1.57}{s}$. Les bandes suivent la direction principale du lit ; chacune traverse son épaisseur et couvre toute la longueur axiale.}
+  \caption{Découpage cartésien (10 bandes dans le repère du lit)  à $t = \SI{1.57}{s}$.}
   \label{fig:pv_cellules_cartesien}
 \end{figure}
 
-Les matrices de transition (figure~\ref{fig:matrice_cartesien}) révèlent d'emblée une asymétrie marquée entre les deux espèces : les grandes particules présentent une probabilité diagonale élevée, signe d'une faible mobilité, tandis que les petites particules se redistribuent plus largement d'une cellule à l'autre. Physiquement, cette asymétrie s'explique par la percolation : entre deux observations séparées d'un tour de tambour, une petite particule a pu s'infiltrer à travers les interstices du lit et changer plusieurs fois de cellule, alors qu'une grande particule, transportée en bloc dans la zone passive, retrouve le plus souvent sa cellule d'origine.
+Les matrices de transition construitent sur deux tours de rotation du tambour($NLT=2$) à partir du second tour($start=\SI{1.57}{s}$)  pour une méthode de découpage cartésien sont illustrées pour les grandes et les petites particules par la figure~\ref{fig:matrice_cartesien}. 
+La forme de matrice \textbf{bande} montre que les particules s'écoulent dans des directions opposées: certaines sont entrainées par la rotation du tambour 
+--- que l'on observe par la \textbf{sur-diagonale} prononcée ---
+; tandis que d'autres redescendent entrainées par la gravité --- que l'on observe par la \textbf{sous-diagonale} prononcée ---.
+La matrice de transition des grandes particules à gauche révèlent qu'elles  sont entrainées par les parois du mélangeur, ce qui se traduit par la forte probabilité sur la diagonale($\mathbf{0.37}$) des cellules contre les parois \textbf{1 et 9}.
+Celle des petites particules montre qu'elles sont  très mobiles avec les probabilités presque uniformement réparties.
+
+
+% d'emblée une asymétrie marquée entre les deux espèces : les grandes particules présentent une probabilité diagonale élevée, signe d'une faible mobilité, tandis que les petites particules se redistribuent plus largement d'une cellule à l'autre. Physiquement, cette asymétrie s'explique par la percolation : entre deux observations séparées d'un tour de tambour, une petite particule a pu s'infiltrer à travers les interstices du lit et changer plusieurs fois de cellule, alors qu'une grande particule, transportée en bloc dans la zone passive, retrouve le plus souvent sa cellule d'origine.
 
 \begin{figure}[H]
   \centering
@@ -750,14 +781,14 @@ Les matrices de transition (figure~\ref{fig:matrice_cartesien}) révèlent d'emb
   \label{fig:matrice_cartesien}
 \end{figure}
 
-La vue du mélangeur colorée par la teneur locale (figure~\ref{fig:teneur_3d_cartesien}) complète la matrice : au début du régime établi, les bandes basses du lit, héritées de la couche initiale de petites particules, contrastent fortement avec les bandes hautes qui en sont presque dépourvues --- c'est ce gradient de teneur, orthogonal aux bandes, que le modèle devra faire évoluer.
+% La vue du mélangeur colorée par la teneur locale (figure~\ref{fig:teneur_3d_cartesien}) complète la matrice : au début du régime établi, les bandes basses du lit, héritées de la couche initiale de petites particules, contrastent fortement avec les bandes hautes qui en sont presque dépourvues --- c'est ce gradient de teneur, orthogonal aux bandes, que le modèle devra faire évoluer.
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=\linewidth]{figures/pv_teneur_cartesien_t157.png}
-  \caption{Mélangeur discrétisé en bandes cartésiennes (repère du lit) coloré par la teneur locale de chaque cellule à $t = \SI{1.57}{s}$, vues de face et de côté ; numéro de cellule au barycentre (configuration : $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
-  \label{fig:teneur_3d_cartesien}
-\end{figure}
+% \begin{figure}[H]
+%   \centering
+%   \includegraphics[width=\linewidth]{figures/pv_teneur_cartesien_t157.png}
+%   \caption{Mélangeur discrétisé en bandes cartésiennes (repère du lit) coloré par la teneur locale de chaque cellule à $t = \SI{1.57}{s}$, vues de face et de côté ; numéro de cellule au barycentre (configuration : $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
+%   \label{fig:teneur_3d_cartesien}
+% \end{figure}
 
 L'évolution du nombre total de particules par cellule fait apparaître des zones nettement sur-concentrées et d'autres quasi vides, confirmant qu'un simple comptage reste insuffisant pour caractériser la ségrégation. Ce constat illustre aussi la principale faiblesse du maillage cartésien : les cellules situées aux coins du domaine, hors de l'enceinte circulaire, ne sont jamais peuplées et n'apportent aucune information au modèle.
 
@@ -789,12 +820,12 @@ Les matrices de transition construites par espèce pour le découpage cylindriqu
 
 La vue du mélangeur colorée par la teneur locale (figure~\ref{fig:teneur_3d_cylindrique}) met en évidence la limite pressentie : chaque secteur, traversant l'épaisseur du lit, moyenne des zones enrichies et appauvries en petites particules, si bien que les contrastes de teneur entre cellules sont plus faibles que pour les autres découpages.
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=\linewidth]{figures/pv_teneur_cylindrique_t157.png}
-  \caption{Mélangeur discrétisé en secteurs cylindriques (repère du lit) coloré par la teneur locale de chaque cellule à $t = \SI{1.57}{s}$, vues de face et de côté ; numéro de cellule au barycentre (configuration : $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
-  \label{fig:teneur_3d_cylindrique}
-\end{figure}
+% \begin{figure}[H]
+%   \centering
+%   \includegraphics[width=\linewidth]{figures/pv_teneur_cylindrique_t157.png}
+%   \caption{Mélangeur discrétisé en secteurs cylindriques (repère du lit) coloré par la teneur locale de chaque cellule à $t = \SI{1.57}{s}$, vues de face et de côté ; numéro de cellule au barycentre (configuration : $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
+%   \label{fig:teneur_3d_cylindrique}
+% \end{figure}
 
 Cette moyenne des zones enrichies et appauvries à l'intérieur de chaque secteur constitue la limite structurelle de ce maillage pour la ségrégation : les cellules cylindriques, solidaires de la symétrie de révolution, tournent « avec » l'écoulement moyen et ne séparent ni la zone active de la zone passive, ni les zones riches des zones pauvres en petites particules. La quantification de cet effet sur la prédiction est donnée dans la comparaison globale de la section~\ref{subsec:comparaison_methodes} : le respect de la géométrie de l'enceinte ne suffit pas, c'est l'adéquation du maillage à la structure de l'écoulement qui gouverne la qualité du modèle.
 
@@ -844,21 +875,21 @@ Deux matrices distinctes sont estimées en appliquant un masque sur les labels a
   \label{fig:teneur_petites}
 \end{figure}
 
-Les vues 3D du mélangeur discrétisé (figures~\ref{fig:teneur_3d_debut} et~\ref{fig:teneur_3d_tardif}), où chaque particule porte la couleur de la teneur locale de sa cellule et où le numéro de chaque cellule est inscrit à son barycentre, permettent d'observer simultanément la teneur et la cellule concernée, en vue de face et en vue de côté. La figure~\ref{fig:teneur_3d_debut} correspond au même instant $t = \SI{1.57}{s}$ que la labélisation \textit{cell\_id} de la figure~\ref{fig:pv_cellules_voronoi} : les deux représentations se lisent conjointement, la première donnant la teneur de chaque cellule numérotée, la seconde son emprise spatiale. Au début du régime établi ($t = \SI{1.57}{s}$), le contraste est maximal : les cellules issues de la couche initiale de petites particules affichent des teneurs de 0{,}5 et plus (cellule 4 à 0{,}56), tandis que les cellules du haut du lit en sont presque dépourvues (cellules 1, 2 et 5 sous 0{,}02). À l'instant tardif ($t = \SI{30}{s}$), la gamme s'est resserrée (0{,}19 à 0{,}51) mais ne s'annule pas : les cellules riches sont désormais celles du cœur et de la paroi (cellules 0 et 9), là où les petites particules piégées se concentrent, et les cellules de la surface libre restent appauvries (cellule 5) --- c'est la signature spatiale de la ségrégation par percolation que le RSD agrège en un seul indicateur.
+% Les vues 3D du mélangeur discrétisé (figures~\ref{fig:teneur_3d_debut} et~\ref{fig:teneur_3d_tardif}), où chaque particule porte la couleur de la teneur locale de sa cellule et où le numéro de chaque cellule est inscrit à son barycentre, permettent d'observer simultanément la teneur et la cellule concernée, en vue de face et en vue de côté. La figure~\ref{fig:teneur_3d_debut} correspond au même instant $t = \SI{1.57}{s}$ que la labélisation \textit{cell\_id} de la figure~\ref{fig:pv_cellules_voronoi} : les deux représentations se lisent conjointement, la première donnant la teneur de chaque cellule numérotée, la seconde son emprise spatiale. Au début du régime établi ($t = \SI{1.57}{s}$), le contraste est maximal : les cellules issues de la couche initiale de petites particules affichent des teneurs de 0{,}5 et plus (cellule 4 à 0{,}56), tandis que les cellules du haut du lit en sont presque dépourvues (cellules 1, 2 et 5 sous 0{,}02). À l'instant tardif ($t = \SI{30}{s}$), la gamme s'est resserrée (0{,}19 à 0{,}51) mais ne s'annule pas : les cellules riches sont désormais celles du cœur et de la paroi (cellules 0 et 9), là où les petites particules piégées se concentrent, et les cellules de la surface libre restent appauvries (cellule 5) --- c'est la signature spatiale de la ségrégation par percolation que le RSD agrège en un seul indicateur.
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=\linewidth]{figures/pv_teneur_voronoi_t157.png}
-  \caption{Mélangeur discrétisé en cellules de Voronoï  sur la configuration de référence $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas}
-  \label{fig:teneur_3d_debut}
-\end{figure}
+% \begin{figure}[H]
+%   \centering
+%   \includegraphics[width=\linewidth]{figures/pv_teneur_voronoi_t157.png}
+%   \caption{Mélangeur discrétisé en cellules de Voronoï  sur la configuration de référence $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas}
+%   \label{fig:teneur_3d_debut}
+% \end{figure}
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=\linewidth]{figures/pv_teneur_voronoi_t3000.png}
-  \caption{Même représentation à $t = \SI{30}{s}$ }
-  \label{fig:teneur_3d_tardif}
-\end{figure}
+% \begin{figure}[H]
+%   \centering
+%   \includegraphics[width=\linewidth]{figures/pv_teneur_voronoi_t3000.png}
+%   \caption{Même représentation à $t = \SI{30}{s}$ }
+%   \label{fig:teneur_3d_tardif}
+% \end{figure}
 
 \paragraph{Validation par le RSD.} La figure~\ref{fig:rsd_voronoi} compare le RSD issu de la DEM à celui prédit par la chaîne de Markov. L'accord qualitatif confirme que le modèle reproduit correctement le niveau global d'homogénéisation atteint par le système.
 
@@ -897,12 +928,12 @@ En intégrant la norme de la vitesse dans le critère de partitionnement, les ce
 
 La vue du mélangeur colorée par la teneur locale (figure~\ref{fig:teneur_3d_physique}) confirme l'intérêt de la stratification par vitesse : les cellules du cœur du lit, riches en petites particules piégées, se détachent nettement des cellules de la surface libre, appauvries --- le maillage sépare précisément les zones que la ségrégation différencie.
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=\linewidth]{figures/pv_teneur_physique_t157.png}
-  \caption{Mélangeur discrétisé par le découpage physique coloré par la teneur locale de chaque cellule à $t = \SI{1.57}{s}$, vues de face et de côté ; numéro de cellule au barycentre (configuration : $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
-  \label{fig:teneur_3d_physique}
-\end{figure}
+% \begin{figure}[H]
+%   \centering
+%   \includegraphics[width=\linewidth]{figures/pv_teneur_physique_t157.png}
+%   \caption{Mélangeur discrétisé par le découpage physique coloré par la teneur locale de chaque cellule à $t = \SI{1.57}{s}$, vues de face et de côté ; numéro de cellule au barycentre (configuration : $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
+%   \label{fig:teneur_3d_physique}
+% \end{figure}
 
 \subsubsection{Comparaison des méthodes}
 \label{subsec:comparaison_methodes}
