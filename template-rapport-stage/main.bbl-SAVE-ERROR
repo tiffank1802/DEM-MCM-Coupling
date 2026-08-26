@@ -19,6 +19,175 @@
 
 \refsection{0}
   \datalist[entry]{none/global//global/global}
+    \entry{ndiaye2010}{article}{}
+      \name{author}{5}{}{%
+        {{hash=4a0faa04f8cc260c8f7633ea0001cdef}{%
+           family={Ndiaye},
+           familyi={N\bibinitperiod},
+           given={L.\bibnamedelimi G.},
+           giveni={L\bibinitperiod\bibinitdelim G\bibinitperiod}}}%
+        {{hash=306c174148deaa544624915e8caf0bbf}{%
+           family={Caillat},
+           familyi={C\bibinitperiod},
+           given={S.},
+           giveni={S\bibinitperiod}}}%
+        {{hash=d45143ece37dbbdb5f8534fce43b35f0}{%
+           family={Chinnayya},
+           familyi={C\bibinitperiod},
+           given={A.},
+           giveni={A\bibinitperiod}}}%
+        {{hash=c87391aabe522ace8467b5083009840c}{%
+           family={Gambier},
+           familyi={G\bibinitperiod},
+           given={D.},
+           giveni={D\bibinitperiod}}}%
+        {{hash=5b4825ad72bb24f4e50f11b308c6122a}{%
+           family={Baudoin},
+           familyi={B\bibinitperiod},
+           given={B.},
+           giveni={B\bibinitperiod}}}%
+      }
+      \strng{namehash}{faeda3dc0385c2338d97307a76fb9d15}
+      \strng{fullhash}{7e60e85f2e39fb318ecf24c18cc834da}
+      \strng{bibnamehash}{faeda3dc0385c2338d97307a76fb9d15}
+      \strng{authorbibnamehash}{faeda3dc0385c2338d97307a76fb9d15}
+      \strng{authornamehash}{faeda3dc0385c2338d97307a76fb9d15}
+      \strng{authorfullhash}{7e60e85f2e39fb318ecf24c18cc834da}
+      \field{sortinit}{2}
+      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Waste Management}
+      \field{title}{Application of the dynamic model of {S}aeman to an industrial rotary kiln incinerator: numerical and experimental results}
+      \field{volume}{30}
+      \field{year}{2010}
+      \field{pages}{1188\bibrangedash 1195}
+      \range{pages}{8}
+      \verb{doi}
+      \verb 10.1016/j.wasman.2009.09.023
+      \endverb
+    \endentry
+    \entry{chachia2025}{inproceedings}{}
+      \name{author}{5}{}{%
+        {{hash=e3057494cc41e6b97ece8b8380a970ff}{%
+           family={Chachia},
+           familyi={C\bibinitperiod},
+           given={Nour},
+           giveni={N\bibinitperiod}}}%
+        {{hash=e331e95bfb1bc53a3badb75bbb765693}{%
+           family={Dumazer},
+           familyi={D\bibinitperiod},
+           given={Guillaume},
+           giveni={G\bibinitperiod}}}%
+        {{hash=d172635cc87f56f9a2ba941398b9cfc8}{%
+           family={Berthiaux},
+           familyi={B\bibinitperiod},
+           given={Henri},
+           giveni={H\bibinitperiod}}}%
+        {{hash=032e4f780bd87aec938bc681e4c5a398}{%
+           family={Serris},
+           familyi={S\bibinitperiod},
+           given={Eric},
+           giveni={E\bibinitperiod}}}%
+        {{hash=a4608874cebce2bc00dc4a12acd211b2}{%
+           family={Gatumel},
+           familyi={G\bibinitperiod},
+           given={Cendrine},
+           giveni={C\bibinitperiod}}}%
+      }
+      \list{location}{1}{%
+        {Barcelona, Spain}%
+      }
+      \strng{namehash}{3b38e1324521707f679e14abad7583d9}
+      \strng{fullhash}{bf0c3c262d91b028109b05e1c7cb462f}
+      \strng{bibnamehash}{3b38e1324521707f679e14abad7583d9}
+      \strng{authorbibnamehash}{3b38e1324521707f679e14abad7583d9}
+      \strng{authornamehash}{3b38e1324521707f679e14abad7583d9}
+      \strng{authorfullhash}{bf0c3c262d91b028109b05e1c7cb462f}
+      \field{sortinit}{3}
+      \field{sortinithash}{ad6fe7482ffbd7b9f99c9e8b5dccd3d7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{booktitle}{Particles 2025 --- IX International Conference on Particle-based Methods}
+      \field{month}{10}
+      \field{note}{HAL : hal-05315669}
+      \field{title}{Coupling a {DEM} model and a homogeneous {M}arkov Chain to accelerate powder mixing simulation}
+      \field{year}{2025}
+      \verb{urlraw}
+      \verb https://hal.science/hal-05315669
+      \endverb
+      \verb{url}
+      \verb https://hal.science/hal-05315669
+      \endverb
+    \endentry
+    \entry{cundall1979}{article}{}
+      \name{author}{2}{}{%
+        {{hash=d5dd574aba8f7acf574d7a33b2a3c9ed}{%
+           family={Cundall},
+           familyi={C\bibinitperiod},
+           given={P.\bibnamedelimi A.},
+           giveni={P\bibinitperiod\bibinitdelim A\bibinitperiod}}}%
+        {{hash=73afe83d6beccacf41e0e0fd4b93130d}{%
+           family={Strack},
+           familyi={S\bibinitperiod},
+           given={O.\bibnamedelimi D.\bibnamedelimi L.},
+           giveni={O\bibinitperiod\bibinitdelim D\bibinitperiod\bibinitdelim L\bibinitperiod}}}%
+      }
+      \strng{namehash}{95c063cb8336718e96baaceeced88d01}
+      \strng{fullhash}{95c063cb8336718e96baaceeced88d01}
+      \strng{bibnamehash}{95c063cb8336718e96baaceeced88d01}
+      \strng{authorbibnamehash}{95c063cb8336718e96baaceeced88d01}
+      \strng{authornamehash}{95c063cb8336718e96baaceeced88d01}
+      \strng{authorfullhash}{95c063cb8336718e96baaceeced88d01}
+      \field{sortinit}{4}
+      \field{sortinithash}{9381316451d1b9788675a07e972a12a7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Géotechnique}
+      \field{number}{1}
+      \field{title}{A discrete numerical model for granular assemblies}
+      \field{volume}{29}
+      \field{year}{1979}
+      \field{pages}{47\bibrangedash 65}
+      \range{pages}{19}
+      \verb{doi}
+      \verb 10.1680/geot.1979.29.1.47
+      \endverb
+    \endentry
+    \entry{berthiaux2004}{article}{}
+      \name{author}{2}{}{%
+        {{hash=918a9073c4bf13ff97a5cfabcbf64a6c}{%
+           family={Berthiaux},
+           familyi={B\bibinitperiod},
+           given={H.},
+           giveni={H\bibinitperiod}}}%
+        {{hash=5a77e033b86149f5be55dd373f75757d}{%
+           family={Mizonov},
+           familyi={M\bibinitperiod},
+           given={V.},
+           giveni={V\bibinitperiod}}}%
+      }
+      \strng{namehash}{b6cdb7dca006d00c910853cc81cebd55}
+      \strng{fullhash}{b6cdb7dca006d00c910853cc81cebd55}
+      \strng{bibnamehash}{b6cdb7dca006d00c910853cc81cebd55}
+      \strng{authorbibnamehash}{b6cdb7dca006d00c910853cc81cebd55}
+      \strng{authornamehash}{b6cdb7dca006d00c910853cc81cebd55}
+      \strng{authorfullhash}{b6cdb7dca006d00c910853cc81cebd55}
+      \field{sortinit}{5}
+      \field{sortinithash}{20e9b4b0b173788c5dace24730f47d8c}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{The Canadian Journal of Chemical Engineering}
+      \field{number}{6}
+      \field{title}{Applications of {M}arkov Chains in Particulate Process Engineering: A Review}
+      \field{volume}{82}
+      \field{year}{2004}
+      \field{pages}{1143\bibrangedash 1168}
+      \range{pages}{26}
+      \verb{doi}
+      \verb 10.1002/cjce.5450820602
+      \endverb
+    \endentry
     \entry{doucet2008}{article}{}
       \name{author}{4}{}{%
         {{hash=59d38c59136bf0b8b82eb3d4bb09fb4e}{%
@@ -48,8 +217,8 @@
       \strng{authorbibnamehash}{aa1bd6e9f389bbea6d39c19a4c765eba}
       \strng{authornamehash}{aa1bd6e9f389bbea6d39c19a4c765eba}
       \strng{authorfullhash}{5d0aad53cf8164a268f5959c4ff22948}
-      \field{sortinit}{1}
-      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{sortinit}{6}
+      \field{sortinithash}{b33bc299efb3c36abec520a4c896a66d}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{journaltitle}{Computers {\&} Chemical Engineering}
@@ -82,8 +251,8 @@
       \strng{authorbibnamehash}{f4d8cd44f1280c2dd6a1bdc22aec71b9}
       \strng{authornamehash}{f4d8cd44f1280c2dd6a1bdc22aec71b9}
       \strng{authorfullhash}{f4d8cd44f1280c2dd6a1bdc22aec71b9}
-      \field{sortinit}{2}
-      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
+      \field{sortinit}{7}
+      \field{sortinithash}{108d0be1b1bee9773a1173443802c0a3}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{journaltitle}{Powder Technology}
@@ -125,8 +294,8 @@
       \strng{authorbibnamehash}{a2b061c4606cb553c6952a0d6dfba3b3}
       \strng{authornamehash}{a2b061c4606cb553c6952a0d6dfba3b3}
       \strng{authorfullhash}{94f33dad34ac285857d4e327b5340378}
-      \field{sortinit}{3}
-      \field{sortinithash}{ad6fe7482ffbd7b9f99c9e8b5dccd3d7}
+      \field{sortinit}{8}
+      \field{sortinithash}{a231b008ebf0ecbe0b4d96dcc159445f}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{journaltitle}{Powder Technology}
@@ -137,6 +306,79 @@
       \range{pages}{10}
       \verb{doi}
       \verb 10.1016/j.powtec.2012.10.012
+      \endverb
+    \endentry
+    \entry{morrison2016}{article}{}
+      \name{author}{4}{}{%
+        {{hash=8b30a1825e7280d705d3ce7db80bcc1b}{%
+           family={Morrison},
+           familyi={M\bibinitperiod},
+           given={A.\bibnamedelimi J.},
+           giveni={A\bibinitperiod\bibinitdelim J\bibinitperiod}}}%
+        {{hash=4826bed69c69fce45e161ef2e93b5cc0}{%
+           family={Govender},
+           familyi={G\bibinitperiod},
+           given={I.},
+           giveni={I\bibinitperiod}}}%
+        {{hash=68f1d5527ab6e3ebc4b4be25be1cf4dd}{%
+           family={Mainza},
+           familyi={M\bibinitperiod},
+           given={A.\bibnamedelimi N.},
+           giveni={A\bibinitperiod\bibinitdelim N\bibinitperiod}}}%
+        {{hash=4309f704502f1252c28c610148b3b58c}{%
+           family={Parker},
+           familyi={P\bibinitperiod},
+           given={D.\bibnamedelimi J.},
+           giveni={D\bibinitperiod\bibinitdelim J\bibinitperiod}}}%
+      }
+      \strng{namehash}{6eff14fde192db524fc8dcbaf0d5678e}
+      \strng{fullhash}{9a6264a383767530b53a02a4e9c47e71}
+      \strng{bibnamehash}{6eff14fde192db524fc8dcbaf0d5678e}
+      \strng{authorbibnamehash}{6eff14fde192db524fc8dcbaf0d5678e}
+      \strng{authornamehash}{6eff14fde192db524fc8dcbaf0d5678e}
+      \strng{authorfullhash}{9a6264a383767530b53a02a4e9c47e71}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Chemical Engineering Science}
+      \field{title}{The shape and behaviour of a granular bed in a rotating drum using Eulerian flow fields obtained from PEPT}
+      \field{volume}{152}
+      \field{year}{2016}
+      \field{pages}{186\bibrangedash 198}
+      \range{pages}{13}
+      \verb{doi}
+      \verb 10.1016/j.ces.2016.06.022
+      \endverb
+    \endentry
+    \entry{mellmann2001}{article}{}
+      \name{author}{1}{}{%
+        {{hash=949d513af349453f1f6b9c9b82522d5d}{%
+           family={Mellmann},
+           familyi={M\bibinitperiod},
+           given={J.},
+           giveni={J\bibinitperiod}}}%
+      }
+      \strng{namehash}{949d513af349453f1f6b9c9b82522d5d}
+      \strng{fullhash}{949d513af349453f1f6b9c9b82522d5d}
+      \strng{bibnamehash}{949d513af349453f1f6b9c9b82522d5d}
+      \strng{authorbibnamehash}{949d513af349453f1f6b9c9b82522d5d}
+      \strng{authornamehash}{949d513af349453f1f6b9c9b82522d5d}
+      \strng{authorfullhash}{949d513af349453f1f6b9c9b82522d5d}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Powder Technology}
+      \field{number}{3}
+      \field{title}{The transverse motion of solids in rotating cylinders—forms of motion and transition behavior}
+      \field{volume}{118}
+      \field{year}{2001}
+      \true{nocite}
+      \field{pages}{251\bibrangedash 270}
+      \range{pages}{20}
+      \verb{doi}
+      \verb 10.1016/S0032-5910(00)00402-2
       \endverb
     \endentry
   \enddatalist

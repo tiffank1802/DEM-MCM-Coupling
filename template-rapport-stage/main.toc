@@ -30,24 +30,24 @@
 \contentsline {subsection}{\numberline {5.1}Influence du choix de la méthode de discrétisation}{18}{subsection.5.1}%
 \contentsline {subsubsection}{\numberline {5.1.1}Découpage cartésien}{18}{subsubsection.5.1.1}%
 \contentsline {subsubsection}{\numberline {5.1.2}Découpage cylindrique}{20}{subsubsection.5.1.2}%
-\contentsline {subsubsection}{\numberline {5.1.3}Découpage de Voronoï}{22}{subsubsection.5.1.3}%
-\contentsline {paragraph}{Vecteur d'état par teneur locale.}{23}{paragraph*.39}%
-\contentsline {paragraph}{Validation par le RSD.}{25}{paragraph*.43}%
-\contentsline {subsubsection}{\numberline {5.1.4}Découpage physique}{26}{subsubsection.5.1.4}%
-\contentsline {subsubsection}{\numberline {5.1.5}Comparaison des méthodes}{28}{subsubsection.5.1.5}%
-\contentsline {subsection}{\numberline {5.2}Apport des chaînes inhomogènes}{31}{subsection.5.2}%
-\contentsline {section}{\numberline {6}Discussion}{33}{section.6}%
-\contentsline {paragraph}{Dualité de comportement entre espèces.}{33}{paragraph*.54}%
-\contentsline {paragraph}{Rôle déterminant de la discrétisation et du repère de labélisation.}{33}{paragraph*.55}%
-\contentsline {paragraph}{Pertinence de la variable d'état.}{33}{paragraph*.56}%
-\contentsline {section}{\numberline {7}Conclusion et perspectives}{33}{section.7}%
-\contentsline {section}{Références bibliographiques}{35}{section*.57}%
-\contentsline {section}{Annexes}{36}{section*.58}%
-\contentsline {section}{\numberline {A}Justification des paramètres du modèle de Markov}{36}{appendix.A}%
-\contentsline {subsection}{\numberline {A.1}Choix du pas de temps de Markov $\tau = \SI {1.57}{s}$}{36}{subsection.A.1}%
-\contentsline {subsection}{\numberline {A.2}Choix du nombre de blocs d'apprentissage $NLT$}{37}{subsection.A.2}%
-\contentsline {subsection}{\numberline {A.3}Choix de l'instant de départ $start = \SI {1.57}{s}$}{41}{subsection.A.3}%
-\contentsline {subsection}{\numberline {A.4}Choix de l'écart entre blocs $step = \SI {1.57}{s}$}{45}{subsection.A.4}%
-\contentsline {subsection}{\numberline {A.5}Conformité de la matrice de transition : repère de labélisation et raffinage temporel $dt$}{46}{subsection.A.5}%
-\contentsline {subsection}{\numberline {A.6}Justification des matrices distinctes par espèce}{47}{subsection.A.6}%
-\contentsline {subsection}{\numberline {A.7}Illustration de la teneur locale}{49}{subsection.A.7}%
+\contentsline {subsubsection}{\numberline {5.1.3}Découpage de Voronoï}{21}{subsubsection.5.1.3}%
+\contentsline {paragraph}{Vecteur d'état par teneur locale.}{22}{paragraph*.37}%
+\contentsline {paragraph}{Validation par le RSD.}{23}{paragraph*.39}%
+\contentsline {subsubsection}{\numberline {5.1.4}Découpage physique}{23}{subsubsection.5.1.4}%
+\contentsline {subsubsection}{\numberline {5.1.5}Comparaison des méthodes}{25}{subsubsection.5.1.5}%
+\contentsline {subsection}{\numberline {5.2}Apport des chaînes inhomogènes}{27}{subsection.5.2}%
+\contentsline {section}{\numberline {6}Discussion}{31}{section.6}%
+\contentsline {paragraph}{Dualité de comportement entre espèces.}{31}{paragraph*.49}%
+\contentsline {paragraph}{Rôle déterminant de la discrétisation et du repère de labélisation.}{31}{paragraph*.50}%
+\contentsline {paragraph}{Pertinence de la variable d'état.}{31}{paragraph*.51}%
+\contentsline {section}{\numberline {7}Conclusion et perspectives}{31}{section.7}%
+\contentsline {section}{Références bibliographiques}{33}{section*.52}%
+\contentsline {section}{Annexes}{34}{section*.53}%
+\contentsline {section}{\numberline {A}Justification des paramètres du modèle de Markov}{34}{appendix.A}%
+\contentsline {subsection}{\numberline {A.1}Choix du pas de temps de Markov $\tau = \SI {1.57}{s}$}{34}{subsection.A.1}%
+\contentsline {subsection}{\numberline {A.2}Choix du nombre de blocs d'apprentissage $NLT$}{35}{subsection.A.2}%
+\contentsline {subsection}{\numberline {A.3}Choix de l'instant de départ $start = \SI {1.57}{s}$}{39}{subsection.A.3}%
+\contentsline {subsection}{\numberline {A.4}Choix de l'écart entre blocs $step = \SI {1.57}{s}$}{43}{subsection.A.4}%
+\contentsline {subsection}{\numberline {A.5}Conformité de la matrice de transition : repère de labélisation et raffinage temporel $dt$}{44}{subsection.A.5}%
+\contentsline {subsection}{\numberline {A.6}Justification des matrices distinctes par espèce}{45}{subsection.A.6}%
+\contentsline {subsection}{\numberline {A.7}Illustration de la teneur locale}{47}{subsection.A.7}%

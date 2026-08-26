@@ -756,7 +756,7 @@ Cette sous-section procède en deux temps. Dans un premier temps, chaque méthod
 
 \subsubsection{Découpage cartésien}
 
-La figure~\ref{fig:pv_cellules_cartesien} montre le résultat du découpage cartésien , opéré dans le repère du lit : chaque grain, représenté à son diamètre réel, est coloré par le label \textit{cell\_id} de la cellule qui le contient, en vue de face et en vue de côté. La grille retenue ($10 \times 1 \times 1$) découpe le lit en dix bandes le long de sa direction principale --- parallèle à la surface libre --- de sorte que chaque bande traverse l'épaisseur du lit et reste occupée en permanence ; toutes les cellules participent au modèle.
+% La figure~\ref{fig:pv_cellules_cartesien} montre le résultat du découpage cartésien , opéré dans le repère du lit : chaque grain, représenté à son diamètre réel, est coloré par le label \textit{cell\_id} de la cellule qui le contient, en vue de face et en vue de côté. La grille retenue ($10 \times 1 \times 1$) découpe le lit en dix bandes le long de sa direction principale --- parallèle à la surface libre --- de sorte que chaque bande traverse l'épaisseur du lit et reste occupée en permanence ; toutes les cellules participent au modèle.
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.85\textwidth]{figures/pv_cellules_cartesien.png}
@@ -768,7 +768,7 @@ Les matrices de transition construitent sur deux tours de rotation du tambour($N
 La forme de matrice \textbf{bande} montre que les particules s'écoulent dans des directions opposées: certaines sont entrainées par la rotation du tambour 
 --- que l'on observe par la \textbf{sur-diagonale} prononcée ---
 ; tandis que d'autres redescendent entrainées par la gravité --- que l'on observe par la \textbf{sous-diagonale} prononcée ---.
-La matrice de transition des grandes particules à gauche révèlent qu'elles  sont entrainées par les parois du mélangeur, ce qui se traduit par la forte probabilité sur la diagonale($\mathbf{0.37}$) des cellules contre les parois \textbf{1 et 9}.
+La matrice de transition des grandes particules à gauche révèlent qu'elles  sont entrainées par les parois du mélangeur, ce qui se traduit par la forte probabilité sur la diagonale($\mathbf{0.37}$) des cellules contre les parois \textbf{1 et 9} comme representées sur la figure~\ref{fig:pv_cellules_cartesien}.
 Celle des petites particules montre qu'elles sont  très mobiles avec les probabilités presque uniformement réparties.
 
 
