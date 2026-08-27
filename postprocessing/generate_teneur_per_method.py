@@ -243,29 +243,38 @@ if __name__ == "__main__":
         cells = np.where(act)[0]
         n = min(len(trajs["small"]), len(trajs["large"]))
         C_mk = concentration_from_S(trajs["small"][:n], trajs["large"][:n])
+        N_mk = trajs["small"][:n] + trajs["large"][:n]
         t_dem_idx = np.arange(START, N_T, 20)
         rows_dem = np.searchsorted(et.times, t_dem_idx)
         C_dem = concentration_from_S(et.S_matrices["small"][rows_dem],
                                      et.S_matrices["large"][rows_dem])
+        N_dem = et.S_matrices["small"][rows_dem] + et.S_matrices["large"][rows_dem]
 
-        # Analyse des cellules extrêmes au début et fin
-        # début régime établi
+        # Analyse des cellules extrêmes au début et fin - teneur
         row_start = et.idx_to_row[START]
         C_start = concentration_from_S(et.S_matrices["small"][row_start][None],
                                        et.S_matrices["large"][row_start][None])[0]
-        # fin
         row_end = et.idx_to_row[3000] if 3000 in et.idx_to_row else et.idx_to_row[et.times[-1]]
         C_end = concentration_from_S(et.S_matrices["small"][row_end][None],
                                      et.S_matrices["large"][row_end][None])[0]
 
-        # identification
         most_start = int(np.argmax(C_start))
         least_start = int(np.argmin(C_start))
         most_end = int(np.argmax(C_end))
         least_end = int(np.argmin(C_end))
 
-        print(f"{et.nom}: start most={most_start} ({C_start[most_start]:.2f}) least={least_start} ({C_start[least_start]:.2f}) | end most={most_end} ({C_end[most_end]:.2f}) least={least_end} ({C_end[least_end]:.2f})")
+        # Analyse comptage
+        N_start = et.S_matrices["small"][row_start] + et.S_matrices["large"][row_start]
+        N_end = et.S_matrices["small"][row_end] + et.S_matrices["large"][row_end]
+        most_N_start = int(np.argmax(N_start))
+        least_N_start = int(np.argmin(N_start))
+        most_N_end = int(np.argmax(N_end))
+        least_N_end = int(np.argmin(N_end))
 
+        print(f"{et.nom}: teneur start most={most_start} ({C_start[most_start]:.2f}) least={least_start} ({C_start[least_start]:.2f}) | end most={most_end} ({C_end[most_end]:.2f}) least={least_end} ({C_end[least_end]:.2f})")
+        print(f"{et.nom}: nombre start most={most_N_start} ({N_start[most_N_start]}) least={least_N_start} ({N_start[least_N_start]}) | end most={most_N_end} ({N_end[most_N_end]}) least={least_N_end} ({N_end[least_N_end]})")
+
+        # --- TENEUR ---
         fig, ax = plt.subplots(figsize=(12.5, 6.2))
         for c in cells:
             col = CELL_COLORS[int(c) % len(CELL_COLORS)]
@@ -281,7 +290,6 @@ if __name__ == "__main__":
                      f"Fin plus: {most_end} (c={C_end[most_end]:.2f}), moins: {least_end} (c={C_end[least_end]:.2f})", fontsize=11)
         ax.legend(ncol=5, fontsize=9, loc="upper right")
         fig.tight_layout()
-        # noms compatibles rapport
         if key == "voronoi":
             fig.savefig(FIGDIR / "teneur_locale_cellules.png", dpi=200)
             fig.savefig(FIGDIR / "teneur_voronoi.png", dpi=200)
@@ -292,9 +300,42 @@ if __name__ == "__main__":
             fig.savefig(FIGDIR / "teneur_cartesien.png", dpi=200)
         elif key == "cylindrique":
             fig.savefig(FIGDIR / "teneur_cylindrique.png", dpi=200)
-        # versions _lib pour cohérence
         fig.savefig(FIGDIR / f"teneur_{key}_lib.png", dpi=200)
         plt.close(fig)
         print(f"  -> {key} teneur ok")
 
-    print("\n✅ Figures teneur par méthode générées")
+        # --- COMPTAGE NOMBRE DE PARTICULES ---
+        fig, ax = plt.subplots(figsize=(12.5, 6.2))
+        for c in cells:
+            col = CELL_COLORS[int(c) % len(CELL_COLORS)]
+            ax.plot(t_dem_idx/100, N_dem[:, c], "-", color=col, lw=1.2, alpha=0.8)
+            ax.plot(t_mk[:n]/100, N_mk[:, c], "o--", color=col, ms=3.5, lw=0.8,
+                    markeredgecolor="white", markeredgewidth=0.4, label=f"cellule {c}")
+        ax.set_xlabel("Temps (s)")
+        ax.set_ylabel("Nombre de particules par cellule")
+        add_tours_axis(ax)
+        ax.grid(alpha=0.3)
+        ax.set_title(f"Nombre de particules par cellule – découpage {et.nom.lower()} (10 cellules, Markov homogène)\n"
+                     f"Plus peuplée début: {most_N_start} (N={N_start[most_N_start]}), moins: {least_N_start} (N={N_start[least_N_start]}) | "
+                     f"Fin plus: {most_N_end} (N={N_end[most_N_end]}), moins: {least_N_end} (N={N_end[least_N_end]})", fontsize=11)
+        ax.legend(ncol=5, fontsize=9, loc="upper right")
+        fig.tight_layout()
+        if key == "voronoi":
+            fig.savefig(FIGDIR / "nombre_particules_cellules.png", dpi=200)
+            fig.savefig(FIGDIR / "nombre_voronoi.png", dpi=200)
+        elif key == "physique":
+            fig.savefig(FIGDIR / "nombre_physique.png", dpi=200)
+        elif key == "cartesien":
+            fig.savefig(FIGDIR / "nombre_cartesien.png", dpi=200)
+        elif key == "cylindrique":
+            fig.savefig(FIGDIR / "nombre_cylindrique.png", dpi=200)
+        fig.savefig(FIGDIR / f"nombre_{key}_lib.png", dpi=200)
+        # aussi compatibilité avec ancien nom vecteur_etat_nb.png pour voronoi
+        if key == "voronoi":
+            fig.savefig(FIGDIR / "vecteur_etat_nb.png", dpi=200)
+        plt.close(fig)
+        print(f"  -> {key} nombre ok")
+
+    print("\n✅ Figures teneur + nombre par méthode générées (comptage pour toutes méthodes)")
+
+
