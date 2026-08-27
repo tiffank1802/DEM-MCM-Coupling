@@ -256,26 +256,33 @@ def fig_melangeur_especes(X, small_p):
 
 
 def fig_cellules(X, small_p, key, nom, lab):
-    """Particules colorées par cellule (cell_id), vue de face ET de côté :
+    """Particules colorées par cellule (cell_id), vue de face, côté et isométrique :
     les cellules k-means se partagent aussi selon l'axe z du tambour,
-    invisible en vue de face seule."""
+    invisible en vue de face seule. La vue isométrique apporte une lecture 3D complète
+    avec les particules réelles au diamètre réel.
+    """
     diam = np.where(small_p, D_SMALL, D_BIG)
     colors = np.array([_hex2rgb(TAB10[l % 10]) for l in lab])
     fig = make_subplots(
-        rows=1, cols=2, specs=[[{"type": "scene"}] * 2],
+        rows=1, cols=3, specs=[[{"type": "scene"}] * 3],
         subplot_titles=("vue de face (plan x\u2013y)",
-                        "vue de côté (plan z\u2013y)"),
+                        "vue de côté (plan z\u2013y)",
+                        "vue isométrique"),
         horizontal_spacing=0.01,
     )
     fig.add_trace(spheres_mesh(X[START], diam / 2, colors), row=1, col=1)
     fig.add_trace(spheres_mesh(X[START], diam / 2, colors), row=1, col=2)
-    # numéros de cellule au barycentre, sur les deux vues
+    fig.add_trace(spheres_mesh(X[START], diam / 2, colors), row=1, col=3)
+    # numéros de cellule au barycentre, sur les trois vues
     for tr in _cell_id_labels(X[START], lab, view="face",
                               per_cell_colors=TAB10):
         fig.add_trace(tr, row=1, col=1)
     for tr in _cell_id_labels(X[START], lab, view="cote",
                               per_cell_colors=TAB10):
         fig.add_trace(tr, row=1, col=2)
+    for tr in _cell_id_labels(X[START], lab, view="face",
+                              per_cell_colors=TAB10):
+        fig.add_trace(tr, row=1, col=3)
     # barre de couleurs discrète simulée par un scatter invisible
     fig.add_trace(go.Scatter3d(
         x=[None], y=[None], z=[None], mode="markers",
@@ -292,20 +299,21 @@ def fig_cellules(X, small_p, key, nom, lab):
             showscale=True, size=0.0001,
         ),
         showlegend=False,
-    ), row=1, col=2)
+    ), row=1, col=3)
     fig.update_scenes(**scene_kwargs(CAM_FACE))
     fig.update_scenes(camera=CAM_COTE, row=1, col=2)
+    fig.update_scenes(camera=CAM_3Q, row=1, col=3)
     fig.update_layout(
         paper_bgcolor=BG, margin=dict(l=0, r=0, t=64, b=0),
         font=dict(color="white", size=21),
         title=dict(text=f"Découpage {nom} — particules colorées par cellule "
-                        f"(t = 1,57 s), numéro de cellule au barycentre",
+                        f"(t = 1,57 s), numéro de cellule au barycentre — vues face, côté, isométrique",
                    font=dict(color="white", size=22), x=0.5),
     )
     add_triad_all_scenes(fig)
     fig.write_image(FIGDIR / f"pv_cellules_{key}.png",
-                    width=1700, height=800, scale=1)
-    print(f"pv_cellules_{key} ok")
+                    width=2400, height=800, scale=1)
+    print(f"pv_cellules_{key} ok – avec vue isométrique")
 
 
 def fig_contenu_cellule(X, small_p, labels):
