@@ -419,63 +419,89 @@ def fig_melangeur_especes(X, small_p):
 
 
 def fig_cellules(X, small_p, key, nom, lab):
-    """Particules colorées par cellule (cell_id), vue de face, côté et isométrique :
-    les cellules k-means se partagent aussi selon l'axe z du tambour,
-    invisible en vue de face seule. La vue isométrique apporte une lecture 3D complète
-    avec les particules réelles au diamètre réel.
+    """Particules colorees par cellule (cell_id).
+    - Toutes methodes: face + cote
+    - Physique uniquement: + vue isometrique pour interpretation.
     """
     diam = np.where(small_p, D_SMALL, D_BIG)
     colors = np.array([_hex2rgb(TAB10[l % 10]) for l in lab])
-    fig = make_subplots(
-        rows=1, cols=3, specs=[[{"type": "scene"}] * 3],
-        subplot_titles=("vue de face (plan x\u2013y)",
-                        "vue de côté (plan z\u2013y)",
-                        "vue isométrique"),
-        horizontal_spacing=0.01,
-    )
-    fig.add_trace(spheres_mesh(X[START], diam / 2, colors), row=1, col=1)
-    fig.add_trace(spheres_mesh(X[START], diam / 2, colors), row=1, col=2)
-    fig.add_trace(spheres_mesh(X[START], diam / 2, colors), row=1, col=3)
-    # numéros de cellule au barycentre, sur les trois vues
-    for tr in _cell_id_labels(X[START], lab, view="face",
-                              per_cell_colors=TAB10):
-        fig.add_trace(tr, row=1, col=1)
-    for tr in _cell_id_labels(X[START], lab, view="cote",
-                              per_cell_colors=TAB10):
-        fig.add_trace(tr, row=1, col=2)
-    for tr in _cell_id_labels(X[START], lab, view="face",
-                              per_cell_colors=TAB10):
-        fig.add_trace(tr, row=1, col=3)
-    # barre de couleurs discrète simulée par un scatter invisible
-    fig.add_trace(go.Scatter3d(
-        x=[None], y=[None], z=[None], mode="markers",
-        marker=dict(
-            colorscale=sum([[[i / 10, TAB10[i]], [(i + 1) / 10, TAB10[i]]]
-                            for i in range(10)], []),
-            cmin=-0.5, cmax=9.5,
-            color=[0],
-            colorbar=dict(title=dict(text="cell_id",
-                                     font=dict(color="white", size=20)),
-                          tickvals=list(range(10)),
-                          tickfont=dict(color="white", size=19),
-                          len=0.8, thickness=22),
-            showscale=True, size=0.0001,
-        ),
-        showlegend=False,
-    ), row=1, col=3)
-    fig.update_scenes(**scene_kwargs(CAM_FACE))
-    fig.update_scenes(camera=CAM_COTE, row=1, col=2)
-    fig.update_scenes(camera=CAM_3Q, row=1, col=3)
-    fig.update_layout(
-        paper_bgcolor=BG, margin=dict(l=0, r=0, t=64, b=0),
-        font=dict(color="white", size=21),
-        title=dict(text=f"Découpage {nom} — particules colorées par cellule "
-                        f"(t = 1,57 s), numéro de cellule au barycentre — vues face, côté, isométrique",
-                   font=dict(color="white", size=22), x=0.5),
-    )
-    add_triad_all_scenes(fig)
-    safe_write_image(fig, FIGDIR / f"pv_cellules_{key}.png", width=2400, height=800, scale=1)
-    print(f"pv_cellules_{key} ok – avec vue isométrique")
+    if key == "physique":
+        fig = make_subplots(
+            rows=1, cols=3, specs=[[{"type": "scene"}] * 3],
+            subplot_titles=("vue de face (plan x\u2013y)",
+                            "vue de côté (plan z\u2013y)",
+                            "vue isométrique"),
+            horizontal_spacing=0.01,
+        )
+        fig.add_trace(spheres_mesh(X[START], diam / 2, colors), row=1, col=1)
+        fig.add_trace(spheres_mesh(X[START], diam / 2, colors), row=1, col=2)
+        fig.add_trace(spheres_mesh(X[START], diam / 2, colors), row=1, col=3)
+        for tr in _cell_id_labels(X[START], lab, view="face", per_cell_colors=TAB10):
+            fig.add_trace(tr, row=1, col=1)
+        for tr in _cell_id_labels(X[START], lab, view="cote", per_cell_colors=TAB10):
+            fig.add_trace(tr, row=1, col=2)
+        for tr in _cell_id_labels(X[START], lab, view="face", per_cell_colors=TAB10):
+            fig.add_trace(tr, row=1, col=3)
+        fig.add_trace(go.Scatter3d(
+            x=[None], y=[None], z=[None], mode="markers",
+            marker=dict(
+                colorscale=sum([[[i / 10, TAB10[i]], [(i + 1) / 10, TAB10[i]]] for i in range(10)], []),
+                cmin=-0.5, cmax=9.5, color=[0],
+                colorbar=dict(title=dict(text="cell_id", font=dict(color="white", size=20)),
+                              tickvals=list(range(10)), tickfont=dict(color="white", size=19),
+                              len=0.8, thickness=22),
+                showscale=True, size=0.0001,
+            ),
+            showlegend=False,
+        ), row=1, col=3)
+        fig.update_scenes(**scene_kwargs(CAM_FACE))
+        fig.update_scenes(camera=CAM_COTE, row=1, col=2)
+        fig.update_scenes(camera=CAM_3Q, row=1, col=3)
+        fig.update_layout(
+            paper_bgcolor=BG, margin=dict(l=0, r=0, t=64, b=0),
+            font=dict(color="white", size=21),
+            title=dict(text=f"Découpage {nom} — particules par cellule (t=1,57s) — face, côté, isométrique (physique uniquement)",
+                       font=dict(color="white", size=22), x=0.5),
+        )
+        add_triad_all_scenes(fig)
+        safe_write_image(fig, FIGDIR / f"pv_cellules_{key}.png", width=2400, height=800, scale=1)
+        print(f"pv_cellules_{key} ok – avec vue isométrique (physique uniquement)")
+    else:
+        fig = make_subplots(
+            rows=1, cols=2, specs=[[{"type": "scene"}] * 2],
+            subplot_titles=("vue de face (plan x\u2013y)",
+                            "vue de côté (plan z\u2013y)"),
+            horizontal_spacing=0.01,
+        )
+        fig.add_trace(spheres_mesh(X[START], diam / 2, colors), row=1, col=1)
+        fig.add_trace(spheres_mesh(X[START], diam / 2, colors), row=1, col=2)
+        for tr in _cell_id_labels(X[START], lab, view="face", per_cell_colors=TAB10):
+            fig.add_trace(tr, row=1, col=1)
+        for tr in _cell_id_labels(X[START], lab, view="cote", per_cell_colors=TAB10):
+            fig.add_trace(tr, row=1, col=2)
+        fig.add_trace(go.Scatter3d(
+            x=[None], y=[None], z=[None], mode="markers",
+            marker=dict(
+                colorscale=sum([[[i / 10, TAB10[i]], [(i + 1) / 10, TAB10[i]]] for i in range(10)], []),
+                cmin=-0.5, cmax=9.5, color=[0],
+                colorbar=dict(title=dict(text="cell_id", font=dict(color="white", size=20)),
+                              tickvals=list(range(10)), tickfont=dict(color="white", size=19),
+                              len=0.8, thickness=22),
+                showscale=True, size=0.0001,
+            ),
+            showlegend=False,
+        ), row=1, col=2)
+        fig.update_scenes(**scene_kwargs(CAM_FACE))
+        fig.update_scenes(camera=CAM_COTE, row=1, col=2)
+        fig.update_layout(
+            paper_bgcolor=BG, margin=dict(l=0, r=0, t=64, b=0),
+            font=dict(color="white", size=21),
+            title=dict(text=f"Découpage {nom} — particules par cellule (t=1,57s)",
+                       font=dict(color="white", size=22), x=0.5),
+        )
+        add_triad_all_scenes(fig)
+        safe_write_image(fig, FIGDIR / f"pv_cellules_{key}.png", width=1700, height=800, scale=1)
+        print(f"pv_cellules_{key} ok – 2 vues")
 
 
 def fig_contenu_cellule(X, small_p, labels):
