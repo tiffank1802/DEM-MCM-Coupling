@@ -426,12 +426,16 @@ def comparaison_methodes(etudes):
         t_dem = np.arange(0, N_T, 20)
         rsd_dem = et.dem_rsd(t_dem, acts)
         rsd_dem_mk = et.dem_rsd(t_mk, acts)
-        err = float(np.mean(np.abs(rsd_mk - rsd_dem_mk)))
-        resume[et.nom] = err
+        abs_err = np.abs(rsd_mk - rsd_dem_mk)
+        err_mean = float(np.mean(abs_err))
+        err_std = float(np.std(abs_err))
+        # incertitude sur RSD predit : std de la prediction Markov elle-meme
+        rsd_mk_std = float(np.std(rsd_mk))
+        resume[et.nom] = (err_mean, err_std, rsd_mk_std)
         ax.plot(t_dem / 100, rsd_dem, "k-", lw=0.9, alpha=0.7, label="DEM")
         ax.plot(t_mk / 100, rsd_mk, "o--", color=COLORS[et.nom], ms=4,
                 label="Markov homogène")
-        ax.set_title(f"{et.nom} — écart moyen {err:.3f}")
+        ax.set_title(f"{et.nom} — écart {err_mean:.3f} ± {err_std:.3f}")
         ax.grid(alpha=0.3)
         ax.legend(fontsize=9)
     for ax in axes[-1]:
@@ -442,15 +446,16 @@ def comparaison_methodes(etudes):
         add_tours_axis(ax)
     fig.suptitle(
         "Influence de la méthode de découpage : RSD DEM vs prédiction "
-        "markovienne homogène ($\\tau = 1{,}57$ s, 2 blocs d'apprentissage)"
+        "markovienne homogène ($\\tau = 1{,}57$ s, 2 blocs d'apprentissage) – prédiction depuis 0s"
     )
     fig.tight_layout()
     fig.savefig(FIGDIR / "comparaison_methodes_rsd.png", dpi=200)
     plt.close(fig)
     with open(FIGDIR / "comparaison_methodes_table.txt", "w") as f:
-        for k, v in resume.items():
-            f.write(f"{k:<12} {v:8.4f}\n")
-    print("comparaison ok", resume)
+        f.write(f"{'methode':<12} {'mean':>10} {'std':>10} {'rsd_std':>10}\n")
+        for k, (m,s,rs) in resume.items():
+            f.write(f"{k:<12} {m:10.4f} {s:10.4f} {rs:10.4f}\n")
+    print("comparaison ok – ecart moyen ± ecart-type (incertitude RSD)", resume)
     return resume
 
 

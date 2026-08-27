@@ -825,7 +825,7 @@ En intégrant la norme de la vitesse dans le critère de partitionnement, les ce
 \subsubsection{Comparaison des méthodes}
 \label{subsec:comparaison_methodes}
 
-La figure~\ref{fig:comparaison_methodes_rsd} confronte, pour les quatre méthodes de découpage à \textbf{nombre de cellules identique} (10 cellules chacune : cartésien 10 bandes et cylindrique 10 secteurs dans le repère du lit, Voronoï et physique $K = 10$) et à configuration d'apprentissage identique ($nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas), le RSD de la teneur en petites particules prédit par la chaîne homogène à la référence DEM. Cette égalité de résolution garantit que les écarts observés proviennent bien de la \textit{forme} des cellules --- c'est-à-dire de la méthode de découpage --- et non d'une différence de finesse de maillage, chaque cellule contenant en moyenne une centaine de particules dans les quatre cas. L'écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur toute la fenêtre de prédiction est reporté dans chaque cadran et synthétisé au tableau~\ref{tab:ecart_rsd_methodes}. Une fois les découpages géométriques opérés dans le repère du lit --- condition sans laquelle leurs cellules marginales restent vides (annexe~\ref{annexe:dt}) ---, les quatre méthodes atteignent des écarts comparables : cartésien 0{,}078, Voronoï 0{,}083, cylindrique 0{,}098 et physique 0{,}103. Le choix du repère de labélisation apparaît ainsi au moins aussi déterminant que la famille de découpage : des cellules alignées sur la structure du lit --- qu'elles soient géométriques ou statistiques --- capturent correctement le niveau d'homogénéisation de la référence.
+La figure~\ref{fig:comparaison_methodes_rsd} confronte, pour les quatre méthodes de découpage à \textbf{nombre de cellules identique} (10 cellules chacune : cartésien 10 bandes et cylindrique 10 secteurs dans le repère du lit, Voronoï et physique $K = 10$) et à configuration d'apprentissage identique ($nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas), le RSD de la teneur en petites particules prédit par la chaîne homogène à la référence DEM. Cette égalité de résolution garantit que les écarts observés proviennent bien de la \textit{forme} des cellules --- c'est-à-dire de la méthode de découpage --- et non d'une différence de finesse de maillage, chaque cellule contenant en moyenne une centaine de particules dans les quatre cas. L'écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur toute la fenêtre de prédiction est reporté dans chaque cadran et synthétisé au tableau~\ref{tab:ecart_rsd_methodes}. Une fois les découpages géométriques opérés dans le repère du lit --- condition sans laquelle leurs cellules marginales restent vides (annexe~\ref{annexe:dt}) ---, les quatre méthodes atteignent des écarts comparables : cartésien 0{,}096 $\pm$ 0{,}116, Voronoï 0{,}095 $\pm$ 0{,}080, cylindrique 0{,}103 $\pm$ 0{,}049 et physique 0{,}111 $\pm$ 0{,}053 (prédiction depuis $t=\SI{0}{s}$, modèle entraîné depuis $start=\SI{1.57}{s}$). L'écart-type ajouté quantifie l'incertitude : il mesure la dispersion de l'erreur absolue au fil de la prédiction et la dispersion de la prédiction RSD elle-même. Le choix du repère de labélisation apparaît ainsi au moins aussi déterminant que la famille de découpage.
 
 \begin{figure}[H]
   \centering
@@ -835,13 +835,17 @@ La figure~\ref{fig:comparaison_methodes_rsd} confronte, pour les quatre méthode
 \end{figure}
 \begin{table}[H]
   \centering
-  \caption{Écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$  sur la fenêtre de prédiction, par méthode de découpage à nombre de cellules identique (10 cellules, chaîne homogène, configuration $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
+  \caption{Écart moyen et incertitude $\pm$ écart-type $\sigma$ sur $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur la fenêtre de prédiction, par méthode de découpage à nombre de cellules identique (10 cellules, chaîne homogène, configuration $nlt = 2$, $start = \SI{1.57}{s}$ (apprentissage), prédiction depuis $t=\SI{0}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas). L'écart-type quantifie l'incertitude sur la prédiction RSD.}
   \label{tab:ecart_rsd_methodes}
   \begin{tabular}{lcccc}
     \toprule
     & Cartésien & Cylindrique & Voronoï & Physique\\
     \midrule
-    Écart moyen (--) & \textbf{0{,}078} & 0{,}098 & 0{,}083 & 0{,}103\\
+    Écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ (--) & 0{,}096 & 0{,}103 & 0{,}095 & 0{,}111\\
+    Écart-type $\sigma$ (incertitude) (--) & 0{,}116 & 0{,}049 & 0{,}080 & 0{,}053\\
+    $\sigma$ RSD Markov (dispersion prédiction) (--) & 0{,}131 & 0{,}247 & 0{,}087 & 0{,}202\\
+    \midrule
+    Écart moyen $\pm$ $\sigma$ & 0{,}096 $\pm$ 0{,}116 & 0{,}103 $\pm$ 0{,}049 & 0{,}095 $\pm$ 0{,}080 & 0{,}111 $\pm$ 0{,}053\\
     \bottomrule
   \end{tabular}
 \end{table}
