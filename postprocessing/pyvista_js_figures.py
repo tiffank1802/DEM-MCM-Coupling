@@ -419,7 +419,8 @@ def fig_melangeur_especes(X, small_p):
 
 
 def fig_cellules(X, small_p, key, nom, lab):
-    """Particules colorees par cellule (cell_id).
+    """SERIEUSEMENT: vue isometrique uniquement pour pv_cellules_physique.png – demande interpretation
+    Particules colorees par cellule (cell_id).
     - Toutes methodes: face + cote
     - Physique uniquement: + vue isometrique pour interpretation.
     """
