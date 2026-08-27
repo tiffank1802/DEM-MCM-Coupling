@@ -179,7 +179,43 @@ def _hex2rgb(h):
 # ---------------------------------------------------------------------------
 
 
+def ensure_compact():
+    """Genere data/compact.npz depuis data/chunks si absent (auto-generation pour MyStudio)."""
+    compact_path = ROOT / "data" / "compact.npz"
+    if compact_path.exists():
+        return
+    chunks_dir = ROOT / "data" / "chunks"
+    if chunks_dir.exists() and list(chunks_dir.glob("*.parquet.gz")):
+        print(f"⚠️ {compact_path} absent – generation depuis {chunks_dir} via extract_compact...")
+        try:
+            from postprocessing.extract_compact import main as extract_main
+            extract_main()
+        except Exception as e:
+            print(f"Erreur generation compact.npz: {e}")
+            # fallback: generation manuelle minimale
+            import gzip, io, pandas as pd
+            COLS = ["Fichier_Source","Particle_ID","Diameter","coordinates:0","coordinates:1","coordinates:2","Velocity:0","Velocity:1","Velocity:2"]
+            ts,pid,xyz,vn,small=[],[],[],[],[]
+            for p in sorted(chunks_dir.glob("*.parquet.gz")):
+                with gzip.open(p,"rb") as fh:
+                    df=pd.read_parquet(io.BytesIO(fh.read()), columns=COLS)
+                import numpy as np
+                t = df["Fichier_Source"].str.extract(r"(\d+)", expand=False).astype(int).to_numpy()
+                ts.append(t.astype(np.int16))
+                pid.append(df["Particle_ID"].to_numpy().astype(np.int16))
+                xyz.append(df[["coordinates:0","coordinates:1","coordinates:2"]].to_numpy().astype(np.float32))
+                v=df[["Velocity:0","Velocity:1","Velocity:2"]].to_numpy()
+                vn.append(np.linalg.norm(v,axis=1).astype(np.float32))
+                small.append((df["Diameter"].to_numpy()<0.006))
+            import numpy as np
+            np.savez_compressed(compact_path, t=np.concatenate(ts), pid=np.concatenate(pid), xyz=np.concatenate(xyz), vnorm=np.concatenate(vn), small=np.concatenate(small))
+            print(f"✅ {compact_path} genere")
+    else:
+        print(f"⚠️ {compact_path} absent et {chunks_dir} vide – tentative via HuggingFace ou message d'aide")
+        print("Pour generer les donnees, lancez: python postprocessing/extract_compact.py puis python postprocessing/etudes_librairie.py")
+
 def load_frames():
+    ensure_compact()
     d = np.load(ROOT / "data" / "compact.npz")
     t = d["t"].astype(np.int32)
     pid = d["pid"].astype(np.int32)
@@ -199,13 +235,96 @@ def load_frames():
     return X, V, small_p
 
 
-def partition_labels(X, V, small_p):
-    """Labels de cellule au régime établi, produits par la librairie.
+def ensure_labels():
+    """Genere data/labels_librairie.npz si absent via etudes_librairie.dump_labels_3d."""
+    labels_path = ROOT / "data" / "labels_librairie.npz"
+    if labels_path.exists():
+        return
+    compact_path = ROOT / "data" / "compact.npz"
+    if not compact_path.exists():
+        ensure_compact()
+    if compact_path.exists():
+        print(f"⚠️ {labels_path} absent – generation via etudes_librairie...")
+        try:
+            # reutilise la logique d'etudes_librairie pour generer labels aux tours demandes
+            import sys
+            sys.path.insert(0, str(ROOT))
+            from postprocessing.etudes_librairie import load_timestep_dict, EtudeMethode, METHODES, config_for
+            from dem_mcm_coupling.run_sweep import sample_coordinates, PERMANENT_START, N_PARTICLES_PER_TIMESTEP
+            from postprocessing.metrics import concentration_from_S
+            import numpy as np
+            def make_frame(sample_coords, permanent_rows):
+                pts = np.asarray(sample_coords[permanent_rows:], dtype=np.float64)
+                c = pts.mean(axis=0)
+                xy = pts[:, :2] - c[:2]
+                cov = xy.T @ xy / len(xy)
+                _, evecs = np.linalg.eigh(cov)
+                R2 = evecs[:, ::-1]
+                if np.linalg.det(R2) < 0:
+                    R2[:,1] = -R2[:,1]
+                return c,R2
+            def transform_coords(coords,c,R2):
+                out = np.asarray(coords,dtype=np.float64).copy()
+                out[:,:2] = (out[:,:2]-c[:2])@R2
+                out[:,2] -= c[2]
+                return out
+            def transform_dict(timestep_dict,c,R2):
+                import pandas as pd
+                out={}
+                for idx,df in timestep_dict.items():
+                    xy = (df[["coordinates:0","coordinates:1"]].to_numpy()-c[:2])@R2
+                    out[idx]=pd.DataFrame({"coordinates:0": xy[:,0],"coordinates:1": xy[:,1],"coordinates:2": df["coordinates:2"].to_numpy()-c[2]})
+                return out
+            timestep_dict = load_timestep_dict()
+            sample_coords, s_velocities, _ = sample_coordinates(timestep_dict)
+            permanent_rows = PERMANENT_START * N_PARTICLES_PER_TIMESTEP
+            frame = make_frame(sample_coords, permanent_rows)
+            etudes={}
+            for key in METHODES:
+                print(f"Prep {key} pour labels")
+                # inline EtudeMethode to avoid import recursion
+                from dem_mcm_coupling.partitioners import create_partitioner
+                from dem_mcm_coupling.run_sweep import ExperimentConfig, _build_state_matrices, _compute_state_matrices, _detect_species, _fit_partitioner_for_sweep
+                nom,method,kwargs=METHODES[key]
+                partitioner=create_partitioner(method,**kwargs)
+                cfg_fit=ExperimentConfig(method=method,method_kwargs=kwargs)
+                label_dict=timestep_dict
+                fit_coords=sample_coords
+                if key in {"cartesien","cylindrique"}:
+                    c,R2=frame
+                    fit_coords=transform_coords(sample_coords,c,R2)
+                    label_dict=transform_dict(timestep_dict,c,R2)
+                    partitioner.fit(fit_coords[permanent_rows:])
+                else:
+                    _fit_partitioner_for_sweep(partitioner,cfg_fit,fit_coords,s_velocities,permanent_rows)
+                species_masks=_detect_species(timestep_dict[min(timestep_dict)])
+                states_matrix,sorted_indices=_compute_state_matrices(label_dict,partitioner,157)
+                idx_to_row={int(i):r for r,i in enumerate(sorted_indices)}
+                S_matrices=_build_state_matrices(states_matrix,species_masks,partitioner.n_cells)
+                times=np.asarray(sorted_indices)
+                etudes[key]=(partitioner,states_matrix,sorted_indices,idx_to_row,S_matrices,times)
+            out={}
+            times_snap=(0,157,3645,5215,5999,3000)
+            for key,(partitioner,states_matrix,sorted_indices,idx_to_row,S_matrices,times) in etudes.items():
+                for t in times_snap:
+                    if t in idx_to_row:
+                        out[f"{key}_{t}"]=states_matrix[idx_to_row[t]]
+                for t in times_snap:
+                    if t in idx_to_row:
+                        S_s=S_matrices["small"][idx_to_row[t]][None]
+                        S_l=S_matrices["large"][idx_to_row[t]][None]
+                        out[f"{key}_teneur_{t}"]=concentration_from_S(S_s,S_l)[0]
+            np.savez(labels_path, **out)
+            print(f"✅ {labels_path} genere")
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"Erreur generation labels: {e}")
+    else:
+        print(f"⚠️ Impossible de generer {labels_path}, {compact_path} manquant")
 
-    Les labels sont calculés par ``etudes_librairie.py`` (partitionneurs de
-    ``dem_mcm_coupling.partitioners``, fit de ``run_sweep``) et sauvegardés
-    dans ``data/labels_librairie.npz`` — aucune réimplémentation ici.
-    """
+def partition_labels(X, V, small_p):
+    ensure_labels()
     d = np.load(ROOT / "data" / "labels_librairie.npz")
     noms = {
         "cartesien": "cartésien (10 bandes, repère du lit)",
