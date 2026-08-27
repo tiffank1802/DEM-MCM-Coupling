@@ -169,6 +169,51 @@ def scene_kwargs(camera):
         camera=camera, bgcolor=BG,
     )
 
+def safe_write_image(fig, out_path, width=1600, height=800, scale=1):
+    """Ecriture image avec fallback si Chrome/Kaleido manquant.
+    1) tente fig.write_image (kaleido)
+    2) si echec ChromeNotFoundError, sauve en HTML et genere fallback matplotlib si possible
+    """
+    out_path = Path(out_path)
+    try:
+        fig.write_image(out_path, width=width, height=height, scale=scale)
+        print(f"✅ {out_path.name} ok")
+        return True
+    except Exception as e:
+        msg = str(e)
+        if "Chrome" in msg or "kaleido" in msg.lower() or "Kaleido" in msg:
+            print(f"⚠️ Kaleido/Chrome manquant pour {out_path.name}: {e}")
+            print("→ Tentative d'installation Chrome via kaleido_get_chrome ou plotly_get_chrome")
+            # tenter installation auto si possible
+            try:
+                import kaleido
+                try:
+                    kaleido.get_chrome_sync()
+                    print("Chrome installé via kaleido.get_chrome_sync(), nouvelle tentative...")
+                    fig.write_image(out_path, width=width, height=height, scale=scale)
+                    print(f"✅ {out_path.name} ok après install Chrome")
+                    return True
+                except Exception as e2:
+                    print(f"  Echec install auto Chrome: {e2}")
+            except Exception:
+                pass
+            # fallback: sauver en HTML
+            html_path = out_path.with_suffix('.html')
+            try:
+                fig.write_html(html_path)
+                print(f"💾 Fallback HTML sauvé: {html_path} – ouvrez dans navigateur et capturez PNG si besoin")
+                print(f"   Pour corriger définitivement, lancez dans ce terminal:")
+                print(f"   $ kaleido_get_chrome  # ou  plotly_get_chrome")
+                print(f"   Puis relancez: python {Path(__file__).name}")
+            except Exception as e3:
+                print(f"  Echec fallback HTML: {e3}")
+            return False
+        else:
+            print(f"❌ Erreur write_image {out_path.name}: {e}")
+            raise
+
+
+
 
 def _hex2rgb(h):
     return [int(h[i:i + 2], 16) for i in (1, 3, 5)]
@@ -369,8 +414,7 @@ def fig_melangeur_especes(X, small_p):
         ],
     )
     add_triad_all_scenes(fig)
-    fig.write_image(FIGDIR / "pv_melangeur_especes.png",
-                    width=1600, height=780, scale=1)
+    safe_write_image(fig, FIGDIR / "pv_melangeur_especes.png", width=1600, height=780, scale=1)
     print("pv_melangeur_especes ok")
 
 
@@ -430,8 +474,7 @@ def fig_cellules(X, small_p, key, nom, lab):
                    font=dict(color="white", size=22), x=0.5),
     )
     add_triad_all_scenes(fig)
-    fig.write_image(FIGDIR / f"pv_cellules_{key}.png",
-                    width=2400, height=800, scale=1)
+    safe_write_image(fig, FIGDIR / f"pv_cellules_{key}.png", width=2400, height=800, scale=1)
     print(f"pv_cellules_{key} ok – avec vue isométrique")
 
 
@@ -470,8 +513,7 @@ def fig_contenu_cellule(X, small_p, labels):
         ],
     )
     add_triad_all_scenes(fig)
-    fig.write_image(FIGDIR / "pv_cellule_contenu.png",
-                    width=1300, height=1000, scale=1)
+    safe_write_image(fig, FIGDIR / "pv_cellule_contenu.png", width=1300, height=1000, scale=1)
     print("pv_cellule_contenu ok")
 
 
@@ -500,8 +542,7 @@ def fig_melange_instants(X, small_p):
         font=dict(color="white", size=21), showlegend=False,
     )
     add_triad_all_scenes(fig)
-    fig.write_image(FIGDIR / "pv_melange_instants.png",
-                    width=1500, height=1400, scale=1)
+    safe_write_image(fig, FIGDIR / "pv_melange_instants.png", width=1500, height=1400, scale=1)
     print("pv_melange_instants ok")
 
 
@@ -527,8 +568,7 @@ def fig_melange_instants_voronoi(X, small_p):
         font=dict(color="white", size=21), showlegend=False,
     )
     add_triad_all_scenes(fig)
-    fig.write_image(FIGDIR / "pv_melange_instants_voronoi.png",
-                    width=1800, height=680, scale=1)
+    safe_write_image(fig, FIGDIR / "pv_melange_instants_voronoi.png", width=1800, height=1400, scale=1)
     print("pv_melange_instants_voronoi ok")
 
 
@@ -659,8 +699,7 @@ def fig_teneur_3d(X, small_p):
                        font=dict(color="white", size=22), x=0.5),
         )
         add_triad_all_scenes(fig)
-        fig.write_image(FIGDIR / f"pv_teneur_{key}_t{t}.png",
-                        width=1700, height=780, scale=1)
+        safe_write_image(fig, FIGDIR / f"pv_teneur_{key}_t{t}.png", width=1700, height=780, scale=1)
         print(f"pv_teneur_{key}_t{t} ok")
 
 
@@ -704,7 +743,7 @@ def fig_snapshots_all_methods(X, small_p):
         )
         add_triad_all_scenes(fig)
         out = FIGDIR / f"pv_snapshot_{key}_teneur.png"
-        fig.write_image(out, width=1600, height=1400, scale=1)
+        safe_write_image(fig, out, width=1600, height=1400, scale=1)
         print(f"pv_snapshot_{key} ok -> {out}")
 
 
