@@ -514,7 +514,7 @@ def etude_tau(etudes):
     for i, tau in enumerate(taus):
         cfg = config_for(et.method, tau=tau, step=tau,
                          dt=max(1, tau // 10))
-        rsd_mk, t_mk, _ = et.markov_rsd(cfg)
+        rsd_mk, t_mk, _ = et.markov_rsd(cfg, start_pred=0)
         lw = 2.6 if tau == TAU else 1.4
         ax.plot(t_mk / 100, rsd_mk, color=cmap(i / len(taus)), lw=lw,
                 label=f"Markov $\\tau$={tau / 100:g} s"
@@ -536,7 +536,7 @@ def etude_tau(etudes):
 
 
 def _erreur(et, cfg):
-    rsd_mk, t_mk, acts = et.markov_rsd(cfg)
+    rsd_mk, t_mk, acts = et.markov_rsd(cfg, start_pred=0)
     rsd_dem = et.dem_rsd(t_mk, acts)
     return float(np.mean(np.abs(rsd_mk - rsd_dem)))
 
