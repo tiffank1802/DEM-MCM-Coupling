@@ -835,17 +835,21 @@ La figure~\ref{fig:comparaison_methodes_rsd} confronte, pour les quatre méthode
 \end{figure}
 \begin{table}[H]
   \centering
-  \caption{Écart moyen et incertitude $\pm$ écart-type $\sigma$ sur $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur la fenêtre de prédiction, par méthode de découpage à nombre de cellules identique (10 cellules, chaîne homogène, configuration $nlt = 2$, $start = \SI{1.57}{s}$ (apprentissage), prédiction depuis $t=\SI{0}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas). L'écart-type quantifie l'incertitude sur la prédiction RSD.}
+  \caption{Écart moyen $\pm$ écart-type $\sigma$ (incertitude) sur $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur la fenêtre de prédiction, par méthode de découpage à nombre de cellules identique (10 cellules, chaîne homogène, configuration $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas). Modèle entraîné depuis START=1.57s, prédiction depuis t=0s pour DEM et Markov. L'écart-type quantifie l'incertitude sur la prédiction RSD.}
   \label{tab:ecart_rsd_methodes}
   \begin{tabular}{lcccc}
     \toprule
     & Cartésien & Cylindrique & Voronoï & Physique\\
     \midrule
-    Écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ (--) & 0{,}096 & 0{,}103 & 0{,}095 & 0{,}111\\
-    Écart-type $\sigma$ (incertitude) (--) & 0{,}116 & 0{,}049 & 0{,}080 & 0{,}053\\
-    $\sigma$ RSD Markov (dispersion prédiction) (--) & 0{,}131 & 0{,}247 & 0{,}087 & 0{,}202\\
+    Écart moyen (--) & 0{,}078 & 0{,}098 & 0{,}083 & 0{,}103\\
+    Écart-type $\sigma$ (--) & 0{,}050 & 0{,}042 & 0{,}038 & 0{,}042\\
     \midrule
-    Écart moyen $\pm$ $\sigma$ & 0{,}096 $\pm$ 0{,}116 & 0{,}103 $\pm$ 0{,}049 & 0{,}095 $\pm$ 0{,}080 & 0{,}111 $\pm$ 0{,}053\\
+    Moyenne $\pm$ $\sigma$ & 0{,}078 $\pm$ 0{,}050 & 0{,}098 $\pm$ 0{,}042 & 0{,}083 $\pm$ 0{,}038 & 0{,}103 $\pm$ 0{,}042\\
+    \midrule
+    \multicolumn{5}{l}{\small Avec prédiction depuis $t=\SI{0}{s}$ (modèle entraîné depuis START) :}\\
+    Écart moyen (pred 0s) & 0{,}096 & 0{,}103 & 0{,}095 & 0{,}111\\
+    Écart-type (pred 0s) & 0{,}116 & 0{,}049 & 0{,}080 & 0{,}053\\
+    $\sigma$ RSD Markov (pred 0s) & 0{,}131 & 0{,}247 & 0{,}087 & 0{,}202\\
     \bottomrule
   \end{tabular}
 \end{table}
