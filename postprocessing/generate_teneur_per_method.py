@@ -304,7 +304,49 @@ if __name__ == "__main__":
         plt.close(fig)
         print(f"  -> {key} teneur ok")
 
-        # --- COMPTAGE NOMBRE DE PARTICULES ---
+        # --- COMPTAGE NOMBRE DE PARTICULES PAR ESPECE PUIS TOTAL ---
+        # 1) Petites particules (4mm) par cellule
+        S_small_dem = et.S_matrices["small"][rows_dem]
+        S_small_mk = trajs["small"][:n]
+        fig, ax = plt.subplots(figsize=(12.5, 6.2))
+        for c in cells:
+            col = CELL_COLORS[int(c) % len(CELL_COLORS)]
+            ax.plot(t_dem_idx/100, S_small_dem[:, c], "-", color=col, lw=1.2, alpha=0.8)
+            ax.plot(t_mk[:n]/100, S_small_mk[:, c], "o--", color=col, ms=3.5, lw=0.8,
+                    markeredgecolor="white", markeredgewidth=0.4, label=f"cellule {c}")
+        ax.set_xlabel("Temps (s)")
+        ax.set_ylabel("Nombre de petites particules (4mm) par cellule")
+        add_tours_axis(ax)
+        ax.grid(alpha=0.3)
+        ax.set_title(f"Comptage petites particules par cellule – découpage {et.nom.lower()} (10 cellules, Markov homogène)\n"
+                     f"Plus peuplée début: {most_N_start} | Fin plus: {most_N_end}", fontsize=11)
+        ax.legend(ncol=5, fontsize=9, loc="upper right")
+        fig.tight_layout()
+        fig.savefig(FIGDIR / f"nombre_petites_{key}.png", dpi=200)
+        fig.savefig(FIGDIR / f"nombre_{key}_petites.png", dpi=200)
+        plt.close(fig)
+
+        # 2) Grandes particules (8mm) par cellule
+        S_large_dem = et.S_matrices["large"][rows_dem]
+        S_large_mk = trajs["large"][:n]
+        fig, ax = plt.subplots(figsize=(12.5, 6.2))
+        for c in cells:
+            col = CELL_COLORS[int(c) % len(CELL_COLORS)]
+            ax.plot(t_dem_idx/100, S_large_dem[:, c], "-", color=col, lw=1.2, alpha=0.8)
+            ax.plot(t_mk[:n]/100, S_large_mk[:, c], "o--", color=col, ms=3.5, lw=0.8,
+                    markeredgecolor="white", markeredgewidth=0.4, label=f"cellule {c}")
+        ax.set_xlabel("Temps (s)")
+        ax.set_ylabel("Nombre de grandes particules (8mm) par cellule")
+        add_tours_axis(ax)
+        ax.grid(alpha=0.3)
+        ax.set_title(f"Comptage grandes particules par cellule – découpage {et.nom.lower()} (10 cellules, Markov homogène)", fontsize=11)
+        ax.legend(ncol=5, fontsize=9, loc="upper right")
+        fig.tight_layout()
+        fig.savefig(FIGDIR / f"nombre_grandes_{key}.png", dpi=200)
+        fig.savefig(FIGDIR / f"nombre_{key}_grandes.png", dpi=200)
+        plt.close(fig)
+
+        # 3) Total particules par cellule
         fig, ax = plt.subplots(figsize=(12.5, 6.2))
         for c in cells:
             col = CELL_COLORS[int(c) % len(CELL_COLORS)]
@@ -312,10 +354,10 @@ if __name__ == "__main__":
             ax.plot(t_mk[:n]/100, N_mk[:, c], "o--", color=col, ms=3.5, lw=0.8,
                     markeredgecolor="white", markeredgewidth=0.4, label=f"cellule {c}")
         ax.set_xlabel("Temps (s)")
-        ax.set_ylabel("Nombre de particules par cellule")
+        ax.set_ylabel("Nombre total de particules par cellule")
         add_tours_axis(ax)
         ax.grid(alpha=0.3)
-        ax.set_title(f"Nombre de particules par cellule – découpage {et.nom.lower()} (10 cellules, Markov homogène)\n"
+        ax.set_title(f"Nombre total de particules par cellule – découpage {et.nom.lower()} (10 cellules, Markov homogène)\n"
                      f"Plus peuplée début: {most_N_start} (N={N_start[most_N_start]}), moins: {least_N_start} (N={N_start[least_N_start]}) | "
                      f"Fin plus: {most_N_end} (N={N_end[most_N_end]}), moins: {least_N_end} (N={N_end[least_N_end]})", fontsize=11)
         ax.legend(ncol=5, fontsize=9, loc="upper right")
@@ -330,12 +372,12 @@ if __name__ == "__main__":
         elif key == "cylindrique":
             fig.savefig(FIGDIR / "nombre_cylindrique.png", dpi=200)
         fig.savefig(FIGDIR / f"nombre_{key}_lib.png", dpi=200)
-        # aussi compatibilité avec ancien nom vecteur_etat_nb.png pour voronoi
+        fig.savefig(FIGDIR / f"nombre_total_{key}.png", dpi=200)
         if key == "voronoi":
             fig.savefig(FIGDIR / "vecteur_etat_nb.png", dpi=200)
         plt.close(fig)
-        print(f"  -> {key} nombre ok")
+        print(f"  -> {key} comptage par espece + total ok")
 
-    print("\n✅ Figures teneur + nombre par méthode générées (comptage pour toutes méthodes)")
+    print("\n✅ Figures teneur + comptage par espèce + total générées pour toutes méthodes")
 
 
