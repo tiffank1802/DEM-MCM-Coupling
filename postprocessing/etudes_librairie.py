@@ -313,8 +313,8 @@ class EtudeMethode:
     # -- propagation + RSD (code postprocessing) ---------------------------
 
     def markov_rsd(self, config, start_pred=None):
-        """RSD de concentration prédit (matrices distinctes par espèce)."""
-        start_pred = config.start_index if start_pred is None else start_pred
+        """RSD de concentration prédit (matrices distinctes par espèce). Model entraine a partir de START=1.57, prediction a partir de 0."""
+        start_pred = 0 if start_pred is None else start_pred
         trajs, acts = {}, {}
         for sp in ("small", "large"):
             P_raw = self.build_P(config, sp)
@@ -332,8 +332,8 @@ class EtudeMethode:
         return rsd, t_mk[:n], acts
 
     def markov_rsd_single_P(self, config, start_pred=None):
-        """RSD prédit avec UNE matrice unique (sans distinction d'espèce)."""
-        start_pred = config.start_index if start_pred is None else start_pred
+        """RSD prédit avec UNE matrice unique (sans distinction d'espèce). Prediction a partir de 0."""
+        start_pred = 0 if start_pred is None else start_pred
         P_clean, activated = clean_transition_matrix(
             np.nan_to_num(self.build_P(config, "all"), nan=0.0))
         row0 = np.searchsorted(self.times, start_pred)
@@ -347,16 +347,17 @@ class EtudeMethode:
                                 activated, activated)
         return rsd, t_mk
 
-    def markov_rsd_inhomogeneous(self, config):
+    def markov_rsd_inhomogeneous(self, config, start_pred=0):
+        """RSD inhomogene – modele entraine depuis START, prediction depuis 0."""
         trajs, acts = {}, {}
         for sp in ("small", "large"):
             P_blocks = np.nan_to_num(self.build_P_blocks(config, sp),
                                       nan=0.0)
             P0_clean, activated = clean_transition_matrix(P_blocks[0])
-            row0 = np.searchsorted(self.times, config.start_index)
+            row0 = np.searchsorted(self.times, start_pred)
             S0 = self.S_matrices[sp][row0].astype(float)
             traj, t_mk = propagate_markov_inhomogeneous(
-                S0, P_blocks, self.times, config.start_index, config.tau,
+                S0, P_blocks, self.times, start_pred, config.tau,
                 activated, step=config.step, nlt=len(P_blocks))
             trajs[sp], acts[sp] = traj, activated
         n = min(len(trajs["small"]), len(trajs["large"]))
@@ -364,24 +365,24 @@ class EtudeMethode:
                                 acts["small"], acts["large"])
         return rsd, t_mk[:n]
 
-    def markov_traj_inhomogeneous(self, config):
-        """Trajectoires prédites par espèce avec la chaîne inhomogène."""
+    def markov_traj_inhomogeneous(self, config, start_pred=0):
+        """Trajectoires prédites par espèce avec la chaîne inhomogène – prediction depuis 0, modele entraine depuis START."""
         trajs, acts = {}, {}
         for sp in ("small", "large"):
             P_blocks = np.nan_to_num(self.build_P_blocks(config, sp),
                                      nan=0.0)
             _, activated = clean_transition_matrix(P_blocks[0])
-            row0 = np.searchsorted(self.times, config.start_index)
+            row0 = np.searchsorted(self.times, start_pred)
             S0 = self.S_matrices[sp][row0].astype(float)
             traj, t_mk = propagate_markov_inhomogeneous(
-                S0, P_blocks, self.times, config.start_index, config.tau,
+                S0, P_blocks, self.times, start_pred, config.tau,
                 activated, step=config.step, nlt=len(P_blocks))
             trajs[sp], acts[sp] = traj, activated
         return trajs, t_mk, acts
 
     def markov_traj(self, config, start_pred=None):
-        """Trajectoires prédites par espèce (comptages par cellule)."""
-        start_pred = config.start_index if start_pred is None else start_pred
+        """Trajectoires prédites par espèce (comptages par cellule). Prediction a partir de 0, modele entraine depuis START."""
+        start_pred = 0 if start_pred is None else start_pred
         trajs, acts = {}, {}
         for sp in ("small", "large"):
             P_raw = self.build_P(config, sp)
@@ -421,8 +422,8 @@ def comparaison_methodes(etudes):
     resume = {}
     for ax, (key, et) in zip(axes.flat, etudes.items()):
         cfg = config_for(et.method)
-        rsd_mk, t_mk, acts = et.markov_rsd(cfg)
-        t_dem = np.arange(START, N_T, 20)
+        rsd_mk, t_mk, acts = et.markov_rsd(cfg, start_pred=0)
+        t_dem = np.arange(0, N_T, 20)
         rsd_dem = et.dem_rsd(t_dem, acts)
         rsd_dem_mk = et.dem_rsd(t_mk, acts)
         err = float(np.mean(np.abs(rsd_mk - rsd_dem_mk)))
@@ -500,7 +501,7 @@ def etude_tau(etudes):
     et = etudes["physique"]
     taus = [10, 25, 50, 100, 157, 300, 500, 1000]
     fig, ax = plt.subplots(figsize=(10, 5.6))
-    t_dem = np.arange(START, N_T, 20)
+    t_dem = np.arange(0, N_T, 20)
     a = np.ones(et.n_states, bool)
     ax.plot(t_dem / 100, et.dem_rsd(t_dem), "k.-", ms=3, lw=1,
             label="RSD DEM (réel)")
@@ -591,14 +592,14 @@ def etude_especes(etudes):
     resume = {}
     for ax, (key, et) in zip(axes.flat, etudes.items()):
         cfg = config_for(et.method)
-        rsd_avec, t_mk, acts = et.markov_rsd(cfg)
-        rsd_sans, _ = et.markov_rsd_single_P(cfg)
+        rsd_avec, t_mk, acts = et.markov_rsd(cfg, start_pred=0)
+        rsd_sans, _ = et.markov_rsd_single_P(cfg, start_pred=0)
         n = min(len(rsd_avec), len(rsd_sans))
         rsd_dem_mk = et.dem_rsd(t_mk[:n], acts)
         e_avec = float(np.mean(np.abs(rsd_avec[:n] - rsd_dem_mk)))
         e_sans = float(np.mean(np.abs(rsd_sans[:n] - rsd_dem_mk)))
         resume[et.nom] = (e_sans, e_avec)
-        t_dem = np.arange(START, N_T, 20)
+        t_dem = np.arange(0, N_T, 20)
         ax.plot(t_dem / 100, et.dem_rsd(t_dem, acts), "k-", lw=0.9,
                 alpha=0.7, label="DEM")
         ax.plot(t_mk[:n] / 100, rsd_sans[:n], "s--", color="0.55", ms=4,
@@ -633,16 +634,13 @@ def etude_especes(etudes):
 def resultats_cylindrique(etudes):
     et = etudes["cylindrique"]
     cfg = config_for(et.method)
-    # (les matrices annotées sont produites par matrices_annotees)
-
-    # RSD DEM vs homogène vs inhomogène (blocs inhomogènes espacés de
-    # 7 tours -> step = 6*tau, soit 5 matrices sur la simulation)
-    rsd_h, t_h, acts = et.markov_rsd(cfg)
+    # RSD DEM vs homogene vs inhomogene – prediction depuis 0, modele entraine depuis START
+    rsd_h, t_h, acts = et.markov_rsd(cfg, start_pred=0)
     STEP_INH = 6 * TAU
     NLT_INH = int((N_T - START) // (STEP_INH + TAU))
     cfg_inh = config_for(et.method, nlt=NLT_INH, step=STEP_INH)
-    rsd_i, t_i = et.markov_rsd_inhomogeneous(cfg_inh)
-    t_dem = np.arange(START, N_T, 20)
+    rsd_i, t_i = et.markov_rsd_inhomogeneous(cfg_inh, start_pred=0)
+    t_dem = np.arange(0, N_T, 20)
     fig, ax = plt.subplots(figsize=(10, 5.6))
     ax.plot(t_dem / 100, et.dem_rsd(t_dem, acts), "k-", lw=1, alpha=0.7,
             label="DEM")
@@ -686,14 +684,14 @@ def chaines_inhomogenes(etudes):
     for ax, (key, et) in zip(axes.flat, etudes.items()):
         cfg = config_for(et.method)
         cfg_inh = config_for(et.method, nlt=NLT_INH, step=STEP_INH)
-        rsd_h, t_h, acts = et.markov_rsd(cfg)
-        rsd_i, t_i = et.markov_rsd_inhomogeneous(cfg_inh)
+        rsd_h, t_h, acts = et.markov_rsd(cfg, start_pred=0)
+        rsd_i, t_i = et.markov_rsd_inhomogeneous(cfg_inh, start_pred=0)
         n = min(len(rsd_h), len(rsd_i))
         rsd_dem_mk = et.dem_rsd(t_h[:n], acts)
         e_h = float(np.mean(np.abs(rsd_h[:n] - rsd_dem_mk)))
         e_i = float(np.mean(np.abs(rsd_i[:n] - rsd_dem_mk)))
         resume[et.nom] = (e_h, e_i)
-        t_dem = np.arange(START, N_T, 20)
+        t_dem = np.arange(0, N_T, 20)
         ax.plot(t_dem / 100, et.dem_rsd(t_dem, acts), "k-", lw=1.2,
                 alpha=0.8, label="DEM")
         ax.plot(t_h[:n] / 100, rsd_h[:n], "o", color="0.55", ms=5.5,
@@ -728,7 +726,7 @@ def chaines_inhomogenes(etudes):
     cells = np.where(act)[0]
     n = min(len(trajs["small"]), len(trajs["large"]))
     C_mk = concentration_from_S(trajs["small"][:n], trajs["large"][:n])
-    t_dem_idx = np.arange(START, N_T, 20)
+    t_dem_idx = np.arange(0, N_T, 20)
     rows_dem = np.searchsorted(et.times, t_dem_idx)
     C_dem = concentration_from_S(et.S_matrices["small"][rows_dem],
                                  et.S_matrices["large"][rows_dem])
@@ -742,7 +740,7 @@ def chaines_inhomogenes(etudes):
     fig.tight_layout()
     fig.savefig(FIGDIR / "teneur_physique_inhomogene_lib.png", dpi=200)
     plt.close(fig)
-    print("chaînes inhomogènes ok", resume)
+    print("chaînes inhomogènes ok – prediction depuis 0, modele entraine depuis START", resume)
     return resume
 
 
@@ -753,14 +751,13 @@ def teneur_nlt_extremes(etudes):
     from postprocessing.metrics import concentration_from_S
 
     et = etudes["physique"]
-    t_dem_idx = np.arange(START, N_T, 20)
+    t_dem_idx = np.arange(0, N_T, 20)
     rows_dem = np.searchsorted(et.times, t_dem_idx)
     C_dem = concentration_from_S(et.S_matrices["small"][rows_dem],
                                  et.S_matrices["large"][rows_dem])
     for nlt in (1, 18):
-        # dt = 1 : cohérent avec l'étude NLT (aucun NaN, statistique max)
         cfg = config_for(et.method, nlt=nlt, dt=1)
-        trajs, t_mk, acts = et.markov_traj(cfg)
+        trajs, t_mk, acts = et.markov_traj(cfg, start_pred=0)
         act = acts["small"] & acts["large"]
         cells = np.where(act)[0]
         n = min(len(trajs["small"]), len(trajs["large"]))
@@ -914,15 +911,15 @@ def teneur_et_nombre(etudes):
 
     et = etudes["voronoi"]
     cfg = config_for(et.method)
-    trajs, t_mk, acts = et.markov_traj(cfg)
+    trajs, t_mk, acts = et.markov_traj(cfg, start_pred=0)
     act = acts["small"] & acts["large"]
     rows = np.searchsorted(et.times, t_mk)
     n = min(len(trajs["small"]), len(trajs["large"]), len(rows))
     t = t_mk[:n] / 100
     cells = np.where(act)[0]
 
-    # référence DEM échantillonnée finement (trait continu)
-    t_dem_idx = np.arange(START, N_T, 20)
+    # reference DEM depuis 0 pour prediction DEM et Markov depuis 0
+    t_dem_idx = np.arange(0, N_T, 20)
     rows_dem = np.searchsorted(et.times, t_dem_idx)
     S_s_fin = et.S_matrices["small"][rows_dem]
     S_l_fin = et.S_matrices["large"][rows_dem]
@@ -1017,7 +1014,7 @@ def comparaison_methodes_teneur(etudes):
     resume = {}
     for key, et in etudes.items():
         cfg = config_for(et.method)
-        trajs, t_mk, acts = et.markov_traj(cfg)
+        trajs, t_mk, acts = et.markov_traj(cfg, start_pred=0)
         act = acts["small"] & acts["large"]
         n = min(len(trajs["small"]), len(trajs["large"]))
         C_mk = concentration_from_S(trajs["small"][:n], trajs["large"][:n])

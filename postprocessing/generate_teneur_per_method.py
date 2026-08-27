@@ -1,17 +1,6 @@
-"""Génère l'évolution de la teneur locale au cours du temps pour chaque méthode de découpage.
-
-- Pour chaque méthode (cartésien, cylindrique, Voronoï, physique) :
-  - vecteur d'état en teneur uniquement (pas de comptage)
-  - vue du mélangeur discrétisé zoom cadré déjà existante (pv_teneur_*)
-  - évolution temporelle de la teneur par cellule DEM vs Markov homogène
-  - identification des cellules les plus / moins peuplées
-
-Les figures produites :
-- teneur_cartesien.png
-- teneur_cylindrique.png
-- teneur_voronoi.png (ou teneur_locale_cellules.png existante)
-- teneur_physique.png
-- et les versions librairie : teneur_*_lib.png avec légende normale et pointillés réduits
+"""Génère l'évolution de la teneur locale et comptage par espèce puis total pour chaque méthode.
+- Modèle entraîné à partir de START=1.57s (régime permanent), prédiction DEM et Markov à partir de t=0s
+- Pour chaque méthode: teneur, comptage petites, grandes, total
 """
 
 from pathlib import Path
@@ -197,7 +186,7 @@ class EtudeMethode:
         return compute_P_matrix_torch(prev, curr, self.n_states, "cpu").cpu().numpy()
 
     def markov_traj(self, config, start_pred=None):
-        start_pred = config.start_index if start_pred is None else start_pred
+        start_pred = 0 if start_pred is None else start_pred
         trajs, acts = {}, {}
         for sp in ("small", "large"):
             P_raw = self.build_P(config, sp)
@@ -244,7 +233,7 @@ if __name__ == "__main__":
         n = min(len(trajs["small"]), len(trajs["large"]))
         C_mk = concentration_from_S(trajs["small"][:n], trajs["large"][:n])
         N_mk = trajs["small"][:n] + trajs["large"][:n]
-        t_dem_idx = np.arange(START, N_T, 20)
+        t_dem_idx = np.arange(0, N_T, 20)
         rows_dem = np.searchsorted(et.times, t_dem_idx)
         C_dem = concentration_from_S(et.S_matrices["small"][rows_dem],
                                      et.S_matrices["large"][rows_dem])
