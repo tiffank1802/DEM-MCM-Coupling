@@ -6,6 +6,7 @@
 }{}
 
 \usepackage{rotating}
+\usepackage{pdfpages}
 \usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{float}
@@ -64,7 +65,17 @@
 
 \pagestyle{empty}
 
-\fairepagedegarde
+% Page de garde officielle fournie (Page de garde mémoire.pdf) – remplace \fairepagedegarde
+% Regarde MemoireMaster.cls pour modification : on inclut le PDF directement
+\IfFileExists{Page de garde mémoire.pdf}{
+  \includepdf[pages=-]{Page de garde mémoire.pdf}
+}{
+  \IfFileExists{template-rapport-stage/Page de garde mémoire.pdf}{
+    \includepdf[pages=-]{template-rapport-stage/Page de garde mémoire.pdf}
+  }{
+    \fairepagedegarde
+  }
+}
 
 \fairemerciements{
   \noindent

@@ -1338,6 +1338,51 @@ def table_erreurs(etudes):
     print("table erreurs ok")
 
 
+
+def matrices_inhomogenes_all(etudes):
+    """Pour les chaines inhomogènes, génère toutes les matrices de transition pour chaque espèce.
+    Chaque bloc NLT donne une matrice distincte, pour chaque méthode et chaque espèce.
+    Figures: matrice_{methode}_{espece}_inhomogene_bloc{k}.png + version annotee au centieme.
+    """
+    for key, et in etudes.items():
+        STEP_INH = 6 * TAU
+        NLT_INH = int((N_T - START) // (STEP_INH + TAU))
+        cfg_inh = config_for(et.method, nlt=NLT_INH, step=STEP_INH)
+        for sp in ("small", "large"):
+            P_blocks = et.build_P_blocks(cfg_inh, sp)
+            P_blocks = np.nan_to_num(P_blocks, nan=0.0)
+            vmax = P_blocks.max() if P_blocks.size else 1.0
+            for k, P in enumerate(P_blocks):
+                # matrice brute
+                fig, ax = plt.subplots(figsize=(6,5))
+                im = ax.imshow(P.T, cmap="viridis", vmin=0, vmax=vmax)
+                ax.set_xlabel("Cellule source j")
+                ax.set_ylabel("Cellule arrivee i")
+                ax.set_title(f"Matrice transition inhomogène – {et.nom} – {sp} – bloc {k} (t={cfg_inh.start_index + k*(STEP_INH+TAU)}/100 s)")
+                fig.colorbar(im, ax=ax, label="P_ij")
+                fig.tight_layout()
+                fig.savefig(FIGDIR / f"matrice_{key}_{sp}_inhomogene_bloc{k}.png", dpi=200)
+                plt.close(fig)
+                # version annotee au centieme
+                fig, ax = plt.subplots(figsize=(7,6))
+                im = ax.imshow(P.T, cmap="YlOrRd", vmin=0, vmax=vmax)
+                for i in range(P.T.shape[0]):
+                    for j in range(P.T.shape[1]):
+                        v = P.T[i,j]
+                        txt_ = f"{v:.2f}" if not np.isnan(v) else "NaN"
+                        ax.text(j, i, txt_, ha="center", va="center", fontsize=6,
+                                color="black" if v < 0.55*vmax else "white")
+                ax.set_xlabel("Cellule source j")
+                ax.set_ylabel("Cellule arrivee i")
+                ax.set_title(f"Matrice inhomogène annotée – {et.nom} – {sp} – bloc {k}")
+                fig.colorbar(im, ax=ax, label="P_ij")
+                fig.tight_layout()
+                fig.savefig(FIGDIR / f"matrice_{key}_{sp}_inhomogene_bloc{k}_annotee.png", dpi=200)
+                plt.close(fig)
+            print(f"  matrices inhomogènes {key} {sp}: {len(P_blocks)} blocs")
+    print("matrices inhomogènes all ok – toutes matrices pour chaque espèce")
+
+
 if __name__ == "__main__":
     timestep_dict = load_timestep_dict()
     figure_espace_caracteristiques(timestep_dict)
@@ -1368,6 +1413,7 @@ if __name__ == "__main__":
     resultats_cylindrique(etudes)
     etude_dt(etudes)
     matrices_annotees(etudes)
+    matrices_inhomogenes_all(etudes)
     table_erreurs(etudes)
     teneur_et_nombre(etudes)
     chaines_inhomogenes(etudes)
