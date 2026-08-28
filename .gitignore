@@ -34,4 +34,4 @@ outputs/
 RaffinageTemporel/
 
 # Données DEM locales (disponibles sur la branche arena/01a0231f / dataset HF)
-data/
+# data/

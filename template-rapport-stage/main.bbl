@@ -53,8 +53,8 @@
       \strng{authorbibnamehash}{faeda3dc0385c2338d97307a76fb9d15}
       \strng{authornamehash}{faeda3dc0385c2338d97307a76fb9d15}
       \strng{authorfullhash}{7e60e85f2e39fb318ecf24c18cc834da}
-      \field{sortinit}{1}
-      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{sortinit}{2}
+      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{journaltitle}{Waste Management}
@@ -65,59 +65,6 @@
       \range{pages}{8}
       \verb{doi}
       \verb 10.1016/j.wasman.2009.09.023
-      \endverb
-    \endentry
-    \entry{chachia2025}{inproceedings}{}
-      \name{author}{5}{}{%
-        {{hash=e3057494cc41e6b97ece8b8380a970ff}{%
-           family={Chachia},
-           familyi={C\bibinitperiod},
-           given={Nour},
-           giveni={N\bibinitperiod}}}%
-        {{hash=e331e95bfb1bc53a3badb75bbb765693}{%
-           family={Dumazer},
-           familyi={D\bibinitperiod},
-           given={Guillaume},
-           giveni={G\bibinitperiod}}}%
-        {{hash=d172635cc87f56f9a2ba941398b9cfc8}{%
-           family={Berthiaux},
-           familyi={B\bibinitperiod},
-           given={Henri},
-           giveni={H\bibinitperiod}}}%
-        {{hash=032e4f780bd87aec938bc681e4c5a398}{%
-           family={Serris},
-           familyi={S\bibinitperiod},
-           given={Eric},
-           giveni={E\bibinitperiod}}}%
-        {{hash=a4608874cebce2bc00dc4a12acd211b2}{%
-           family={Gatumel},
-           familyi={G\bibinitperiod},
-           given={Cendrine},
-           giveni={C\bibinitperiod}}}%
-      }
-      \list{location}{1}{%
-        {Barcelona, Spain}%
-      }
-      \strng{namehash}{3b38e1324521707f679e14abad7583d9}
-      \strng{fullhash}{bf0c3c262d91b028109b05e1c7cb462f}
-      \strng{bibnamehash}{3b38e1324521707f679e14abad7583d9}
-      \strng{authorbibnamehash}{3b38e1324521707f679e14abad7583d9}
-      \strng{authornamehash}{3b38e1324521707f679e14abad7583d9}
-      \strng{authorfullhash}{bf0c3c262d91b028109b05e1c7cb462f}
-      \field{sortinit}{2}
-      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
-      \field{labelnamesource}{author}
-      \field{labeltitlesource}{title}
-      \field{booktitle}{Particles 2025 --- IX International Conference on Particle-based Methods}
-      \field{month}{10}
-      \field{note}{HAL : hal-05315669}
-      \field{title}{Coupling a {DEM} model and a homogeneous {M}arkov Chain to accelerate powder mixing simulation}
-      \field{year}{2025}
-      \verb{urlraw}
-      \verb https://hal.science/hal-05315669
-      \endverb
-      \verb{url}
-      \verb https://hal.science/hal-05315669
       \endverb
     \endentry
     \entry{cundall1979}{article}{}
@@ -306,6 +253,59 @@
       \range{pages}{10}
       \verb{doi}
       \verb 10.1016/j.powtec.2012.10.012
+      \endverb
+    \endentry
+    \entry{chachia2025}{inproceedings}{}
+      \name{author}{5}{}{%
+        {{hash=e3057494cc41e6b97ece8b8380a970ff}{%
+           family={Chachia},
+           familyi={C\bibinitperiod},
+           given={Nour},
+           giveni={N\bibinitperiod}}}%
+        {{hash=e331e95bfb1bc53a3badb75bbb765693}{%
+           family={Dumazer},
+           familyi={D\bibinitperiod},
+           given={Guillaume},
+           giveni={G\bibinitperiod}}}%
+        {{hash=d172635cc87f56f9a2ba941398b9cfc8}{%
+           family={Berthiaux},
+           familyi={B\bibinitperiod},
+           given={Henri},
+           giveni={H\bibinitperiod}}}%
+        {{hash=032e4f780bd87aec938bc681e4c5a398}{%
+           family={Serris},
+           familyi={S\bibinitperiod},
+           given={Eric},
+           giveni={E\bibinitperiod}}}%
+        {{hash=a4608874cebce2bc00dc4a12acd211b2}{%
+           family={Gatumel},
+           familyi={G\bibinitperiod},
+           given={Cendrine},
+           giveni={C\bibinitperiod}}}%
+      }
+      \list{location}{1}{%
+        {Barcelona, Spain}%
+      }
+      \strng{namehash}{3b38e1324521707f679e14abad7583d9}
+      \strng{fullhash}{bf0c3c262d91b028109b05e1c7cb462f}
+      \strng{bibnamehash}{3b38e1324521707f679e14abad7583d9}
+      \strng{authorbibnamehash}{3b38e1324521707f679e14abad7583d9}
+      \strng{authornamehash}{3b38e1324521707f679e14abad7583d9}
+      \strng{authorfullhash}{bf0c3c262d91b028109b05e1c7cb462f}
+      \field{sortinit}{8}
+      \field{sortinithash}{a231b008ebf0ecbe0b4d96dcc159445f}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{booktitle}{Particles 2025 --- IX International Conference on Particle-based Methods}
+      \field{month}{10}
+      \field{note}{HAL : hal-05315669}
+      \field{title}{Coupling a {DEM} model and a homogeneous {M}arkov Chain to accelerate powder mixing simulation}
+      \field{year}{2025}
+      \verb{urlraw}
+      \verb https://hal.science/hal-05315669
+      \endverb
+      \verb{url}
+      \verb https://hal.science/hal-05315669
       \endverb
     \endentry
     \entry{morrison2016}{article}{}

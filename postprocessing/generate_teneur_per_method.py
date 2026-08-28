@@ -1,17 +1,6 @@
-"""Génère l'évolution de la teneur locale au cours du temps pour chaque méthode de découpage.
-
-- Pour chaque méthode (cartésien, cylindrique, Voronoï, physique) :
-  - vecteur d'état en teneur uniquement (pas de comptage)
-  - vue du mélangeur discrétisé zoom cadré déjà existante (pv_teneur_*)
-  - évolution temporelle de la teneur par cellule DEM vs Markov homogène
-  - identification des cellules les plus / moins peuplées
-
-Les figures produites :
-- teneur_cartesien.png
-- teneur_cylindrique.png
-- teneur_voronoi.png (ou teneur_locale_cellules.png existante)
-- teneur_physique.png
-- et les versions librairie : teneur_*_lib.png avec légende normale et pointillés réduits
+"""Génère l'évolution de la teneur locale et comptage par espèce puis total pour chaque méthode.
+- Modèle entraîné à partir de START=1.57s (régime permanent), prédiction DEM et Markov à partir de t=0s
+- Pour chaque méthode: teneur, comptage petites, grandes, total
 """
 
 from pathlib import Path
@@ -54,6 +43,7 @@ from dem_mcm_coupling.run_sweep import (
 from postprocessing.metrics import (
     clean_transition_matrix,
     propagate_markov,
+    propagate_markov_inhomogeneous,
     concentration_from_S,
 )
 
@@ -197,7 +187,7 @@ class EtudeMethode:
         return compute_P_matrix_torch(prev, curr, self.n_states, "cpu").cpu().numpy()
 
     def markov_traj(self, config, start_pred=None):
-        start_pred = config.start_index if start_pred is None else start_pred
+        start_pred = 0 if start_pred is None else start_pred
         trajs, acts = {}, {}
         for sp in ("small", "large"):
             P_raw = self.build_P(config, sp)
@@ -207,6 +197,36 @@ class EtudeMethode:
             S0 = self.S_matrices[sp][row0].astype(float)
             traj, t_mk = propagate_markov(
                 S0, P_clean, self.times, start_pred, config.tau, activated)
+            trajs[sp], acts[sp] = traj, activated
+        return trajs, t_mk, acts
+
+    def build_P_blocks(self, config, species):
+        mask = (np.ones(N_PARTICLES_PER_TIMESTEP, bool) if species == "all"
+                else self.species_masks[species])
+        blocks = []
+        for k in range(config.nlt):
+            cfg_k = ExperimentConfig(
+                method=config.method, nlt=1, tau=config.tau,
+                step=config.step, dt=config.dt,
+                start_index=config.start_index + k * (config.step + config.tau),
+            )
+            pairs = _build_pairs(cfg_k, self.timestep_dict, self.idx_to_row)
+            if not pairs:
+                break
+            prev, curr = self._accumulate(pairs, mask)
+            blocks.append(compute_P_matrix_torch(prev, curr, self.n_states, "cpu").cpu().numpy())
+        return np.array(blocks)
+
+    def markov_traj_inhomogeneous(self, config, start_pred=0):
+        trajs, acts = {}, {}
+        for sp in ("small", "large"):
+            P_blocks = np.nan_to_num(self.build_P_blocks(config, sp), nan=0.0)
+            _, activated = clean_transition_matrix(P_blocks[0])
+            row0 = np.searchsorted(self.times, start_pred)
+            S0 = self.S_matrices[sp][row0].astype(float)
+            traj, t_mk = propagate_markov_inhomogeneous(
+                S0, P_blocks, self.times, start_pred, config.tau,
+                activated, step=config.step, nlt=len(P_blocks))
             trajs[sp], acts[sp] = traj, activated
         return trajs, t_mk, acts
 
@@ -243,29 +263,38 @@ if __name__ == "__main__":
         cells = np.where(act)[0]
         n = min(len(trajs["small"]), len(trajs["large"]))
         C_mk = concentration_from_S(trajs["small"][:n], trajs["large"][:n])
-        t_dem_idx = np.arange(START, N_T, 20)
+        N_mk = trajs["small"][:n] + trajs["large"][:n]
+        t_dem_idx = np.arange(0, N_T, 20)
         rows_dem = np.searchsorted(et.times, t_dem_idx)
         C_dem = concentration_from_S(et.S_matrices["small"][rows_dem],
                                      et.S_matrices["large"][rows_dem])
+        N_dem = et.S_matrices["small"][rows_dem] + et.S_matrices["large"][rows_dem]
 
-        # Analyse des cellules extrêmes au début et fin
-        # début régime établi
+        # Analyse des cellules extrêmes au début et fin - teneur
         row_start = et.idx_to_row[START]
         C_start = concentration_from_S(et.S_matrices["small"][row_start][None],
                                        et.S_matrices["large"][row_start][None])[0]
-        # fin
         row_end = et.idx_to_row[3000] if 3000 in et.idx_to_row else et.idx_to_row[et.times[-1]]
         C_end = concentration_from_S(et.S_matrices["small"][row_end][None],
                                      et.S_matrices["large"][row_end][None])[0]
 
-        # identification
         most_start = int(np.argmax(C_start))
         least_start = int(np.argmin(C_start))
         most_end = int(np.argmax(C_end))
         least_end = int(np.argmin(C_end))
 
-        print(f"{et.nom}: start most={most_start} ({C_start[most_start]:.2f}) least={least_start} ({C_start[least_start]:.2f}) | end most={most_end} ({C_end[most_end]:.2f}) least={least_end} ({C_end[least_end]:.2f})")
+        # Analyse comptage
+        N_start = et.S_matrices["small"][row_start] + et.S_matrices["large"][row_start]
+        N_end = et.S_matrices["small"][row_end] + et.S_matrices["large"][row_end]
+        most_N_start = int(np.argmax(N_start))
+        least_N_start = int(np.argmin(N_start))
+        most_N_end = int(np.argmax(N_end))
+        least_N_end = int(np.argmin(N_end))
 
+        print(f"{et.nom}: teneur start most={most_start} ({C_start[most_start]:.2f}) least={least_start} ({C_start[least_start]:.2f}) | end most={most_end} ({C_end[most_end]:.2f}) least={least_end} ({C_end[least_end]:.2f})")
+        print(f"{et.nom}: nombre start most={most_N_start} ({N_start[most_N_start]}) least={least_N_start} ({N_start[least_N_start]}) | end most={most_N_end} ({N_end[most_N_end]}) least={least_N_end} ({N_end[least_N_end]})")
+
+        # --- TENEUR ---
         fig, ax = plt.subplots(figsize=(12.5, 6.2))
         for c in cells:
             col = CELL_COLORS[int(c) % len(CELL_COLORS)]
@@ -281,7 +310,6 @@ if __name__ == "__main__":
                      f"Fin plus: {most_end} (c={C_end[most_end]:.2f}), moins: {least_end} (c={C_end[least_end]:.2f})", fontsize=11)
         ax.legend(ncol=5, fontsize=9, loc="upper right")
         fig.tight_layout()
-        # noms compatibles rapport
         if key == "voronoi":
             fig.savefig(FIGDIR / "teneur_locale_cellules.png", dpi=200)
             fig.savefig(FIGDIR / "teneur_voronoi.png", dpi=200)
@@ -292,9 +320,140 @@ if __name__ == "__main__":
             fig.savefig(FIGDIR / "teneur_cartesien.png", dpi=200)
         elif key == "cylindrique":
             fig.savefig(FIGDIR / "teneur_cylindrique.png", dpi=200)
-        # versions _lib pour cohérence
         fig.savefig(FIGDIR / f"teneur_{key}_lib.png", dpi=200)
         plt.close(fig)
         print(f"  -> {key} teneur ok")
 
-    print("\n✅ Figures teneur par méthode générées")
+        # --- COMPTAGE NOMBRE DE PARTICULES PAR ESPECE PUIS TOTAL ---
+        # 1) Petites particules (4mm) par cellule
+        S_small_dem = et.S_matrices["small"][rows_dem]
+        S_small_mk = trajs["small"][:n]
+        fig, ax = plt.subplots(figsize=(12.5, 6.2))
+        for c in cells:
+            col = CELL_COLORS[int(c) % len(CELL_COLORS)]
+            ax.plot(t_dem_idx/100, S_small_dem[:, c], "-", color=col, lw=1.2, alpha=0.8)
+            ax.plot(t_mk[:n]/100, S_small_mk[:, c], "o--", color=col, ms=3.5, lw=0.8,
+                    markeredgecolor="white", markeredgewidth=0.4, label=f"cellule {c}")
+        ax.set_xlabel("Temps (s)")
+        ax.set_ylabel("Nombre de petites particules (4mm) par cellule")
+        add_tours_axis(ax)
+        ax.grid(alpha=0.3)
+        ax.set_title(f"Comptage petites particules par cellule – découpage {et.nom.lower()} (10 cellules, Markov homogène)\n"
+                     f"Plus peuplée début: {most_N_start} | Fin plus: {most_N_end}", fontsize=11)
+        ax.legend(ncol=5, fontsize=9, loc="upper right")
+        fig.tight_layout()
+        fig.savefig(FIGDIR / f"nombre_petites_{key}.png", dpi=200)
+        fig.savefig(FIGDIR / f"nombre_{key}_petites.png", dpi=200)
+        plt.close(fig)
+
+        # 2) Grandes particules (8mm) par cellule
+        S_large_dem = et.S_matrices["large"][rows_dem]
+        S_large_mk = trajs["large"][:n]
+        fig, ax = plt.subplots(figsize=(12.5, 6.2))
+        for c in cells:
+            col = CELL_COLORS[int(c) % len(CELL_COLORS)]
+            ax.plot(t_dem_idx/100, S_large_dem[:, c], "-", color=col, lw=1.2, alpha=0.8)
+            ax.plot(t_mk[:n]/100, S_large_mk[:, c], "o--", color=col, ms=3.5, lw=0.8,
+                    markeredgecolor="white", markeredgewidth=0.4, label=f"cellule {c}")
+        ax.set_xlabel("Temps (s)")
+        ax.set_ylabel("Nombre de grandes particules (8mm) par cellule")
+        add_tours_axis(ax)
+        ax.grid(alpha=0.3)
+        ax.set_title(f"Comptage grandes particules par cellule – découpage {et.nom.lower()} (10 cellules, Markov homogène)", fontsize=11)
+        ax.legend(ncol=5, fontsize=9, loc="upper right")
+        fig.tight_layout()
+        fig.savefig(FIGDIR / f"nombre_grandes_{key}.png", dpi=200)
+        fig.savefig(FIGDIR / f"nombre_{key}_grandes.png", dpi=200)
+        plt.close(fig)
+
+        # 3) Total particules par cellule
+        fig, ax = plt.subplots(figsize=(12.5, 6.2))
+        for c in cells:
+            col = CELL_COLORS[int(c) % len(CELL_COLORS)]
+            ax.plot(t_dem_idx/100, N_dem[:, c], "-", color=col, lw=1.2, alpha=0.8)
+            ax.plot(t_mk[:n]/100, N_mk[:, c], "o--", color=col, ms=3.5, lw=0.8,
+                    markeredgecolor="white", markeredgewidth=0.4, label=f"cellule {c}")
+        ax.set_xlabel("Temps (s)")
+        ax.set_ylabel("Nombre total de particules par cellule")
+        add_tours_axis(ax)
+        ax.grid(alpha=0.3)
+        ax.set_title(f"Nombre total de particules par cellule – découpage {et.nom.lower()} (10 cellules, Markov homogène)\n"
+                     f"Plus peuplée début: {most_N_start} (N={N_start[most_N_start]}), moins: {least_N_start} (N={N_start[least_N_start]}) | "
+                     f"Fin plus: {most_N_end} (N={N_end[most_N_end]}), moins: {least_N_end} (N={N_end[least_N_end]})", fontsize=11)
+        ax.legend(ncol=5, fontsize=9, loc="upper right")
+        fig.tight_layout()
+        if key == "voronoi":
+            fig.savefig(FIGDIR / "nombre_particules_cellules.png", dpi=200)
+            fig.savefig(FIGDIR / "nombre_voronoi.png", dpi=200)
+        elif key == "physique":
+            fig.savefig(FIGDIR / "nombre_physique.png", dpi=200)
+        elif key == "cartesien":
+            fig.savefig(FIGDIR / "nombre_cartesien.png", dpi=200)
+        elif key == "cylindrique":
+            fig.savefig(FIGDIR / "nombre_cylindrique.png", dpi=200)
+        fig.savefig(FIGDIR / f"nombre_{key}_lib.png", dpi=200)
+        fig.savefig(FIGDIR / f"nombre_total_{key}.png", dpi=200)
+        if key == "voronoi":
+            fig.savefig(FIGDIR / "vecteur_etat_nb.png", dpi=200)
+        plt.close(fig)
+        print(f"  -> {key} comptage par espece + total ok")
+
+        # --- TENEUR INHOMOGENE POUR TOUTES METHODES ---
+        # Model entraine depuis START, prediction depuis 0s, chaines inhomogenes avec blocs espaces de 7 tours
+        STEP_INH = 6 * TAU
+        NLT_INH = int((N_T - START) // (STEP_INH + TAU))
+        cfg_inh = config_for(et.method, nlt=NLT_INH, step=STEP_INH)
+        trajs_inh, t_mk_inh, acts_inh = et.markov_traj_inhomogeneous(cfg_inh, start_pred=0)
+        n_inh = min(len(trajs_inh["small"]), len(trajs_inh["large"]))
+        C_mk_inh = concentration_from_S(trajs_inh["small"][:n_inh], trajs_inh["large"][:n_inh])
+        N_mk_inh_small = trajs_inh["small"][:n_inh]
+        N_mk_inh_large = trajs_inh["large"][:n_inh]
+        N_mk_inh_total = N_mk_inh_small + N_mk_inh_large
+        # DEM reference depuis 0
+        t_dem_idx_inh = np.arange(0, N_T, 20)
+        rows_dem_inh = np.searchsorted(et.times, t_dem_idx_inh)
+        C_dem_inh = concentration_from_S(et.S_matrices["small"][rows_dem_inh], et.S_matrices["large"][rows_dem_inh])
+
+        # Teneur inhomogene
+        fig, ax = plt.subplots(figsize=(12.5, 6.2))
+        for c in cells:
+            col = CELL_COLORS[int(c) % len(CELL_COLORS)]
+            ax.plot(t_dem_idx_inh/100, C_dem_inh[:, c], "-", color=col, lw=1.2, alpha=0.8)
+            ax.plot(t_mk_inh[:n_inh]/100, C_mk_inh[:, c], "o--", color=col, ms=3.5, lw=0.8,
+                    markeredgecolor="white", markeredgewidth=0.4, label=f"cellule {c}")
+        ax.set_xlabel("Temps (s)")
+        ax.set_ylabel("Teneur locale en petites particules (–) – inhomogène")
+        add_tours_axis(ax)
+        ax.grid(alpha=0.3)
+        ax.set_title(f"Teneur locale par cellule – découpage {et.nom.lower()} – chaîne inhomogène (10 cellules, prédiction depuis 0s, {NLT_INH} matrices)", fontsize=11)
+        ax.legend(ncol=5, fontsize=9, loc="upper right")
+        fig.tight_layout()
+        fig.savefig(FIGDIR / f"teneur_{key}_inhomogene.png", dpi=200)
+        fig.savefig(FIGDIR / f"teneur_{key}_inhomogene_lib.png", dpi=200)
+        plt.close(fig)
+
+        # Comptage par espece inhomogene
+        for sp_name, dem_arr, mk_arr, ylabel in [
+            ("petites", et.S_matrices["small"][rows_dem_inh], N_mk_inh_small, "Nombre petites (4mm) – inhomogène"),
+            ("grandes", et.S_matrices["large"][rows_dem_inh], N_mk_inh_large, "Nombre grandes (8mm) – inhomogène"),
+            ("total", et.S_matrices["small"][rows_dem_inh]+et.S_matrices["large"][rows_dem_inh], N_mk_inh_total, "Nombre total – inhomogène"),
+        ]:
+            fig, ax = plt.subplots(figsize=(12.5, 6.2))
+            for c in cells:
+                col = CELL_COLORS[int(c) % len(CELL_COLORS)]
+                ax.plot(t_dem_idx_inh/100, dem_arr[:, c], "-", color=col, lw=1.2, alpha=0.8)
+                ax.plot(t_mk_inh[:n_inh]/100, mk_arr[:, c], "o--", color=col, ms=3.5, lw=0.8,
+                        markeredgecolor="white", markeredgewidth=0.4, label=f"cellule {c}")
+            ax.set_xlabel("Temps (s)")
+            ax.set_ylabel(ylabel)
+            add_tours_axis(ax)
+            ax.grid(alpha=0.3)
+            ax.set_title(f"{ylabel} par cellule – {et.nom.lower()} – inhomogène – prédiction depuis 0s", fontsize=11)
+            ax.legend(ncol=5, fontsize=9, loc="upper right")
+            fig.tight_layout()
+            fig.savefig(FIGDIR / f"nombre_{sp_name}_{key}_inhomogene.png", dpi=200)
+            plt.close(fig)
+        print(f"  -> {key} teneur + comptage inhomogène ok")
+
+    print("\n✅ Figures teneur + comptage par espèce + total (homogène + inhomogène) générées pour toutes méthodes – prédiction depuis 0s")
+

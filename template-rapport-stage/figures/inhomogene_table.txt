@@ -1,5 +1,5 @@
 méthode           homogène  inhomogène
-Cartésien           0.0782      0.0666
-Cylindrique         0.0975      0.0946
-Voronoï             0.0834      0.0271
-Physique            0.1034      0.0537
+Cartésien           0.0956      0.0834
+Cylindrique         0.1025      0.1014
+Voronoï             0.0948      0.0405
+Physique            0.1107      0.0610
