@@ -9,6 +9,10 @@
 \usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{float}
+\usepackage{pgfplotstable}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{csvsimple}
 \captionsetup{font=normalsize}
 \usepackage[style=numeric, backend=biber, sorting=none]{biblatex}
 \defbibheading{bibliographie}{\section*{Références bibliographiques}}
@@ -835,24 +839,36 @@ La figure~\ref{fig:comparaison_methodes_rsd} confronte, pour les quatre méthode
 \end{figure}
 \begin{table}[H]
   \centering
-  \caption{Écart moyen $\pm$ écart-type $\sigma$ (incertitude) sur $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ sur la fenêtre de prédiction, par méthode de découpage à nombre de cellules identique (10 cellules, chaîne homogène, configuration $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas). Modèle entraîné depuis START=1.57s, prédiction depuis t=0s pour DEM et Markov. L'écart-type quantifie l'incertitude sur la prédiction RSD.}
+  \caption{Écart moyen $\pm$ écart-type $\sigma$ (incertitude) sur $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ – lecture directe depuis \texttt{comparaison\_methodes\_table.txt}. Modèle entraîné depuis START=1.57s, prédiction depuis t=0s pour DEM et Markov. L'écart-type quantifie l'incertitude sur la prédiction RSD.}
   \label{tab:ecart_rsd_methodes}
-  \begin{tabular}{lcccc}
-    \toprule
-    & Cartésien & Cylindrique & Voronoï & Physique\\
-    \midrule
-    Écart moyen (--) & 0{,}078 & 0{,}098 & 0{,}083 & 0{,}103\\
-    Écart-type $\sigma$ (--) & 0{,}050 & 0{,}042 & 0{,}038 & 0{,}042\\
-    \midrule
-    Moyenne $\pm$ $\sigma$ & 0{,}078 $\pm$ 0{,}050 & 0{,}098 $\pm$ 0{,}042 & 0{,}083 $\pm$ 0{,}038 & 0{,}103 $\pm$ 0{,}042\\
-    \midrule
-    \multicolumn{5}{l}{\small Avec prédiction depuis $t=\SI{0}{s}$ (modèle entraîné depuis START) :}\\
-    Écart moyen (pred 0s) & 0{,}096 & 0{,}103 & 0{,}095 & 0{,}111\\
-    Écart-type (pred 0s) & 0{,}116 & 0{,}049 & 0{,}080 & 0{,}053\\
-    $\sigma$ RSD Markov (pred 0s) & 0{,}131 & 0{,}247 & 0{,}087 & 0{,}202\\
-    \bottomrule
-  \end{tabular}
+  % Lecture directe du fichier généré par etudes_librairie.py
+  \pgfplotstabletypeset[
+    col sep=space,
+    string type,
+    columns/methode/.style={column name=Méthode, string type},
+    columns/mean/.style={column name=Écart moyen, fixed, fixed zerofill, precision=3},
+    columns/std/.style={column name=Écart-type $\sigma$, fixed, fixed zerofill, precision=3},
+    columns/rsd_std/.style={column name=$\sigma$ RSD Markov, fixed, fixed zerofill, precision=3},
+    every head row/.style={before row=\toprule, after row=\midrule},
+    every last row/.style={after row=\bottomrule},
+  ]{figures/comparaison_methodes_table.txt}
 \end{table}
+
+% Exemple de référencement direct d'une cellule du tableau dans le texte :
+% Pour référencer la moyenne du Cartésien (ligne 0, colonne mean)
+\pgfplotstablegetelem{0}{mean}\of{figures/comparaison_methodes_table.txt}
+\edef\meanCartesien{\pgfplotsretval}
+\pgfplotstablegetelem{0}{std}\of{figures/comparaison_methodes_table.txt}
+\edef\stdCartesien{\pgfplotsretval}
+Dans le texte, on peut écrire : l'écart moyen pour le découpage cartésien vaut $\meanCartesien \pm \stdCartesien$ (voir tableau~\ref{tab:ecart_rsd_methodes}, cellule ligne 0, colonne \texttt{mean}).
+
+% Pour Voronoï (ligne 2)
+\pgfplotstablegetelem{2}{mean}\of{figures/comparaison_methodes_table.txt}
+\edef\meanVoronoi{\pgfplotsretval}
+\pgfplotstablegetelem{2}{std}\of{figures/comparaison_methodes_table.txt}
+\edef\stdVoronoi{\pgfplotsretval}
+Le découpage de Voronoï atteint $\meanVoronoi \pm \stdVoronoi$.
+
 
 La comparaison est ensuite portée sur les courbes de teneur locale, second indicateur de prédiction : la figure~\ref{fig:comparaison_methodes_teneur} trace, pour chaque méthode, l'écart absolu moyen de teneur par cellule $\frac{1}{N_c}\sum_i |c_i^{\text{Markov}} - c_i^{\text{DEM}}|(t)$ au fil de la prédiction. Cet indicateur, plus local que le RSD --- il sanctionne les erreurs cellule par cellule là où le RSD ne compare que les dispersions globales ---, complète la hiérarchie précédente : les écarts de teneur restent bornés et voisins pour les quatre méthodes (moyennes de 0{,}040 à 0{,}048). Le découpage cylindrique affiche l'écart de teneur le plus faible en apparence (0{,}040), mais sur des contrastes eux-mêmes affaiblis par la moyenne des zones riches et pauvres à l'intérieur de chaque secteur (cf.\ figure~\ref{fig:teneur_3d_cylindrique}) --- prédire une teneur presque uniforme est plus facile, mais moins informatif. Les découpages qui préservent les contrastes (cartésien en bandes 0{,}043, physique 0{,}042, Voronoï 0{,}048) maintiennent un écart de teneur comparable tout en restituant la dynamique de ségrégation cellule par cellule.
 
@@ -920,6 +936,27 @@ L'étude est ensuite étendue aux quatre méthodes de découpage --- géométriq
   \caption{RSD de la teneur en petites particules : référence DEM (trait continu), prédictions homogène (gris) et inhomogène (couleur) pour les quatre méthodes, 10 cellules chacune ($start = \SI{1.57}{s}$, $\tau = \SI{1.57}{s}$, $dt = 8$ pas ; chaîne inhomogène : blocs espacés de 7 tours, soit 5 matrices).}
   \label{fig:rsd_physique}
 \end{figure}
+
+\begin{table}[H]
+  \centering
+  \caption{Comparaison homogène vs inhomogène – écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ par espèce – lecture directe depuis \texttt{inhomogene\_table.txt}. Prédiction depuis t=0s, modèle entraîné depuis START.}
+  \label{tab:inhomogene}
+  \pgfplotstabletypeset[
+    col sep=space,
+    string type,
+    columns/methode/.style={column name=Méthode},
+    columns/homogene/.style={column name=Homogène, fixed, precision=3},
+    columns/inhomogene/.style={column name=Inhomogène, fixed, precision=3},
+    every head row/.style={before row=\toprule, after row=\midrule},
+    every last row/.style={after row=\bottomrule},
+  ]{figures/inhomogene_table_clean.txt}
+\end{table}
+
+% Référencement cellule inhomogène Voronoï (ligne 2, colonne inhomogène)
+\pgfplotstablegetelem{2}{inhomogene}\of{figures/inhomogene_table_clean.txt}
+\edef\inhomVoronoi{\pgfplotsretval}
+La chaîne inhomogène Voronoï atteint $\inhomVoronoi$ d'écart moyen (tableau~\ref{tab:inhomogene}, cellule [Voronoï, inhomogène]).
+
 
 Deux enseignements se dégagent de cette comparaison. D'une part, l'inhomogénéité améliore la prédiction pour les quatre méthodes, mais avec des amplitudes très contrastées : l'écart moyen passe de 0{,}083 à 0{,}027 pour le Voronoï et de 0{,}103 à 0{,}054 pour le physique --- un gain d'un facteur deux à trois pour les découpages statistiques --- tandis qu'il ne recule que de 0{,}078 à 0{,}067 pour le cartésien et de 0{,}098 à 0{,}095 pour le cylindrique. D'autre part, cette asymétrie s'interprète par la structure des cellules : celles des découpages statistiques, calées sur l'écoulement, voient leurs probabilités de transition évoluer essentiellement sous l'effet de la ségrégation en cours --- une dynamique lente que la séquence de matrices capture fidèlement, d'où le gain important ; celles des découpages géométriques souffrent d'abord d'une inadaptation structurelle à l'écoulement (moyenne de zones actives et passives dans une même cellule) que l'actualisation temporelle des probabilités ne peut pas corriger --- le gain reste marginal, en particulier pour le cylindrique. L'écart entre chaînes homogène et inhomogène est particulièrement net durant les phases où la dynamique évolue --- début de l'homogénéisation, épisodes de ségrégation --- c'est-à-dire précisément là où l'hypothèse de stationnarité de la chaîne homogène est mise en défaut.
 
@@ -1196,17 +1233,24 @@ Cette étude de sensibilité compare l'erreur de prédiction du modèle selon qu
 
 \begin{table}[H]
   \centering
-  \caption{Écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$  selon que la matrice de transition distingue ou non les espèces.}
+  \caption{Écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ selon distinction d'espèce – lecture directe depuis \texttt{etude\_especes\_table.txt}. Chaîne homogène, prédiction depuis t=0s.}
   \label{tab:etude_especes}
-  \begin{tabular}{lcccc}
-    \toprule
-    & Cartésien & Cylindrique & Voronoï & Physique\\
-    \midrule
-    Sans distinction & 0{,}370 & 0{,}146 & 0{,}215 & 0{,}202\\
-    Avec distinction & \textbf{0{,}078} & \textbf{0{,}098} & \textbf{0{,}083} & \textbf{0{,}103}\\
-    \bottomrule
-  \end{tabular}
+  \pgfplotstabletypeset[
+    col sep=space,
+    string type,
+    columns/methode/.style={column name=Méthode},
+    columns/sans/.style={column name=Sans distinction, fixed, precision=3},
+    columns/avec/.style={column name=Avec distinction, fixed, precision=3},
+    every head row/.style={before row=\toprule, after row=\midrule},
+    every last row/.style={after row=\bottomrule},
+  ]{figures/etude_especes_table_clean.txt}
 \end{table}
+
+% Référencement d'une cellule : ex. Voronoï avec distinction (ligne 2, colonne avec)
+\pgfplotstablegetelem{2}{avec}\of{figures/etude_especes_table_clean.txt}
+\edef\avecVoronoi{\pgfplotsretval}
+L'écart avec distinction pour Voronoï vaut $\avecVoronoi$ (tableau~\ref{tab:etude_especes}, ligne Voronoï, colonne \texttt{avec distinction}).
+
 
 Constat : quelle que soit la méthode de découpage, la matrice unique fait converger le RSD prédit vers zéro --- c'est-à-dire vers un mélange parfait fictif --- car les deux comptages, propagés par les mêmes probabilités, deviennent proportionnels et la teneur locale s'uniformise artificiellement. La distinction des espèces réduit l'écart moyen d'un facteur 1,5 à 4,7 selon la méthode (0{,}215 contre 0{,}083 pour le Voronoï) : les petites particules (percolation rapide) et les grandes (transport en bloc, piégeage en zone passive) n'obéissent pas aux mêmes probabilités de saut, comme le montrent d'ailleurs les cartographies de matrices du corps du texte (figures~\ref{fig:matrice_cartesien}, \ref{fig:matrices_voronoi} et~\ref{fig:matrice_physique}), et seule la propagation par des matrices propres à chaque espèce préserve le contraste de teneur qui fonde l'observation de la ségrégation.
 

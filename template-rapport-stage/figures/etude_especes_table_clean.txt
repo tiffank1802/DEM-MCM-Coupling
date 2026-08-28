@@ -1,0 +1,5 @@
+methode sans avec
+Cartésien 0.3980 0.0956
+Cylindrique 0.1454 0.1025
+Voronoï 0.2336 0.0948
+Physique 0.2041 0.1107
