@@ -43,6 +43,7 @@ from dem_mcm_coupling.run_sweep import (
 from postprocessing.metrics import (
     clean_transition_matrix,
     propagate_markov,
+    propagate_markov_inhomogeneous,
     concentration_from_S,
 )
 
@@ -196,6 +197,36 @@ class EtudeMethode:
             S0 = self.S_matrices[sp][row0].astype(float)
             traj, t_mk = propagate_markov(
                 S0, P_clean, self.times, start_pred, config.tau, activated)
+            trajs[sp], acts[sp] = traj, activated
+        return trajs, t_mk, acts
+
+    def build_P_blocks(self, config, species):
+        mask = (np.ones(N_PARTICLES_PER_TIMESTEP, bool) if species == "all"
+                else self.species_masks[species])
+        blocks = []
+        for k in range(config.nlt):
+            cfg_k = ExperimentConfig(
+                method=config.method, nlt=1, tau=config.tau,
+                step=config.step, dt=config.dt,
+                start_index=config.start_index + k * (config.step + config.tau),
+            )
+            pairs = _build_pairs(cfg_k, self.timestep_dict, self.idx_to_row)
+            if not pairs:
+                break
+            prev, curr = self._accumulate(pairs, mask)
+            blocks.append(compute_P_matrix_torch(prev, curr, self.n_states, "cpu").cpu().numpy())
+        return np.array(blocks)
+
+    def markov_traj_inhomogeneous(self, config, start_pred=0):
+        trajs, acts = {}, {}
+        for sp in ("small", "large"):
+            P_blocks = np.nan_to_num(self.build_P_blocks(config, sp), nan=0.0)
+            _, activated = clean_transition_matrix(P_blocks[0])
+            row0 = np.searchsorted(self.times, start_pred)
+            S0 = self.S_matrices[sp][row0].astype(float)
+            traj, t_mk = propagate_markov_inhomogeneous(
+                S0, P_blocks, self.times, start_pred, config.tau,
+                activated, step=config.step, nlt=len(P_blocks))
             trajs[sp], acts[sp] = traj, activated
         return trajs, t_mk, acts
 
@@ -367,6 +398,63 @@ if __name__ == "__main__":
         plt.close(fig)
         print(f"  -> {key} comptage par espece + total ok")
 
-    print("\n✅ Figures teneur + comptage par espèce + total générées pour toutes méthodes")
+        # --- TENEUR INHOMOGENE POUR TOUTES METHODES ---
+        # Model entraine depuis START, prediction depuis 0s, chaines inhomogenes avec blocs espaces de 7 tours
+        STEP_INH = 6 * TAU
+        NLT_INH = int((N_T - START) // (STEP_INH + TAU))
+        cfg_inh = config_for(et.method, nlt=NLT_INH, step=STEP_INH)
+        trajs_inh, t_mk_inh, acts_inh = et.markov_traj_inhomogeneous(cfg_inh, start_pred=0)
+        n_inh = min(len(trajs_inh["small"]), len(trajs_inh["large"]))
+        C_mk_inh = concentration_from_S(trajs_inh["small"][:n_inh], trajs_inh["large"][:n_inh])
+        N_mk_inh_small = trajs_inh["small"][:n_inh]
+        N_mk_inh_large = trajs_inh["large"][:n_inh]
+        N_mk_inh_total = N_mk_inh_small + N_mk_inh_large
+        # DEM reference depuis 0
+        t_dem_idx_inh = np.arange(0, N_T, 20)
+        rows_dem_inh = np.searchsorted(et.times, t_dem_idx_inh)
+        C_dem_inh = concentration_from_S(et.S_matrices["small"][rows_dem_inh], et.S_matrices["large"][rows_dem_inh])
+
+        # Teneur inhomogene
+        fig, ax = plt.subplots(figsize=(12.5, 6.2))
+        for c in cells:
+            col = CELL_COLORS[int(c) % len(CELL_COLORS)]
+            ax.plot(t_dem_idx_inh/100, C_dem_inh[:, c], "-", color=col, lw=1.2, alpha=0.8)
+            ax.plot(t_mk_inh[:n_inh]/100, C_mk_inh[:, c], "o--", color=col, ms=3.5, lw=0.8,
+                    markeredgecolor="white", markeredgewidth=0.4, label=f"cellule {c}")
+        ax.set_xlabel("Temps (s)")
+        ax.set_ylabel("Teneur locale en petites particules (–) – inhomogène")
+        add_tours_axis(ax)
+        ax.grid(alpha=0.3)
+        ax.set_title(f"Teneur locale par cellule – découpage {et.nom.lower()} – chaîne inhomogène (10 cellules, prédiction depuis 0s, {NLT_INH} matrices)", fontsize=11)
+        ax.legend(ncol=5, fontsize=9, loc="upper right")
+        fig.tight_layout()
+        fig.savefig(FIGDIR / f"teneur_{key}_inhomogene.png", dpi=200)
+        fig.savefig(FIGDIR / f"teneur_{key}_inhomogene_lib.png", dpi=200)
+        plt.close(fig)
+
+        # Comptage par espece inhomogene
+        for sp_name, dem_arr, mk_arr, ylabel in [
+            ("petites", et.S_matrices["small"][rows_dem_inh], N_mk_inh_small, "Nombre petites (4mm) – inhomogène"),
+            ("grandes", et.S_matrices["large"][rows_dem_inh], N_mk_inh_large, "Nombre grandes (8mm) – inhomogène"),
+            ("total", et.S_matrices["small"][rows_dem_inh]+et.S_matrices["large"][rows_dem_inh], N_mk_inh_total, "Nombre total – inhomogène"),
+        ]:
+            fig, ax = plt.subplots(figsize=(12.5, 6.2))
+            for c in cells:
+                col = CELL_COLORS[int(c) % len(CELL_COLORS)]
+                ax.plot(t_dem_idx_inh/100, dem_arr[:, c], "-", color=col, lw=1.2, alpha=0.8)
+                ax.plot(t_mk_inh[:n_inh]/100, mk_arr[:, c], "o--", color=col, ms=3.5, lw=0.8,
+                        markeredgecolor="white", markeredgewidth=0.4, label=f"cellule {c}")
+            ax.set_xlabel("Temps (s)")
+            ax.set_ylabel(ylabel)
+            add_tours_axis(ax)
+            ax.grid(alpha=0.3)
+            ax.set_title(f"{ylabel} par cellule – {et.nom.lower()} – inhomogène – prédiction depuis 0s", fontsize=11)
+            ax.legend(ncol=5, fontsize=9, loc="upper right")
+            fig.tight_layout()
+            fig.savefig(FIGDIR / f"nombre_{sp_name}_{key}_inhomogene.png", dpi=200)
+            plt.close(fig)
+        print(f"  -> {key} teneur + comptage inhomogène ok")
+
+    print("\n✅ Figures teneur + comptage par espèce + total (homogène + inhomogène) générées pour toutes méthodes – prédiction depuis 0s")
 
 

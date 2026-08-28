@@ -723,10 +723,36 @@ def chaines_inhomogenes(etudes):
         for k, (eh, ei) in resume.items():
             f.write(f"{k:<14}{eh:12.4f}{ei:12.4f}\n")
 
-    # teneur locale par cellule, chaîne inhomogène (physique)
+    # teneur locale par cellule, chaîne inhomogène – pour toutes méthodes (demande utilisateur)
+    for key_ten, et_ten in etudes.items():
+        cfg_inh_t = config_for(et_ten.method, nlt=NLT_INH, step=STEP_INH)
+        trajs_t, t_mk_t, acts_t = et_ten.markov_traj_inhomogeneous(cfg_inh_t, start_pred=0)
+        act_t = acts_t["small"] & acts_t["large"]
+        cells_t = np.where(act_t)[0]
+        n_t = min(len(trajs_t["small"]), len(trajs_t["large"]))
+        C_mk_t = concentration_from_S(trajs_t["small"][:n_t], trajs_t["large"][:n_t])
+        t_dem_idx_t = np.arange(0, N_T, 20)
+        rows_dem_t = np.searchsorted(et_ten.times, t_dem_idx_t)
+        C_dem_t = concentration_from_S(et_ten.S_matrices["small"][rows_dem_t],
+                                     et_ten.S_matrices["large"][rows_dem_t])
+        fig_t, ax_t = plt.subplots(figsize=(12.5, 6.2))
+        _plot_superpose(ax_t, t_dem_idx_t / 100, C_dem_t, t_mk_t[:n_t] / 100, C_mk_t, cells_t)
+        ax_t.set_xlabel("Temps (s)")
+        ax_t.set_ylabel("Teneur locale en petites particules (–) – inhomogène")
+        add_tours_axis(ax_t)
+        ax_t.grid(alpha=0.3)
+        ax_t.set_title(f"Teneur locale par cellule – {et_ten.nom.lower()} – chaîne inhomogène – prédiction depuis 0s")
+        ax_t.legend(ncol=5, fontsize=10, loc="upper right")
+        fig_t.tight_layout()
+        fig_t.savefig(FIGDIR / f"teneur_{key_ten}_inhomogene_lib.png", dpi=200)
+        fig_t.savefig(FIGDIR / f"teneur_{key_ten}_inhomogene.png", dpi=200)
+        plt.close(fig_t)
+        print(f"  teneur inhomogène {key_ten} ok")
+
+    # garder aussi l'ancien nom pour compatibilité physique
     et = etudes["physique"]
     cfg_inh = config_for(et.method, nlt=NLT_INH, step=STEP_INH)
-    trajs, t_mk, acts = et.markov_traj_inhomogeneous(cfg_inh)
+    trajs, t_mk, acts = et.markov_traj_inhomogeneous(cfg_inh, start_pred=0)
     act = acts["small"] & acts["large"]
     cells = np.where(act)[0]
     n = min(len(trajs["small"]), len(trajs["large"]))
@@ -745,7 +771,7 @@ def chaines_inhomogenes(etudes):
     fig.tight_layout()
     fig.savefig(FIGDIR / "teneur_physique_inhomogene_lib.png", dpi=200)
     plt.close(fig)
-    print("chaînes inhomogènes ok – prediction depuis 0, modele entraine depuis START", resume)
+    print("chaînes inhomogènes ok – prediction depuis 0, modele entraine depuis START – teneur inhomogène pour toutes méthodes", resume)
     return resume
 
 
