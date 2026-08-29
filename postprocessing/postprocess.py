@@ -2346,17 +2346,27 @@ def fig_mesh(
         phi_resolution=series_phi_resolution,
     )
 
-    frame_indices = range(0, n_timesteps, max(1, frame_stride))
+    # La matrice de prédiction commence généralement à ``start`` (157 =
+    # 1,57 s).  Ajouter explicitement l'état initial permet d'obtenir une
+    # animation qui commence à t=0 s, puis une image par tour prédit
+    # (0, 1,57, ..., 60 s).  ``-1`` est l'index virtuel de cette image.
+    prediction_indices = list(range(0, n_timesteps, max(1, frame_stride)))
+    frame_indices = [-1] + prediction_indices
     n_frames_written = 0
     n_frames_missing = 0
     pvd_entries = []
     log_every = max(1, len(frame_indices) // 10)
 
     for count, t_idx in enumerate(frame_indices):
-        t_value = float(times[t_idx])
+        is_initial = t_idx == -1
+        # Les indices DEM sont en centièmes de seconde (157 = 1,57 s).
+        t_value = 0.0 if is_initial else float(times[t_idx]) / 100.0
 
         if timestep_dict is not None:
-            df_t, matched_key = _lookup_frame_df(t_value)
+            # La recherche se fait dans l'unité des clés DEM (indices), pas
+            # dans l'unité d'affichage du PVD (secondes).
+            dem_t_value = 0.0 if is_initial else float(times[t_idx])
+            df_t, matched_key = _lookup_frame_df(dem_t_value)
         else:
             df_t, matched_key = None, None
 
@@ -2382,7 +2392,9 @@ def fig_mesh(
         # ── Vecteur d'état ÉVOLUTIF : l'assignation de partition de CE pas de
         #    temps est insérée dans le maillage (comme les positions, elle
         #    change à chaque frame de prédiction).
-        frame_states = states_matrix_clean[t_idx].astype(int)
+        # À t=0, utiliser la partition de référence; ensuite, utiliser la
+        # ligne correspondant exactement au pas prédit.
+        frame_states = cell_ids if is_initial else states_matrix_clean[t_idx].astype(int)
         frame_points.point_data["partition_state"] = frame_states
         # ── Référence figée à t=start, pour comparaison visuelle.
         frame_points.point_data["partition_label_start"] = cell_ids

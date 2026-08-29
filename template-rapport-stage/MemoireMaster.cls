@@ -97,6 +97,7 @@
 \RequirePackage{setspace}
 \RequirePackage{enumitem}
 \RequirePackage{csquotes}
+\RequirePackage{pdfpages}
 
 % ============================================================
 % COULEURS DU TEMPLATE

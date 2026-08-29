@@ -57,7 +57,7 @@ LIGHTPOS = dict(x=0.0, y=0.3, z=2.0)
 # caméra vue de face (plan x-y, axe z du tambour vers l'observateur)
 CAM_FACE = dict(eye=dict(x=0.0, y=0.0, z=2.1), up=dict(x=0, y=1, z=0))
 # caméra trois-quarts
-CAM_3Q = dict(eye=dict(x=1.3, y=0.9, z=1.5), up=dict(x=0, y=1, z=0))
+CAM_3Q = dict(eye=dict(x=0, y=2.1, z=0), up=dict(x=0, y=1, z=0))
 # caméra vue de côté (axe x vers l'observateur : plan z-y)
 CAM_COTE = dict(eye=dict(x=2.1, y=0.0, z=0.0), up=dict(x=0, y=1, z=0))
 
@@ -426,12 +426,12 @@ def fig_cellules(X, small_p, key, nom, lab):
     """
     diam = np.where(small_p, D_SMALL, D_BIG)
     colors = np.array([_hex2rgb(TAB10[l % 10]) for l in lab])
-    if key == "physique":
+    if key == "physique" or key=="voronoi":
         fig = make_subplots(
             rows=1, cols=3, specs=[[{"type": "scene"}] * 3],
             subplot_titles=("vue de face (plan x\u2013y)",
                             "vue de côté (plan z\u2013y)",
-                            "vue isométrique"),
+                            "vue de dessus"),
             horizontal_spacing=0.01,
         )
         fig.add_trace(spheres_mesh(X[START], diam / 2, colors), row=1, col=1)
@@ -461,7 +461,7 @@ def fig_cellules(X, small_p, key, nom, lab):
         fig.update_layout(
             paper_bgcolor=BG, margin=dict(l=0, r=0, t=64, b=0),
             font=dict(color="white", size=21),
-            title=dict(text=f"Découpage {nom} — particules par cellule (t=1,57s) — face, côté, isométrique (physique uniquement)",
+            title=dict(text=f"Découpage {nom} — particules par cellule (t=1,57s) — face, côté, dessus ",
                        font=dict(color="white", size=22), x=0.5),
         )
         add_triad_all_scenes(fig)
@@ -595,7 +595,7 @@ def fig_melange_instants_voronoi(X, small_p):
         font=dict(color="white", size=21), showlegend=False,
     )
     add_triad_all_scenes(fig)
-    safe_write_image(fig, FIGDIR / "pv_melange_instants_voronoi.png", width=1800, height=1400, scale=1)
+    safe_write_image(fig, FIGDIR / "pv_melange_instants_voronoi.png", width=1800, height=1400, scale=2)
     print("pv_melange_instants_voronoi ok")
 
 
@@ -777,12 +777,12 @@ def fig_snapshots_all_methods(X, small_p):
 if __name__ == "__main__":
     X, V, small_p = load_frames()
     labels = partition_labels(X, V, small_p)
-    fig_melangeur_especes(X, small_p)
-    fig_melange_instants(X, small_p)
+    # fig_melangeur_especes(X, small_p)
+    # fig_melange_instants(X, small_p)
     fig_melange_instants_voronoi(X, small_p)
-    fig_teneur_3d(X, small_p)
-    fig_snapshots_all_methods(X, small_p)
-    for key, (nom, lab) in labels.items():
-        fig_cellules(X, small_p, key, nom, lab)
-    fig_contenu_cellule(X, small_p, labels)
+    # fig_teneur_3d(X, small_p)
+    # fig_snapshots_all_methods(X, small_p)
+    # for key, (nom, lab) in labels.items():
+    #     fig_cellules(X, small_p, key, nom, lab)
+    # # fig_contenu_cellule(X, small_p, labels)
     print("✅ figures WebGL (pyvista_js) avec particules réelles écrites dans", FIGDIR)
