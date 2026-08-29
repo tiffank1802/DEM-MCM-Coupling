@@ -595,7 +595,7 @@ def fig_melange_instants_voronoi(X, small_p):
         font=dict(color="white", size=21), showlegend=False,
     )
     add_triad_all_scenes(fig)
-    safe_write_image(fig, FIGDIR / "pv_melange_instants_voronoi.png", width=1800, height=1400, scale=1)
+    safe_write_image(fig, FIGDIR / "pv_melange_instants_voronoi.png", width=1800, height=1400, scale=2)
     print("pv_melange_instants_voronoi ok")
 
 
@@ -779,10 +779,10 @@ if __name__ == "__main__":
     labels = partition_labels(X, V, small_p)
     # fig_melangeur_especes(X, small_p)
     # fig_melange_instants(X, small_p)
-    # fig_melange_instants_voronoi(X, small_p)
+    fig_melange_instants_voronoi(X, small_p)
     # fig_teneur_3d(X, small_p)
     # fig_snapshots_all_methods(X, small_p)
-    for key, (nom, lab) in labels.items():
-        fig_cellules(X, small_p, key, nom, lab)
-    # fig_contenu_cellule(X, small_p, labels)
+    # for key, (nom, lab) in labels.items():
+    #     fig_cellules(X, small_p, key, nom, lab)
+    # # fig_contenu_cellule(X, small_p, labels)
     print("✅ figures WebGL (pyvista_js) avec particules réelles écrites dans", FIGDIR)
