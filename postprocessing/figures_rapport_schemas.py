@@ -259,7 +259,7 @@ def schema_cylindrique():
             ax1.add_patch(Wedge((0, 0), radii[i + 1], thetas[j],
                                 thetas[j + 1], width=radii[i + 1] - radii[i],
                                 fc=cmap((k % 24) / 24), ec="k",
-                                lw=0.9, alpha=0.55))
+                                lw=2.4, alpha=0.35))
             k += 1
     # rayons limites
     ax1.annotate("", xy=(radii[1] * np.cos(np.pi / 3),
@@ -285,7 +285,7 @@ def schema_cylindrique():
     zs = np.linspace(-L / 2, L / 2, nz + 1)
     for i in range(nz):
         ax2.add_patch(Rectangle((zs[i], -D / 2), zs[i + 1] - zs[i], D,
-                                fc=cmap(i / nz), ec="k", lw=1.2, alpha=0.4))
+                                fc=cmap(i / nz), ec="k", lw=2.4, alpha=0.3))
     ax2.plot([-L / 2 - 0.25, L / 2 + 0.25], [0, 0], "-.", color=GRIS, lw=1)
     ax2.annotate("", xy=(zs[1], -D / 2 - 0.22), xytext=(zs[0], -D / 2 - 0.22),
                  arrowprops=dict(arrowstyle="<|-|>", color=GRIS, lw=1.4))

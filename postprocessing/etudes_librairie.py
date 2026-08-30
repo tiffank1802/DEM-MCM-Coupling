@@ -1096,21 +1096,33 @@ def figure_repere_avant_apres(timestep_dict, sample_coords, s_velocities,
         pts_lit[:, 0], pts_lit[:, 1], pts_lit[:, 2]))
 
     fig, axes = plt.subplots(1, 2, figsize=(12.8, 6.0), sharey=True)
-    for ax, lab, ttl in (
-        (axes[0], lab_tambour,
-         "(a) Avant : repère du tambour\n(bandes verticales, "
-         "cellules marginales vides)"),
-        (axes[1], lab_lit,
-         "(b) Après : repère du lit\n(bandes alignées sur la surface "
-         "libre, toutes occupées)"),
+    for ax, lab, plot_pts, ttl in (
+        (axes[0], lab_tambour, pts,
+         "(a) Sans changement de repère : repère du tambour\n"
+         "cellules géométriques et limites en trait fort"),
+        (axes[1], lab_lit, pts_lit,
+         "(b) Avec changement de repère : repère du lit\n"
+         "cellules inclinées et limites en trait fort"),
     ):
         occup = np.bincount(lab, minlength=10)
         for cell in range(10):
             m = lab == cell
             col = CELL_COLORS[cell % len(CELL_COLORS)]
             if m.any():
-                ax.scatter(pts[m, 0], pts[m, 1], s=14, color=col, lw=0,
+                ax.scatter(plot_pts[m, 0], plot_pts[m, 1], s=14, color=col, lw=0,
                            label=f"cellule {cell}")
+        # Tracer explicitement les frontières du découpage cartésien : elles
+        # restent visibles au-dessus des particules, même lorsque plusieurs
+        # cellules sont peu occupées.
+        x_edges = np.linspace(plot_pts[:, 0].min(), plot_pts[:, 0].max(), 11)
+        y0, y1 = plot_pts[:, 1].min(), plot_pts[:, 1].max()
+        for xedge in x_edges:
+            ax.plot([xedge, xedge], [y0, y1], color="black", lw=2.2,
+                    alpha=0.9, zorder=4)
+        ax.plot([x_edges[0], x_edges[-1]], [y0, y0], color="black", lw=2.2,
+                zorder=4)
+        ax.plot([x_edges[0], x_edges[-1]], [y1, y1], color="black", lw=2.2,
+                zorder=4)
         ax.set_title(ttl + f"\ncellules vides : "
                      f"{int((occup == 0).sum())}/10")
         ax.set_xlabel("$x$ (m)")
