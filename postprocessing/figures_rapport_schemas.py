@@ -327,6 +327,7 @@ def schema_cylindrique():
 
 def schema_voronoi():
     rng = np.random.default_rng(7)
+    rng_physique=np.random.default_rng(8)
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 5.4))
 
     # nuage de points en forme de lit granulaire
@@ -342,12 +343,18 @@ def schema_voronoi():
     # k-means "manuel" simple pour l'illustration
     K = 8
     centres = pts[rng.choice(len(pts), K, replace=False)]
+    centres_physique = pts[rng_physique.choice(len(pts), K, replace=False)]
     for _ in range(30):
         d = ((pts[:, None, :] - centres[None]) ** 2).sum(-1)
         lab = d.argmin(1)
+        d_physique = ((pts[:, None, :] - centres_physique[None]) ** 2).sum(-1)
+        lab_physique = d_physique.argmin(1)
         for kk in range(K):
             if (lab == kk).any():
                 centres[kk] = pts[lab == kk].mean(0)
+            if (lab_physique == kk).any():
+                centres_physique[kk] = pts[lab_physique == kk].mean(0)
+
 
     cmap = plt.get_cmap("tab10")
     for ax, title in ((ax1, "(a) Découpage de Voronoï "
@@ -356,9 +363,15 @@ def schema_voronoi():
                             "($\\mathbf{z}_p = [x_p\\ y_p\\ z_p\\ "
                             "\\|\\mathbf{v}_p\\|]^T$)")):
         ax.add_patch(Circle((0, 0), R, fill=False, ec=BLEU, lw=2.2))
-        ax.scatter(pts[:, 0], pts[:, 1], c=[cmap(l % 10) for l in lab],
-                   s=12, alpha=0.8, lw=0)
-        ax.scatter(centres[:, 0], centres[:, 1], marker="X", s=160,
+        if ax==ax1:
+            ax.scatter(pts[:, 0], pts[:, 1], c=[cmap(l % 10) for l in lab],
+                    s=12, alpha=0.8, lw=0)
+            ax.scatter(centres[:, 0], centres[:, 1], marker="X", s=160,
+                   c="k", zorder=5, label=r"centres $\boldsymbol{\mu}_k$")
+        if ax==ax2:
+            ax.scatter(pts[:, 0], pts[:, 1], c=[cmap(l % 10) for l in lab_physique],
+                    s=12, alpha=0.8, lw=0)
+            ax.scatter(centres_physique[:, 0], centres_physique[:, 1], marker="X", s=160,
                    c="k", zorder=5, label=r"centres $\boldsymbol{\mu}_k$")
         ax.legend(loc="upper right", fontsize=10)
         ax.set_xlim(-1.35, 1.35)

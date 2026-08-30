@@ -234,7 +234,9 @@ La section~\ref{sec:resultats} expose les résultats obtenus pour différents ma
 \section{Contexte et état de l'art}
 \label{sec:contexte}
 
-\paragraph{La méthode des éléments discrets.} La simulation numérique des milieux granulaires repose très largement sur la méthode des éléments discrets introduite par Cundall et Strack~\cite{cundall1979}. Cette approche déterministe considère chaque grain comme un corps rigide dont le mouvement est régi par le principe fondamental de la dynamique : à chaque pas de temps, le bilan des actions mécaniques --- forces de contact normales et tangentielles entre particules et entre particules et parois, pesanteur --- est intégré pour actualiser les accélérations, puis les vitesses et enfin les positions de l'ensemble des grains. Initialement développée pour les assemblées de disques et de sphères en géomécanique, la DEM s'est imposée comme l'outil de référence pour l'étude des procédés particulaires : elle donne accès à une information complète à l'échelle du grain (trajectoires, forces de contact, vitesses), au prix toutefois d'un pas de temps très faible (de l'ordre de $10^{-6}$\,s) imposé par la raideur des contacts. Ce coût numérique restreint son emploi à des systèmes de taille modeste au regard des milliards de particules mises en jeu dans les procédés industriels, et motive le recours à des modèles réduits, opérant à une échelle plus grossière.
+\paragraph{La méthode des éléments discrets.} La simulation numérique des milieux granulaires repose très largement sur la méthode des éléments discrets introduite par Cundall et Strack~\cite{cundall1979}. Cette approche déterministe considère chaque grain comme un corps rigide dont le mouvement est régi par le principe fondamental de la dynamique : à chaque pas de temps, le bilan des actions mécaniques --- forces de contact normales et tangentielles entre particules et entre particules et parois, pesanteur --- est intégré pour actualiser les accélérations, puis les vitesses et enfin les positions de l'ensemble des grains. Initialement développée pour les assemblées de disques et de sphères en géomécanique, la DEM s'est imposée comme l'outil de référence pour l'étude des procédés particulaires : elle donne accès à une information complète à l'échelle du grain (trajectoires, forces de contact, vitesses), au prix toutefois d'un pas de temps très faible
+%  (de l'ordre de $10^{-6}$\,s)
+ imposé par la raideur des contacts. Ce coût numérique restreint son emploi à des systèmes de taille modeste au regard des milliards de particules mises en jeu dans les procédés industriels, et motive le recours à des modèles réduits, opérant à une échelle plus grossière.
 
 \paragraph{Les tambours tournants : transport axial, temps de séjour et internals.} Les tambours tournants sont utilisés depuis longtemps en traitement des solides --- mélange, séchage, fours, broyage --- et leur dimensionnement repose sur des grandeurs clés : rétention , temps de séjour moyen et sa distribution , ainsi que les limites de capacité. 
 Les premiers modèles empiriques (Sullivan et al.~1927, Chatterjee) puis le modèle géométrique de Saeman~1951, basé sur le profil de hauteur de lit $h(x)$ et l'angle d'inclinaison, décrivent le transport axial dans les tambours lisses. 
@@ -369,7 +371,7 @@ Le modèle de Markov est construit sur ce vecteur de nombre de particules par ce
 \end{bmatrix}
 \label{eq:def_teneur_locale}
 \end{equation}
-avec $N^a_i(t_k)$, respectivement $N^b_i(t_k)$, le nombre de particules de type $a$ ou $b$, dans la cellule $i$ à l'instant $t_k$.
+avec $N^a_i(t_k)$, respectivement $N^b_i(t_k)$, le nombre de particules de type $a$ ou $b$, dans la cellule $i$ à l'instant $t_k$. La définition opérationnelle de ce vecteur de teneur pour la phase de prédiction, ainsi que les deux modes de propagation (chaîne homogène, chaîne inhomogène) utilisés dans la suite du mémoire, sont rassemblés une fois pour toutes en~\S\ref{subsubsec:prediction}.
 
 La figure~\ref{fig:maillage_melangeur} donne au lecteur une idée du processus de mélange que le modèle doit reproduire : le mélangeur non discrétisé, avec ses particules de tailles distinctes, est montré à quatre instants --- configuration initiale séparée, lit en écoulement à $t=\SI{1.57}{s}$ après un tour, mélange avancé à $t = \SI{10}{s}$ après environ 6 tours , régime tardif $t = \SI{30}{s}$ où les petites particules se concentrent au cœur et contre la paroi. 
 La figure~\ref{fig:maillage_melangeur_voronoi} montre les  particules à trois instants $t=\SI{1.57}{s}$, $t=\SI{10}{s}$ et $t=\SI{30}{s}$ après discrétisation (découpage de Voronoï) : chaque grain porte la couleur de sa cellule.
@@ -389,12 +391,12 @@ La figure~\ref{fig:maillage_melangeur_voronoi} montre les  particules à trois i
   \label{fig:maillage_melangeur_voronoi}
 \end{figure}
 
-La construction du modèle se fait suivant trois étapes principales, détaillées dans les paragraphes qui suivent : la discrétisation du mélangeur, la construction du vecteur d'état initial, et la construction de la matrice de transition. La figure~\ref{fig:schema_construction_markov} résume l'algorithme complet, de la donnée DEM à la validation, en rappelant les points importants de chaque étape.
+La construction du modèle se fait suivant trois étapes principales, détaillées dans les paragraphes qui suivent : la discrétisation du mélangeur, la construction du vecteur d'état initial, et la construction de la matrice de transition. La figure~\ref{fig:schema_construction_markov} résume l'algorithme complet, de la donnée DEM à la validation ; le détail de chaque étape (labélisation, apprentissage, prédiction, validation) est donné dans les sections qui suivent, notamment \S\ref{subsubsec:prediction} pour la prédiction proprement dite.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/schema_construction_markov.png}
-  \caption{Algorithme de construction et d'exploitation du modèle de Markov : les données DEM servent d'abord à ajuster la méthode de maillage sur le régime permanent, puis à labelliser chaque particule à chaque instant ; les vecteurs d'état de comptage qui en découlent alimentent l'apprentissage de la ou des matrices de transition, la prédiction, et enfin la validation par confrontation à la référence DEM.}
+  \caption{Algorithme de construction et d'exploitation du modèle de Markov (voir la définition du vecteur de teneur et des chaînes homogène/inhomogène, \S\ref{subsubsec:prediction}).}
   \label{fig:schema_construction_markov}
 \end{figure}
 
@@ -414,7 +416,7 @@ On considère l'état du mélangeur à un instant $t_k$ défini par le contenu d
   \end{bmatrix},
   \label{eq:vecteur_etat}
 \end{equation}
-où la composante $S_i(t_k)$, $i \in [0, N-1]$, est le \textbf{nombre de particules} présentes dans la cellule $i$ à l'instant $t_k$. C'est ce vecteur nombre de particules qui sert à construire le modèle de Markov : les matrices de transition étant estimées séparément pour chaque espèce (\S\ref{subsubsec:matrice}), le comptage est effectué par espèce (nombre de petites particules par cellule pour la matrice des petites, nombre de grandes pour celle des grandes).
+où la composante $S_i(t_k)$, $i \in [0, N-1]$, est le \textbf{nombre de particules} présentes dans la cellule $i$ à l'instant $t_k$, le comptage étant effectué séparément par espèce (nombre de petites particules par cellule pour la matrice des petites, nombre de grandes pour celle des grandes) puisque les matrices de transition sont elles-mêmes estimées séparément pour chaque espèce (\S\ref{subsubsec:matrice}).
 
 On définit par ailleurs la \textbf{teneur locale} en une espèce de la cellule $i$ (Annexe~\ref{annexe:teneur}), c'est-à-dire le nombre de particules de cette espèce rapporté au nombre total de particules de la cellule. 
 Elle est reconstruite en fin de chaîne, à partir des nombres de particules prédits pour chaque espèce, afin d'évaluer le modèle et d'observer la ségrégation --- elle discrimine les zones enrichies ou appauvries en une espèce là où le comptage brut ne renseigne que sur l'occupation du mélangeur. La figure~\ref{fig:schema_teneur_locale}, en annexe~\ref{annexe:teneur}, illustre cette teneur locale sur un découpage cartésien.
@@ -496,8 +498,20 @@ où $NLT$ est le nombre d'instants d'apprentissage, $\phi_p(i,t_n)$ la fonction 
   \label{eq:stochastique}
 \end{equation}
 
-Ces deux conditions sont vérifiées et validées pour chacun des modèles construits : la positivité découle du fait que l'on travaille dans un espace probabilisé, et la condition de somme unitaire traduit simplement le fait que toutes les particules quittant la cellule source $j$ se retrouvent quelque part dans le mélangeur à l'instant suivant. Implicitement, sa validation signifie que la phase d'apprentissage est suffisamment longue pour voir chaque cellule observée comme source, évitant les \textit{NaN} dans la matrice. Les matrices présentées dans la section résultats, annotées au centième, satisfont toutes ce critère de conformité --- aucune n'exhibe de \textit{NaN} --- grâce au choix du raffinage temporel $dt$ justifié en annexe~\ref{annexe:dt}.
+Ces deux conditions sont vérifiées et validées pour chacun des modèles construits : la positivité découle du fait que l'on travaille dans un espace probabilisé, et la condition de somme unitaire traduit simplement le fait que toutes les particules quittant la cellule source $j$ se retrouvent quelque part dans le mélangeur à l'instant suivant. Implicitement, sa validation signifie que la phase d'apprentissage est suffisamment longue pour voir chaque cellule observée comme source, évitant les \textit{NaN} dans la matrice.
 \paragraph{Deux matrices distinctes par espèce.} Les petites et les grandes particules n'ayant pas la même dynamique --- les petites percolent à travers le lit tandis que les grandes remontent en surface ---, une matrice de transition unique moyennerait deux comportements physiquement distincts. Deux matrices sont donc estimées séparément, en appliquant un masque sur les labels afin de ne compter que les particules d'une espèce donnée. Ce choix est justifié quantitativement par l'étude de sensibilité de l'annexe~\ref{annexe:especes}, qui compare l'erreur de prédiction du modèle construit sans distinction d'espèce (matrice unique) à celle du modèle construit avec distinction (matrices par espèce), pour les quatre méthodes de découpage.
+
+\subsubsection{Prédiction : vecteur de teneur, chaîne homogène et chaîne inhomogène}
+\label{subsubsec:prediction}
+
+Cette section rassemble, une fois pour toutes, les trois ingrédients utilisés dans la suite du mémoire pour prédire l'état du mélangeur et évaluer sa qualité : le vecteur de teneur locale reconstruit à partir de la prédiction, la propagation par une chaîne homogène et la propagation par une chaîne inhomogène.
+
+\paragraph{Vecteur de teneur locale prédit.} Comme introduit en~\eqref{eq:def_teneur_locale}, le modèle de Markov propage un vecteur de nombre de particules par cellule, distinct pour chaque espèce : $\mathbf{S}^a(t_k)$ pour les petites particules et $\mathbf{S}^b(t_k)$ pour les grandes. À chaque instant prédit $t_k$, ces deux vecteurs sont recombinés en un vecteur de teneur locale en petites particules :
+\begin{equation}
+  c_i(t_k) = \frac{S^a_i(t_k)}{S^a_i(t_k) + S^b_i(t_k)}, \qquad i \in [0, N-1].
+  \label{eq:teneur_prediction}
+\end{equation}
+C'est ce vecteur de teneur, et non le comptage brut, qui est comparé à la référence DEM tout au long de la section résultats (\S\ref{sec:resultats}) pour quantifier la ségrégation.
 
 \paragraph{Chaîne homogène.} Lorsque $\mathbf{P}$ est supposée invariante dans le temps, la prédiction à $n$ pas s'écrit :
 
@@ -516,6 +530,8 @@ Ces deux conditions sont vérifiées et validées pour chacun des modèles const
   \mathbf{P}^{(k)} \, \mathbf{S}_k.
   \label{eq:prediction_inhomogene}
 \end{equation}
+
+Dans les deux cas (chaîne homogène ou inhomogène), la propagation est effectuée séparément pour les deux espèces --- avec, respectivement, la ou les matrices $\mathbf{P}^a$ et $\mathbf{P}^b$ apprises sur chaque espèce (\S\ref{subsubsec:matrice}) --- puis les deux vecteurs prédits sont recombinés via l'équation~\eqref{eq:teneur_prediction} pour obtenir la teneur locale prédite, seule grandeur confrontée à la référence DEM dans la section résultats.
 
 
 
@@ -553,8 +569,15 @@ Quelle que soit la méthode retenue, une phase d'apprentissage sur le régime pe
 Avant labélisation par les méthodes géométriques, les coordonnées des particules sont exprimées dans le \textbf{repère du lit} : l'origine est placée au barycentre des positions du régime permanent, et les axes du plan transverse sont alignés sur les directions principales du lit (la direction de la surface libre inclinée devient un axe du repère). Ce changement de repère répartit les particules de manière beaucoup plus équilibrée dans les cellules : dans le repère du tambour, le lit incliné ne peuple qu'une partie des cellules d'une grille alignée sur les axes fixes, alors que dans le repère du lit chaque cellule est occupée en permanence --- condition nécessaire à la conformité de la matrice de transition (annexe~\ref{annexe:dt}). Les découpages statistiques y sont insensibles (l'algorithme des k-moyennes est invariant par translation et rotation) ; le fit des bornes est effectué sur le régime permanent. La figure~\ref{fig:schema_cartesien_reperes} illustre l'effet de ce changement de repère sur la labélisation cartésienne : avant transformation, les bandes verticales de la grille alignée sur les axes fixes laissent des cellules marginales vides ou quasi vides ; après transformation, les bandes suivent la surface libre inclinée et les dix cellules sont toutes occupées.
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\linewidth]{figures/repere_avant_apres.png}
-  \caption{Découpage cartésien avant et après changement de repère : (a) repère du tambour ; (b) repère du lit. Les frontières des dix cellules sont tracées en trait fort.}
+  \begin{minipage}{0.48\textwidth}\centering
+    \includegraphics[width=\linewidth]{figures/schema_decoupage_cartesien.png}
+    \subcaption{Repère du tambour}
+  \end{minipage}\hfill
+  \begin{minipage}{0.48\textwidth}\centering
+    \includegraphics[width=\linewidth]{figures/repere_avant_apres.png}
+    \subcaption{Repère du lit}
+  \end{minipage}
+  \caption{Découpage cartésien représenté dans le repère du tambour et dans le repère du lit. Ce dernier est obtenu par translation au barycentre et rotation selon les directions principales du lit.}
   \label{fig:schema_cartesien_reperes}
 \end{figure}
 
@@ -567,13 +590,6 @@ Le mélangeur est segmenté selon les trois axes $x$, $y$, $z$ en un nombre fix�
   \includegraphics[width=0.62\textwidth]{figures/schema_decoupage_cartesien.png}
   \caption{Principe du découpage cartésien : la partie utile du mélangeur est segmentée en cellules parallélépipédiques de volume constant, numérotées dans l'ordre lexicographique $x \to y \to z$.}
   \label{fig:schema_cartesien}
-\end{figure}
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=\linewidth]{figures/repere_avant_apres_cylindrique.png}
-  \caption{Découpage cylindrique avant et après changement de repère : (a) repère du tambour ; (b) repère du lit. Les limites radiales et angulaires sont tracées en trait fort sur le nuage de particules.}
-  \label{fig:schema_cylindrique_reperes}
 \end{figure}
 
 \paragraph{Découpage cylindrique}
@@ -714,12 +730,12 @@ L'algorithme de partitionnement reste un k-means, mais opéré dans un espace de
   \label{fig:schema_voronoi}
 \end{figure}
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=\linewidth]{figures/espace_caracteristiques_physique.png}
-  \caption{Différence entre les découpages de Voronoï et physique : le premier utilise les positions seules, tandis que le second intègre la norme de la vitesse.}
-  \label{fig:espace_caracteristiques_physique}
-\end{figure}
+% \begin{figure}[H]
+%   \centering
+%   \includegraphics[width=\linewidth]{figures/espace_caracteristiques_physique.png}
+%   \caption{Différence entre les découpages de Voronoï et physique : le premier utilise les positions seules, tandis que le second intègre la norme de la vitesse.}
+%   \label{fig:espace_caracteristiques_physique}
+% \end{figure}
 %   \caption{Espace des caractéristiques du découpage physique : positions des 1030 particules colorées par la norme de leur vitesse, (a) cumulées sur la fenêtre d'apprentissage (cinq tours du régime permanent) et (b) à un instant de la phase de prédiction. La zone active de surface (vitesses élevées, teintes claires) se distingue nettement de la zone passive du cœur du lit (vitesses faibles, teintes sombres) : c'est ce contraste que la quatrième caractéristique $\|\mathbf{v}_p\|$ permet de séparer.}
 %   \label{fig:schematisation_voronoi_physique}
 % \end{figure}
@@ -1219,7 +1235,7 @@ En contrepartie, augmenter $NLT$ allonge la fenêtre temporelle mobilisée par l
 
 Le paramètre $start$ fixe le premier instant DEM utilisé pour la phase d'apprentissage de la matrice de transition. La prédiction, elle, est systématiquement propagée depuis l'instant initial $t = \SI{0}{s}$ : la question posée par le choix du $start$ est donc de savoir sur quelle portion de la simulation les probabilités de transition doivent être apprises pour que cette prédiction soit fidèle.
 
-La figure~\ref{fig:etude_start_rsd} y répond en confrontant, pour chacune des quatre méthodes de découpage, le RSD DEM de la teneur en petites particules à deux prédictions markoviennes homogènes propagées depuis $t = \SI{0}{s}$ : l'une dont la matrice est apprise en incluant le régime transitoire ($start = \SI{0}{s}$, courbe grise), l'autre dont la matrice est apprise sur le régime permanent ($start = \SI{1.57}{s}$, soit un tour de tambour, courbe colorée). La zone grisée matérialise le régime transitoire de mise en mouvement du lit ($t < \SI{1.57}{s}$), durant lequel le RSD DEM part de valeurs très élevées (0{,}9 à 1{,}1, configuration initiale séparée) et culmine jusqu'à 1{,}2 pour les maillages géométriques ; le tableau~\ref{tab:etude_start_rsd} donne les valeurs du RSD DEM à quelques instants clefs.
+La figure~\ref{fig:etude_start_rsd} y répond en confrontant, pour chacune des quatre méthodes de découpage, le RSD DEM de la teneur en petites particules à deux prédictions markoviennes homogènes propagées depuis $t = \SI{0}{s}$ : l'une dont la matrice est apprise en incluant le régime transitoire ($start = \SI{0}{s}$, courbe grise), l'autre dont la matrice est apprise sur le régime permanent ($start = \SI{1.57}{s}$, courbe colorée). La zone grisée matérialise le régime transitoire de mise en mouvement du lit ($t < \SI{1.57}{s}$), durant lequel le RSD DEM part de valeurs très élevées (0{,}9 à 1{,}1, configuration initiale séparée) et culmine jusqu'à 1{,}2 pour les maillages géométriques ; le tableau~\ref{tab:etude_start_rsd} donne les valeurs du RSD DEM à quelques instants clefs.
 
 \begin{figure}[H]
   \centering

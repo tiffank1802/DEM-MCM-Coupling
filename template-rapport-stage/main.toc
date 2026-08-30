@@ -9,46 +9,48 @@
 \contentsline {subsection}{\numberline {4.1}Matériau de référence}{3}{subsection.4.1}%
 \contentsline {subsection}{\numberline {4.2}Principe de la simulation DEM}{5}{subsection.4.2}%
 \contentsline {subsection}{\numberline {4.3}Du déterminisme particulaire au formalisme markovien}{6}{subsection.4.3}%
-\contentsline {subsubsection}{\numberline {4.3.1}Définition et construction du vecteur d'état}{9}{subsubsection.4.3.1}%
-\contentsline {subsubsection}{\numberline {4.3.2}Construction de la matrice de transition}{10}{subsubsection.4.3.2}%
-\contentsline {paragraph}{Pourquoi moyenner les probabilités de transition ?}{10}{paragraph*.11}%
-\contentsline {paragraph}{Paramètres de construction et justification.}{10}{paragraph*.12}%
-\contentsline {paragraph}{Vérifications de cohérence.}{12}{paragraph*.15}%
-\contentsline {paragraph}{Deux matrices distinctes par espèce.}{12}{paragraph*.16}%
-\contentsline {paragraph}{Chaîne homogène.}{12}{paragraph*.17}%
-\contentsline {paragraph}{Chaîne inhomogène.}{13}{paragraph*.18}%
-\contentsline {subsection}{\numberline {4.4}Méthodes de discrétisation}{13}{subsection.4.4}%
-\contentsline {paragraph}{Changement de repère pour les découpages géométriques}{13}{paragraph*.19}%
-\contentsline {paragraph}{Découpage cartésien}{14}{paragraph*.21}%
-\contentsline {paragraph}{Découpage cylindrique}{15}{paragraph*.23}%
-\contentsline {paragraph}{Découpage de Voronoï par algorithme des k-moyennes}{15}{paragraph*.25}%
-\contentsline {subparagraph}{Initialisation des centres.}{16}{subparagraph*.26}%
-\contentsline {subparagraph}{Étape d'affectation.}{16}{subparagraph*.27}%
-\contentsline {subparagraph}{Étape de mise à jour.}{16}{subparagraph*.28}%
-\contentsline {subparagraph}{Convergence et critère d'arrêt.}{16}{subparagraph*.29}%
-\contentsline {paragraph}{Découpage physique}{17}{paragraph*.30}%
-\contentsline {section}{\numberline {5}Résultats}{18}{section.5}%
-\contentsline {subsection}{\numberline {5.1}Influence de la méthode de discrétisation sur la prédiction du Modèle de Markov}{19}{subsection.5.1}%
-\contentsline {subsubsection}{\numberline {5.1.1}Découpage cartésien}{19}{subsubsection.5.1.1}%
-\contentsline {subsubsection}{\numberline {5.1.2}Découpage cylindrique}{21}{subsubsection.5.1.2}%
-\contentsline {subsubsection}{\numberline {5.1.3}Découpage de Voronoï}{23}{subsubsection.5.1.3}%
-\contentsline {subsubsection}{\numberline {5.1.4}Découpage physique}{25}{subsubsection.5.1.4}%
-\contentsline {subsubsection}{\numberline {5.1.5}Comparaison des méthodes}{26}{subsubsection.5.1.5}%
-\contentsline {subsection}{\numberline {5.2}Apport des chaînes inhomogènes}{28}{subsection.5.2}%
-\contentsline {section}{\numberline {6}Discussion}{29}{section.6}%
-\contentsline {section}{\numberline {7}Conclusion et perspectives}{30}{section.7}%
-\contentsline {section}{Références bibliographiques}{31}{section*.50}%
-\contentsline {section}{Annexes}{32}{section*.51}%
-\contentsline {section}{\numberline {A}Justification des paramètres du modèle de Markov}{32}{appendix.A}%
-\contentsline {subsection}{\numberline {A.1}Choix du pas de temps de Markov $\tau = \SI {1.57}{s}$}{32}{subsection.A.1}%
-\contentsline {subsection}{\numberline {A.2}Choix du nombre de blocs d'apprentissage $NLT$}{33}{subsection.A.2}%
-\contentsline {subsection}{\numberline {A.3}Choix de l'instant de départ $start = \SI {1.57}{s}$}{37}{subsection.A.3}%
-\contentsline {subsection}{\numberline {A.4}Choix de l'écart entre blocs $step = \SI {1.57}{s}$}{41}{subsection.A.4}%
-\contentsline {subsection}{\numberline {A.5}Conformité de la matrice de transition : repère de labélisation et raffinage temporel $dt$}{42}{subsection.A.5}%
-\contentsline {subsection}{\numberline {A.6}Justification des matrices distinctes par espèce}{43}{subsection.A.6}%
-\contentsline {subsection}{\numberline {A.7}Illustration de la teneur locale}{45}{subsection.A.7}%
-\contentsline {section}{\numberline {B}Details sur le nombre de particules}{45}{appendix.B}%
-\contentsline {subsection}{\numberline {B.1}Découpage cartésien}{46}{subsection.B.1}%
-\contentsline {subsection}{\numberline {B.2}Découpage cylindrique}{47}{subsection.B.2}%
-\contentsline {subsection}{\numberline {B.3}Découpage voronoi}{49}{subsection.B.3}%
-\contentsline {subsection}{\numberline {B.4}Découpage physique}{50}{subsection.B.4}%
+\contentsline {subsubsection}{\numberline {4.3.1}Définition et construction du vecteur d'état}{10}{subsubsection.4.3.1}%
+\contentsline {subsubsection}{\numberline {4.3.2}Construction de la matrice de transition}{11}{subsubsection.4.3.2}%
+\contentsline {paragraph}{Pourquoi moyenner les probabilités de transition ?}{11}{paragraph*.11}%
+\contentsline {paragraph}{Paramètres de construction et justification.}{11}{paragraph*.12}%
+\contentsline {paragraph}{Vérifications de cohérence.}{13}{paragraph*.15}%
+\contentsline {paragraph}{Deux matrices distinctes par espèce.}{13}{paragraph*.16}%
+\contentsline {subsubsection}{\numberline {4.3.3}Prédiction : vecteur de teneur, chaîne homogène et chaîne inhomogène}{13}{subsubsection.4.3.3}%
+\contentsline {paragraph}{Vecteur de teneur locale prédit.}{14}{paragraph*.17}%
+\contentsline {paragraph}{Chaîne homogène.}{14}{paragraph*.18}%
+\contentsline {paragraph}{Chaîne inhomogène.}{14}{paragraph*.19}%
+\contentsline {subsection}{\numberline {4.4}Méthodes de discrétisation}{14}{subsection.4.4}%
+\contentsline {paragraph}{Changement de repère pour les découpages géométriques}{15}{paragraph*.20}%
+\contentsline {paragraph}{Découpage cartésien}{15}{paragraph*.22}%
+\contentsline {paragraph}{Découpage cylindrique}{16}{paragraph*.24}%
+\contentsline {paragraph}{Découpage de Voronoï par algorithme des k-moyennes}{17}{paragraph*.26}%
+\contentsline {subparagraph}{Initialisation des centres.}{17}{subparagraph*.27}%
+\contentsline {subparagraph}{Étape d'affectation.}{18}{subparagraph*.28}%
+\contentsline {subparagraph}{Étape de mise à jour.}{18}{subparagraph*.29}%
+\contentsline {subparagraph}{Convergence et critère d'arrêt.}{18}{subparagraph*.30}%
+\contentsline {paragraph}{Découpage physique}{19}{paragraph*.31}%
+\contentsline {section}{\numberline {5}Résultats}{20}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Influence de la méthode de discrétisation sur la prédiction du Modèle de Markov}{21}{subsection.5.1}%
+\contentsline {subsubsection}{\numberline {5.1.1}Découpage cartésien}{21}{subsubsection.5.1.1}%
+\contentsline {subsubsection}{\numberline {5.1.2}Découpage cylindrique}{23}{subsubsection.5.1.2}%
+\contentsline {subsubsection}{\numberline {5.1.3}Découpage de Voronoï}{24}{subsubsection.5.1.3}%
+\contentsline {subsubsection}{\numberline {5.1.4}Découpage physique}{26}{subsubsection.5.1.4}%
+\contentsline {subsubsection}{\numberline {5.1.5}Comparaison des méthodes}{28}{subsubsection.5.1.5}%
+\contentsline {subsection}{\numberline {5.2}Apport des chaînes inhomogènes}{29}{subsection.5.2}%
+\contentsline {section}{\numberline {6}Discussion}{30}{section.6}%
+\contentsline {section}{\numberline {7}Conclusion et perspectives}{31}{section.7}%
+\contentsline {section}{Références bibliographiques}{32}{section*.51}%
+\contentsline {section}{Annexes}{33}{section*.52}%
+\contentsline {section}{\numberline {A}Justification des paramètres du modèle de Markov}{33}{appendix.A}%
+\contentsline {subsection}{\numberline {A.1}Choix du pas de temps de Markov $\tau = \SI {1.57}{s}$}{33}{subsection.A.1}%
+\contentsline {subsection}{\numberline {A.2}Choix du nombre de blocs d'apprentissage $NLT$}{34}{subsection.A.2}%
+\contentsline {subsection}{\numberline {A.3}Choix de l'instant de départ $start = \SI {1.57}{s}$}{38}{subsection.A.3}%
+\contentsline {subsection}{\numberline {A.4}Choix de l'écart entre blocs $step = \SI {1.57}{s}$}{42}{subsection.A.4}%
+\contentsline {subsection}{\numberline {A.5}Conformité de la matrice de transition : repère de labélisation et raffinage temporel $dt$}{43}{subsection.A.5}%
+\contentsline {subsection}{\numberline {A.6}Justification des matrices distinctes par espèce}{44}{subsection.A.6}%
+\contentsline {subsection}{\numberline {A.7}Illustration de la teneur locale}{46}{subsection.A.7}%
+\contentsline {section}{\numberline {B}Details sur le nombre de particules}{46}{appendix.B}%
+\contentsline {subsection}{\numberline {B.1}Découpage cartésien}{47}{subsection.B.1}%
+\contentsline {subsection}{\numberline {B.2}Découpage cylindrique}{48}{subsection.B.2}%
+\contentsline {subsection}{\numberline {B.3}Découpage voronoi}{50}{subsection.B.3}%
+\contentsline {subsection}{\numberline {B.4}Découpage physique}{51}{subsection.B.4}%
