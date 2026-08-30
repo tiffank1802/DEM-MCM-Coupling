@@ -261,6 +261,15 @@ def schema_cylindrique():
                                 fc=cmap((k % 24) / 24), ec="k",
                                 lw=2.4, alpha=0.35))
             k += 1
+    # Nuage de points : les particules restent visibles et les frontières
+    # géométriques sont superposées en trait fort.
+    _lit_granulaire(ax1, R, n=420, seed=12)
+    for rr in radii[1:-1]:
+        ax1.add_patch(Circle((0, 0), rr, fill=False, ec="black", lw=2.4,
+                             zorder=4))
+    for th in np.deg2rad(thetas):
+        ax1.plot([0, R*np.cos(th)], [0, R*np.sin(th)], color="black",
+                 lw=2.0, zorder=4)
     # rayons limites
     ax1.annotate("", xy=(radii[1] * np.cos(np.pi / 3),
                          radii[1] * np.sin(np.pi / 3)), xytext=(0, 0),
@@ -281,6 +290,11 @@ def schema_cylindrique():
 
     # -------- vue de cote : tranches en z --------
     L, D = 1.8, 2.0
+    rng = np.random.default_rng(13)
+    zpts = rng.uniform(-L / 2, L / 2, 420)
+    ypts = rng.uniform(-D / 2, 0.15, 420)
+    ax2.scatter(zpts, ypts, s=10, c=VERT, alpha=0.75, edgecolors="none",
+                zorder=3)
     nz = 4
     zs = np.linspace(-L / 2, L / 2, nz + 1)
     for i in range(nz):
