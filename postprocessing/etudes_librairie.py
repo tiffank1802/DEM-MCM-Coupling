@@ -1139,6 +1139,34 @@ def figure_repere_avant_apres(timestep_dict, sample_coords, s_velocities,
           int((np.bincount(lab_lit, minlength=10) == 0).sum()))
 
 
+def figure_repere_cylindrique(timestep_dict, frame):
+    """Compare le découpage cylindrique avant/après rotation du repère."""
+    c, R2 = frame
+    df = timestep_dict[START]
+    cols = ["coordinates:0", "coordinates:1", "coordinates:2"]
+    pts = df[cols].to_numpy()
+    pts_lit = transform_coords(pts, c, R2)
+    fig, axes = plt.subplots(1, 2, figsize=(12.8, 6.0), sharex=True, sharey=True)
+    for ax, p, title in ((axes[0], pts, "(a) Sans changement de repère : tambour"),
+                         (axes[1], pts_lit, "(b) Avec changement de repère : lit")):
+        ax.scatter(p[:, 0], p[:, 1], s=14, c=COLORS.get("petites", "#2ca02c"),
+                   alpha=0.75, edgecolors="none", zorder=2)
+        rmax = np.max(np.hypot(p[:, 0], p[:, 1]))
+        for r in np.linspace(rmax / 3, rmax, 3):
+            ax.add_patch(plt.Circle((0, 0), r, fill=False, color="black", lw=2.2, zorder=4))
+        for th in np.linspace(0, 2*np.pi, 9)[:-1]:
+            ax.plot([0, rmax*np.cos(th)], [0, rmax*np.sin(th)], color="black", lw=2.0, zorder=4)
+        ax.set_title(title + "\\nfrontières $(r,\\theta)$ en trait fort")
+        ax.set_aspect("equal")
+        ax.set_xlabel("$x$ (m)")
+        ax.grid(alpha=0.2)
+    axes[0].set_ylabel("$y$ (m)")
+    fig.suptitle("Découpage cylindrique avant et après changement de repère")
+    fig.tight_layout()
+    fig.savefig(FIGDIR / "repere_avant_apres_cylindrique.png", dpi=200)
+    plt.close(fig)
+
+
 def etude_start_ecarts(etudes):
     """Figures d'écart de l'annexe start recalculées avec la librairie
     (axes en secondes + tours) : découpage de Voronoï, grandes particules,
@@ -1413,6 +1441,7 @@ if __name__ == "__main__":
 
     figure_repere_avant_apres(timestep_dict, sample_coords,
                               s_velocities, frame)
+    figure_repere_cylindrique(timestep_dict, frame)
     comparaison_methodes(etudes)
     comparaison_methodes_teneur(etudes)
     etude_start(etudes)
