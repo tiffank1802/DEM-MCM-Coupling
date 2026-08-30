@@ -551,12 +551,14 @@ Quelle que soit la méthode retenue, une phase d'apprentissage sur le régime pe
 
 \paragraph{Changement de repère pour les découpages géométriques}
 Avant labélisation par les méthodes géométriques, les coordonnées des particules sont exprimées dans le \textbf{repère du lit} : l'origine est placée au barycentre des positions du régime permanent, et les axes du plan transverse sont alignés sur les directions principales du lit (la direction de la surface libre inclinée devient un axe du repère). Ce changement de repère répartit les particules de manière beaucoup plus équilibrée dans les cellules : dans le repère du tambour, le lit incliné ne peuple qu'une partie des cellules d'une grille alignée sur les axes fixes, alors que dans le repère du lit chaque cellule est occupée en permanence --- condition nécessaire à la conformité de la matrice de transition (annexe~\ref{annexe:dt}). Les découpages statistiques y sont insensibles (l'algorithme des k-moyennes est invariant par translation et rotation) ; le fit des bornes est effectué sur le régime permanent. La figure~\ref{fig:schema_cartesien_reperes} illustre l'effet de ce changement de repère sur la labélisation cartésienne : avant transformation, les bandes verticales de la grille alignée sur les axes fixes laissent des cellules marginales vides ou quasi vides ; après transformation, les bandes suivent la surface libre inclinée et les dix cellules sont toutes occupées.
+% Ici je veux que modifie le code qui trance les figures repere_avant_apres.png pour le découpage cylindrique pour qu'il utilise les particules réélles pour mieux visualiser les limites des cellules ou alors tu délimites les cellules en trait fort comme pour la figure schema_decoupage_cartesien.png
+% d'une part et d'autre part je veux que tu modifie le code qui trace la figure schema_decoupage_cartesien.png pour qu'elle montre les cas du découpage normal et le cas du déoupage dans le sens du lit avec les limites des cellules inclinées.
 \begin{figure}[H]
   \centering
-  \begin{minipage}{0.48\textwidth}\centering
-    \includegraphics[width=\linewidth]{figures/schema_decoupage_cartesien.png}
-    \subcaption{Repère du tambour}
-  \end{minipage}\hfill
+  % \begin{minipage}{0.48\textwidth}\centering
+  %   \includegraphics[width=\linewidth]{figures/schema_decoupage_cartesien.png}
+  %   \subcaption{Repère du tambour}
+  % \end{minipage}\hfill
   \begin{minipage}{0.48\textwidth}\centering
     \includegraphics[width=\linewidth]{figures/repere_avant_apres.png}
     \subcaption{Repère du lit}

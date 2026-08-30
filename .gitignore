@@ -35,7 +35,7 @@ RaffinageTemporel/
 
 # Données DEM locales - on ignore tout sauf compacts et chunks nécessaires pour figures
 data/*
-!data/compact.npz
-!data/labels_librairie.npz
+data/compact.npz
+data/labels_librairie.npz
 !data/chunks/
 !data/chunks/*

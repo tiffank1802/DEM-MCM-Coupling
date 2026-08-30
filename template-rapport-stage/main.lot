@@ -1,0 +1,9 @@
+\babel@toc {french}{}\relax 
+\contentsline {table}{\numberline {1}{\ignorespaces Caractéristiques du mélange granulaire simulé}}{4}{table.caption.4}%
+\contentsline {table}{\numberline {2}{\ignorespaces Paramètres de construction du modèle de Markov et valeurs retenues. Les justifications quantitatives sont données en annexe~\ref {annexe:parametres}.}}{11}{table.caption.13}%
+\contentsline {table}{\numberline {3}{\ignorespaces Écart moyen sur $|RSD_{Markov} - RSD_{DEM}|$}}{27}{table.caption.46}%
+\contentsline {table}{\numberline {4}{\ignorespaces Comparaison homogène vs inhomogène}}{29}{table.caption.49}%
+\contentsline {table}{\numberline {5}{\ignorespaces RSD DEM de la teneur en petites particules à quelques instants, par méthode de découpage : le régime transitoire ($t < \SI {1.57}{s}$) présente des valeurs hautes et erratiques ; la décroissance s'installe au-delà.}}{38}{table.caption.58}%
+\contentsline {table}{\numberline {6}{\ignorespaces Synthèse de l'étude d'influence du $start$ (découpage de Voronoï, 10 cellules, grandes particules) : niveau d'écart RMS $|\text {Markov}-\text {DEM}|$ en régime établi.}}{41}{table.caption.60}%
+\contentsline {table}{\numberline {7}{\ignorespaces Nombre de colonnes de $\mathbf {P}$ contenant des \textit {NaN} selon $dt$. La matrice est conforme lorsque ce nombre est nul.}}{43}{table.caption.62}%
+\contentsline {table}{\numberline {8}{\ignorespaces Écart moyen $|\mathrm {RSD}_{\text {Markov}} - \mathrm {RSD}_{\text {DEM}}|$ selon que la matrice de transition distingue ou non les espèces.}}{44}{table.caption.64}%
