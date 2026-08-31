@@ -220,6 +220,8 @@ def schema_cartesien():
     normal = np.array([np.sin(a), np.cos(a)])
     tangent = np.array([np.cos(a), -np.sin(a)])
     cs = np.linspace(-0.92 * R, 0.92 * R, nbands + 1)
+    # segment utilisé pour tracer la surface libre et ses annotations
+    xl = np.array([-1.35 * R, 1.25 * R])
     for c in cs:
         p0 = c * tangent
         p1, p2 = p0 - 1.8 * R * normal, p0 + 1.8 * R * normal
