@@ -201,8 +201,8 @@ def schema_forces():
 
 
 def schema_cartesien():
-    """Principe du découpage cartésien : dix bandes parallèles à la
-    surface libre du lit. Les limites de bandes (segments parallèles) se
+    """Principe du découpage cartésien : dix bandes dont les limites sont
+    perpendiculaires à la surface libre du lit. Les limites de bandes se
     prolongent au-delà du cercle : côté ciel, les cellules marginales ne
     rencontrent que peu ou pas de grains."""
     fig, ax = plt.subplots(figsize=(7.6, 6.4))
@@ -214,18 +214,20 @@ def schema_cartesien():
     _lit_granulaire(ax, R)
 
     nbands = 10
-    # bornes des bandes : 11 droites parallèles à la surface libre,
-    # de la surface libre (légèrement au-dessus) jusqu'à la paroi basse
-    cmin, cmax = -0.10 * R, -1.02 * R
-    cs = np.linspace(cmin, cmax, nbands + 1)
-    xl = np.array([-1.35 * R, 1.25 * R])
+    # bornes des bandes : 11 droites perpendiculaires à la surface libre.
+    # La normale à la surface (d'angle a + pi/2) sert de direction de coupe ;
+    # les constantes cs décalent les coupes le long de la surface.
+    normal = np.array([np.sin(a), np.cos(a)])
+    tangent = np.array([np.cos(a), -np.sin(a)])
+    cs = np.linspace(-0.92 * R, 0.92 * R, nbands + 1)
     for c in cs:
-        ax.plot(xl, c - np.tan(a) * xl, "k-", lw=2.4, zorder=4)
-    # numérotation des cellules, au centre de chaque bande (trace à x fixe)
-    x_fix = -0.15
+        p0 = c * tangent
+        p1, p2 = p0 - 1.8 * R * normal, p0 + 1.8 * R * normal
+        ax.plot([p1[0], p2[0]], [p1[1], p2[1]], "k-", lw=2.4, zorder=4)
+    # numérotation des cellules, au centre de chaque bande
     for k in range(nbands):
         cm = 0.5 * (cs[k] + cs[k + 1])
-        p = np.array([x_fix, cm - np.tan(a) * x_fix])
+        p = cm * tangent
         ax.text(p[0], p[1], str(k), fontsize=13, ha="center", va="center",
                 color="k",
                 bbox=dict(fc="white", ec="none", alpha=0.85, pad=0.12),
@@ -246,7 +248,7 @@ def schema_cartesien():
     ax.set_aspect("equal")
     ax.axis("off")
     ax.set_title(
-        "Découpage cartésien : dix bandes parallèles à la surface libre\n"
+        "Découpage cartésien : dix bandes perpendiculaires à la surface libre\n"
         "(les limites de bandes se prolongent hors de l'enceinte du tambour)",
         fontsize=12,
     )
