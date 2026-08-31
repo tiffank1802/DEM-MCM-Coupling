@@ -235,10 +235,11 @@ def schema_cartesien():
         surface_at_t0 = p0[1] + 0.15 * R + np.tan(a) * p0[0]
         surface_slope = normal[1] + np.tan(a) * normal[0]
         t_surface = -surface_at_t0 / surface_slope
+        # Le lit est la zone y - surface(x) <= 0.
         if surface_slope > 0:
-            t_min = max(t_min, t_surface)
-        else:
             t_max = min(t_max, t_surface)
+        else:
+            t_min = max(t_min, t_surface)
         if t_min < t_max:
             p1, p2 = p0 + t_min * normal, p0 + t_max * normal
             ax.plot([p1[0], p2[0]], [p1[1], p2[1]], "k-", lw=2.4, zorder=4)
@@ -256,8 +257,7 @@ def schema_cartesien():
     ax.annotate("surface libre du lit", xy=(-0.72, surf(-0.72)),
                 xytext=(-1.52, 0.52), fontsize=11.5, color=ROUGE,
                 arrowprops=dict(arrowstyle="->", color=ROUGE, lw=1.4))
-    ax.annotate("cellules marginales\n(au-dessus de la surface) :\npeu ou "
-                "pas de grains", xy=(-1.13, 0.85), xytext=(-1.50, 1.22),
+    ax.annotate("lit granulaire", xy=(-0.95, -0.58), xytext=(-1.48, -1.18),
                 fontsize=10.5, color=GRIS, ha="left", va="center",
                 arrowprops=dict(arrowstyle="->", color=GRIS, lw=1.4))
 
