@@ -367,9 +367,9 @@ Plutôt que de suivre individuellement chaque grain, l'approche stochastique reg
 Des probabilités de saut entre cellules sont alors appliquées afin de reproduire la dynamique des particules dans le mélangeur sur une série d'instants discrets. 
 Ce changement d'échelle autorise un pas de temps de prédiction nettement plus grand et un vecteur d'état de taille bien plus faible que le nombre total de particules dans le tambour, ce qui engendre un coût en ressources computationnelles réduit.
 
-L'état du mélangeur à un instant $t_k$ est décrit par un vecteur $\mathbf{S}(t_k)$ dont chaque composante représente le nombre de particules contenues dans chaque cellule. À partir des probabilités de saut $\gamma_{j \to i}$ d'une cellule $j$ vers une cellule $i$, le nombre de particules dans la cellule $i$ à l'instant suivant s'obtient par :
+L'état du mélangeur à un instant $t_k$ est décrit par un vecteur $\mathbf{C}(t_k)$ dont chaque composante représente la teneur en petites particules dans chaque cellule. À partir des probabilités de saut $\gamma_{j \to i}$ d'une cellule $j$ vers une cellule $i$, le nombre de particules dans la cellule $i$ à l'instant suivant s'obtient par :
 \begin{align}
-S_i(t_{k+1}) =\sum_{j=0}^{N-1}  \gamma_{j \to i}S_j(t_k).
+C_i(t_{k+1}) =\sum_{j=0}^{N-1}  \gamma_{j \to i}C_j(t_k).
 \label{eq:principe_projection}
 \end{align}
 
@@ -407,7 +407,7 @@ La construction du modèle se fait suivant trois étapes principales, détaillé
 On considère l'état du mélangeur à un instant $t_k$ défini par le contenu de chacune des $N$ cellules issues de la discrétisation, rassemblé dans un vecteur colonne $\mathbf{S}$ de taille $N$ :
 
 \begin{equation}
-  \mathbf{S}(t_k)
+  \mathbf{}(t_k)
   =
   \begin{bmatrix}
     S_0(t_k)\\
@@ -520,18 +520,18 @@ Ces deux conditions sont vérifiées et validées pour chacun des modèles const
 \paragraph{Chaîne homogène.} Lorsque $\mathbf{P}$ est supposée invariante dans le temps, la prédiction à $n$ pas s'écrit :
 
 \begin{equation}
-  \mathbf{S}(t+n\tau)
+  \mathbf{C}(t+n\tau)
   =
-  \mathbf{P}^n \, \mathbf{S}(t).
+  \mathbf{P}^n \, \mathbf{C}(t).
   \label{eq:prediction_homogene}
 \end{equation}
 
 \paragraph{Chaîne inhomogène.} Pour capturer l'évolution temporelle des probabilités, on estime une séquence de matrices $\{\mathbf{P}^{(k)}\}$ (une par bloc d'apprentissage, sans moyenne entre blocs) et la prédiction devient :
 
 \begin{equation}
-  \mathbf{S}_{k+1}
+  \mathbf{C}_{k+1}
   =
-  \mathbf{P}^{(k)} \, \mathbf{S}_k.
+  \mathbf{P}^{(k)} \, \mathbf{C}_k.
   \label{eq:prediction_inhomogene}
 \end{equation}
 

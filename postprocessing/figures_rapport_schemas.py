@@ -589,8 +589,8 @@ def schema_construction_markov():
           "une paire $(t,\\ t+\\tau)$ par bloc,\nmoyennée sur NLT blocs\n"
           "ou une matrice par bloc")
     boite(6.4, 0.3, 3.4, 1.5, "6. Prédiction",
-          "$\\mathbf{S}_{k+1} = \\mathbf{P}\\,\\mathbf{S}_k$ (homogène)\n"
-          "$\\mathbf{S}_{k+1} = \\mathbf{P}^{(k)}\\mathbf{S}_k$ (inhomogène)")
+          "$\\mathbf{C}_{k+1} = \\mathbf{P}\\,\\mathbf{C}_k$ (homogène)\n"
+          "$\\mathbf{C}_{k+1} = \\mathbf{P}^{(k)}\\mathbf{C}_k$ (inhomogène)")
     boite(1.6, 0.3, 3.6, 1.5, "7. Validation vs DEM",
           "teneur locale en petites\nparticules, RSD,\nécart $|$Markov $-$ DEM$|$",
           fc="#fdeeee", ec=ROUGE)
