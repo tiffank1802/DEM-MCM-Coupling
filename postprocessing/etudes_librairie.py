@@ -407,7 +407,7 @@ class EtudeMethode:
 
 
 def config_for(method, **kw):
-    base = dict(nlt=2, tau=TAU, step=TAU, dt=8, start_index=START)
+    base = dict(nlt=2, tau=TAU, step=TAU, dt=TAU, start_index=START)
     base.update(kw)
     return ExperimentConfig(method=method, **base)
 
@@ -643,7 +643,11 @@ def resultats_cylindrique(etudes):
     rsd_h, t_h, acts = et.markov_rsd(cfg, start_pred=0)
     STEP_INH = 6 * TAU
     NLT_INH = int((N_T - START) // (STEP_INH + TAU))
-    cfg_inh = config_for(et.method, nlt=NLT_INH, step=STEP_INH)
+    # Inhomogène : chaque matrice est apprise sur un bloc isolé — dt=8
+    # pas est conservé pour garantir la conformité de chaque P^(k)
+    # (à dt=tau, des cellules marginales vides au premier tour produiraient
+    # des colonnes NaN ; cf. annexe dt du rapport).
+    cfg_inh = config_for(et.method, nlt=NLT_INH, step=STEP_INH, dt=8)
     rsd_i, t_i = et.markov_rsd_inhomogeneous(cfg_inh, start_pred=0)
     t_dem = np.arange(0, N_T, 20)
     fig, ax = plt.subplots(figsize=(10, 5.6))

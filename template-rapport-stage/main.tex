@@ -23,9 +23,6 @@
 \usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{float}
-\usepackage{booktabs}
-\usepackage{tabularx}
-\usepackage{float}
 \usepackage{pgfplotstable}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
@@ -103,21 +100,19 @@
 % ============================================================
 \fairemerciements{%
   \noindent
-  Je tiens tout d'abord à remercier mes encadrants de stage,  pour leur accompagnement rigoureux, leurs conseils avisés et leur disponibilité constante tout au long de ces six mois.
-  Guillaume Dumazer pour sa vision et son interpretation de la physique du phénomène; Éric Serris pour ses conseils sur la construction des modèles,et des possibles applications . Cendrine Gatumel pour ses remarques les plus intéressantes
-  qui ont permis de raisonner toujours plus dans un contexte industriel évitant une décorrelation entre le numérique et l'expérimental.
+  Je tiens tout d'abord à remercier mes encadrants de stage pour leur accompagnement rigoureux, leurs conseils avisés et leur disponibilité constante tout au long de ces six mois : Guillaume Dumazer, pour sa vision et son interprétation de la physique du phénomène ; Éric Serris, pour ses conseils sur la construction des modèles et les pistes d'applications industrielles ; Cendrine Gatumel, pour ses remarques toujours pertinentes, qui ont permis de raisonner dans un contexte industriel en évitant toute décorrélation entre le numérique et l'expérimental.
 
-  % \vspace{0.4cm}
-  % \noindent
-  % Je remercie également mon encadrant école, Éric Feulvarch, pour son suivi attentif et ses orientations scientifiques qui ont nourri ma réflexion.
+  \vspace{0.4cm}
+  \noindent
+  Je remercie également mon encadrant école, Éric Feulvarch, pour son suivi attentif et ses orientations scientifiques, qui ont nourri ma réflexion.
 
   \vspace{0.4cm}
   \noindent
   Mes remerciements s'adressent aux membres du jury pour l'évaluation de ce mémoire, ainsi qu'à l'ensemble des enseignants de l'ENISE pour la qualité de la formation dispensée.
 
-  % \vspace{0.4cm
-  % \noindent
-  % Enfin, je remercie chaleureusement les membres du laboratoire Georges Friedel et du centre RAPSODEE pour leur accueil bienveillant et les échanges scientifiques stimulants qui ont rythmé cette période.
+  \vspace{0.4cm}
+  \noindent
+  Enfin, je remercie chaleureusement les membres du laboratoire Georges Friedel et du centre RAPSODEE pour leur accueil bienveillant et les échanges scientifiques stimulants qui ont rythmé cette période.
 }
 % ============================================================
 % RÉSUMÉ FRANÇAIS
@@ -125,10 +120,10 @@
 \section*{Résumé}
 
 \noindent
-Omniprésents dans l'industrie --- agroalimentaire, pharmacie, nucléaire, construction ---, les milieux granulaires posent un défi majeur : maîtriser leur mélange et anticiper leur ségrégation. Ce mémoire développe une approche stochastique fondée sur les chaînes de Markov pour reproduire la dynamique de particules bidisperses (\SI{4}{mm} et \SI{8}{mm}, 1030 grains) dans un tambour tournant à \SI{4}{rad/s}, à partir de données de référence issues de simulations DEM (pas d'extraction \SI{0.01}{s}, durée totale \SI{60}{s}).
+Omniprésents dans l'industrie --- agroalimentaire, pharmacie, nucléaire, construction ---, les milieux granulaires posent un défi majeur : maîtriser leur mélange et anticiper leur ségrégation. Ce mémoire développe une approche stochastique fondée sur les chaînes de Markov pour reproduire la dynamique de particules bidisperses (\SI{4}{mm} et \SI{8}{mm}, 1030 grains) dans un tambour tournant à \SI{4}{rad/s}, à partir de données de référence issues d'une simulation DEM (pas de sortie \SI{0.01}{s}, durée totale \SI{60}{s}).
 
 \noindent
-Le modèle repose sur une discrétisation spatiale du mélangeur suivie de l'estimation d'une matrice de transition à partir des déplacements inter-cellules observés durant une phase d'apprentissage. Quatre stratégies de maillage sont comparées : cartésienne, cylindrique, Voronoï/k-means et physique. Les résultats révèlent des dynamiques nettement distinctes entre petites et grandes particules. Si les chaînes homogènes offrent une première approximation acceptable, les chaînes inhomogènes suivent plus fidèlement l'évolution DEM. Enfin, un vecteur d'état fondé sur la teneur locale en petites particules s'avère bien plus discriminant qu'un simple comptage pour quantifier la ségrégation.
+Le modèle repose sur une discrétisation spatiale du mélangeur suivie de l'estimation d'une matrice de transition à partir des déplacements inter-cellules observés durant une phase d'apprentissage. Quatre stratégies de maillage sont comparées : cartésienne, cylindrique, Voronoï/k-means et physique. Les résultats révèlent des dynamiques nettement distinctes entre petites et grandes particules. Si les chaînes homogènes offrent une première approximation acceptable, les chaînes inhomogènes suivent plus fidèlement l'évolution DEM. Enfin, la teneur locale en petites particules, reconstruite en fin de chaîne à partir des prédictions par espèce, fournit un indicateur directement relié à la ségrégation, là où le comptage brut ne renseigne que l'occupation du mélangeur.
 
 \vspace{0.5cm}
 \noindent
@@ -145,7 +140,7 @@ Le modèle repose sur une discrétisation spatiale du mélangeur suivie de l'est
 Granular media are ubiquitous in industry --- food processing, pharmaceuticals, nuclear energy, construction --- and controlling their mixing while anticipating segregation remains a critical challenge. This thesis develops a stochastic framework based on Markov chains to reproduce the dynamics of bidisperse particles (\SI{4}{mm} and \SI{8}{mm}, 1030 grains) in a rotating drum at \SI{4}{rad/s}, using reference data from DEM simulations (extraction step \SI{0.01}{s}, total duration \SI{60}{s}).
 
 \noindent
-The model relies on a spatial discretization of the mixer followed by estimation of a transition matrix from inter-cell displacements observed during a learning phase. Four meshing strategies are compared: Cartesian, cylindrical, Voronoi/k-means and physics-based. The results reveal markedly different dynamics between small and large particles. While homogeneous chains provide a reasonable first approximation, inhomogeneous chains track the DEM evolution more faithfully. Moreover, a state vector based on the local fraction of small particles proves far more discriminant than a simple particle count for quantifying segregation.
+The model relies on a spatial discretization of the mixer followed by estimation of a transition matrix from inter-cell displacements observed during a learning phase. Four meshing strategies are compared: Cartesian, cylindrical, Voronoi/k-means and physics-based. The results reveal markedly different dynamics between small and large particles. While homogeneous chains provide a reasonable first approximation, inhomogeneous chains track the DEM evolution more faithfully. Moreover, the local fraction of small particles, reconstructed at the end of the chain from the species-wise predictions, provides an indicator directly tied to segregation, whereas raw cell counts only inform the occupancy of the mixer.
 
 \vspace{0.5cm}
 \noindent
@@ -170,44 +165,73 @@ The model relies on a spatial discretization of the mixer followed by estimation
 \setcounter{page}{1}
 
 % ============================================================
-% Nommenclature
+% Nomenclature
 % ============================================================
 \section{Nomenclature}
 
-$S(t_k)$ : vecteur d'état, vecteur de taille $N$ dont chacune des composantes $S_i(t_k)$ represente le nombre de particules  dans la cellule $i$ à l'instant $t_k$
+\noindent\textbf{États et transitions}
 
-$C(t_k)$ : vecteur d'état, vecteur de taille $N$ dont chacune des composantes $c_i(t_k)$ represente la teneur locale en  particules de type $a$ ou $b$ dans la cellule $i$ à l'instant $t_k$
+$\mathbf{S}(t_k)$ : vecteur d'état, de taille $N$, dont la composante $S_i(t_k)$ représente le nombre de particules dans la cellule $i$ à l'instant $t_k$
+
+$C(t_k)$ : vecteur, de taille $N$, dont la composante $c_i(t_k)$ représente la teneur locale en petites particules (espèce $a$) de la cellule $i$ à l'instant $t_k$, reconstruit en fin de chaîne
 
 $t_k$ : instant d'observation du mélangeur, instant de prédiction du modèle de Markov
 
 $\gamma_{j \to  i}$ : probabilité de transition d'une particule de la cellule $j$ vers la cellule $i$
 
-$N$ : nombre de cellules issue de la discrétisation du mélangeur
-
 $\mathbf{P}$ : matrice de transition, de taille $N \times N$
+
+$N$ : nombre de cellules issu de la discrétisation du mélangeur
+
+$N_p$ : nombre de particules du système (1030 : 350 petites, espèce $a$ ; 680 grandes, espèce $b$)
+
+$l_p(t_k)$ : label, indice de la cellule contenant la particule $p$ à l'instant $t_k$
+
+$\phi_p(i,t_k)$ : fonction indicatrice de l'appartenance de la particule $p$ à la cellule $i$ à l'instant $t_k$
+
+\noindent\textbf{Paramètres temporels du modèle}
 
 $\tau$ : pas de temps de Markov, écart entre deux instants d'observation $t_k$ et $t_{k+1}$
 
-$NLT$ : nombre de blocs (tours) d'apprentissage utilisés pour construire la matrice de transition
+$\mathrm{NLT}$ : nombre de blocs d'apprentissage utilisés pour construire la (ou les) matrice(s) de transition
 
-$start$ : premier instant DEM utilisé pour la phase d'apprentissage
+$\mathrm{start}$ : premier instant DEM utilisé pour la phase d'apprentissage
 
-$step$ : écart entre les débuts de deux blocs d'apprentissage consécutifs
+$\mathrm{step}$ : intervalle libre entre la fin de la fenêtre d'observation d'un bloc d'apprentissage et le début du suivant
 
-$dt$ : pas de raffinage temporel à l'intérieur d'un bloc d'apprentissage
+$dt$ : pas de raffinage temporel à l'intérieur d'un bloc d'apprentissage (échantillonnage des paires d'instants)
+
+\noindent\textbf{Géométrie et dynamique DEM}
 
 $\omega$ : vitesse de rotation du tambour
 
-$\boldsymbol{\omega}_i$ : vitesse de rotation de la particule $i$
+$m_i$, $I_i$, $\mathbf{x}_i$, $\boldsymbol{\omega}_i$ : masse, moment d'inertie, position et vitesse angulaire de la particule $i$
 
-$\mathrm{RSD}$ : écart-type relatif (\textit{Relative Standard Deviation}), indicateur d'homogénéité du mélange
+$\mathbf{F}_{n,ij}$, $\mathbf{F}_{t,ij}$ : forces de contact normale et tangentielle au contact entre les particules $i$ et $j$
+
+$\mathbf{M}_{r,ij}$ : moment de rotation au contact
+
+$\mathbf{g}$ : accélération de la pesanteur
+
+\noindent\textbf{Partitionnement par k-moyennes}
+
+$\mathbf{z}_p$ : vecteur de caractéristiques de la particule $p$
+
+$\boldsymbol{\mu}_k$ : centroïde de la cellule $k$
+
+$J$ : variance intra-cellule (inertie), critère minimisé par l'algorithme
+
+$K$ : nombre de cellules recherché par l'algorithme
+
+\noindent\textbf{Indicateurs}
+
+$\mathrm{RSD}$ : écart-type relatif (\textit{Relative Standard Deviation}) des teneurs locales, indicateur d'homogénéité du mélange
 
 
 % ============================================================
 % INTRODUCTION
 % ============================================================
 \section{Introduction}
-
 Qu'il s'agisse de comprimer des poudres pharmaceutiques, de doser des granulats pour la construction, de conditionner des céréales ou d'incinérer des déchets en four rotatif ~\cite{ndiaye2010}, les milieux granulaires interviennent dans un spectre industriel remarquablement large. 
 Or, dès que des particules de tailles ou de densités différentes cohabitent, la ségrégation menace l'homogénéité du produit et, par là même, sa qualité. 
 Comprendre, prédire et contrôler ces phénomènes de mélange constitue donc un enjeu à la fois scientifique et économique .
@@ -216,17 +240,13 @@ La simulation par la méthode des éléments discrets (DEM, \textit{Discrete Ele
 Cette précision a toutefois un coût en ressources numériques qui rend la méthode prohibitive dès que le nombre de particules atteint des ordres de grandeur industriels. 
 D'où l'idée de substituer la trajectoire déterministe de chaque grain par un modèle stochastique opéré à l'échelle de cellules spatiales suffisamment larges et dont le nombre reste faible devant le nombre de particules.
 
-L'objectif de ce travail est précisément de construire, observer et emettre des interprétations sur un tel modèle stochastique --- une chaîne de Markov --- capable de reproduire les mécanismes de ségrégation observés dans une simulation DEM de référence. 
+L'objectif de ce travail est précisément de construire, observer et émettre des interprétations sur un tel modèle stochastique --- une chaîne de Markov --- capable de reproduire les mécanismes de ségrégation observés dans une simulation DEM de référence. 
 Un tel modèle dépend d'abord de la manière dont le mélangeur est discrétisé : c'est le maillage qui définit les états de la chaîne, et donc la résolution spatiale avec laquelle la physique du mélange est capturée. 
 La problématique qui sert de fil conducteur à ce mémoire peut alors se formuler ainsi : \textbf{Quelle est l'influence du maillage spatial et de la dépendance temporelle des paramètres d'une chaîne de Markov sur la prédiction de l'évolution d'un mélange ségrégeant dans un tambour tournant ? }
 
-% Pour y répondre, nous disposons d'une simulation DEM issue des travaux de thèse sur lesquels s'appuie ce stage~\cite{chachia2025}, portant sur 1030 particules bidisperses (350 de diamètre \SI{4}{mm}, 680 de diamètre \SI{8}{mm}), représentatives d'un mélange semoule/couscous, confinées dans un tambour tournant à \SI{4}{rad/s}. 
-% Les positions sont enregistrées tous les \SI{0.01}{s} pendant \SI{60}{s}, soit 6000 instants d'observation.
-
 Le mémoire s'organise comme suit. La section~\ref{sec:contexte} replace l'étude dans son contexte bibliographique. 
-La section~\ref{sec:methode} détaille le matériau de référence, le formalisme markovien et les stratégies de discrétisation, en justifiant chacun des choix méthodologiques ; 
-% la justification quantitative des paramètres temporels du modèle ($\tau$, $NLT$, $start$, $step$) est reportée en annexe~\ref{annexe:parametres}. 
-La section~\ref{sec:resultats} expose les résultats obtenus pour différents maillages et en considérant une dépendance temporelle des paramètres de la chaîne de Markov. La section~\ref{sec:conclusion} conclut et ouvre une perspective.
+La section~\ref{sec:methode} détaille le matériau de référence, le formalisme markovien et les stratégies de discrétisation, en justifiant chacun des choix méthodologiques ; les études de sensibilité quantitatives des paramètres temporels du modèle sont regroupées en annexe~\ref{annexe:parametres}.
+La section~\ref{sec:resultats} expose les résultats obtenus pour différents maillages et en considérant une dépendance temporelle des paramètres de la chaîne de Markov ; la section~\ref{sec:discussion} en discute les enseignements et les limites. La section~\ref{sec:conclusion} conclut et ouvre une perspective.
 
 % ============================================================
 % CONTEXTE BIBLIOGRAPHIQUE
@@ -234,12 +254,9 @@ La section~\ref{sec:resultats} expose les résultats obtenus pour différents ma
 \section{Contexte et état de l'art}
 \label{sec:contexte}
 
-\paragraph{La méthode des éléments discrets.} La simulation numérique des milieux granulaires repose très largement sur la méthode des éléments discrets introduite par Cundall et Strack~\cite{cundall1979}. Cette approche déterministe considère chaque grain comme un corps rigide dont le mouvement est régi par le principe fondamental de la dynamique : à chaque pas de temps, le bilan des actions mécaniques --- forces de contact normales et tangentielles entre particules et entre particules et parois, pesanteur --- est intégré pour actualiser les accélérations, puis les vitesses et enfin les positions de l'ensemble des grains. Initialement développée pour les assemblées de disques et de sphères en géomécanique, la DEM s'est imposée comme l'outil de référence pour l'étude des procédés particulaires : elle donne accès à une information complète à l'échelle du grain (trajectoires, forces de contact, vitesses), au prix toutefois d'un pas de temps très faible (de l'ordre de $10^{-6}$\,s) imposé par la raideur des contacts. Ce coût numérique restreint son emploi à des systèmes de taille modeste au regard des milliards de particules mises en jeu dans les procédés industriels, et motive le recours à des modèles réduits, opérant à une échelle plus grossière.
+\paragraph{La méthode des éléments discrets.} La simulation numérique des milieux granulaires repose très largement sur la méthode des éléments discrets introduite par Cundall et Strack~\cite{cundall1979} : chaque grain est un corps rigide dont le mouvement suit le principe fondamental de la dynamique, le bilan des actions mécaniques --- forces de contact entre grains et avec les parois, pesanteur --- étant intégré à chaque pas de temps. Elle donne accès à une information complète à l'échelle du grain (trajectoires, forces de contact, vitesses) ; le coût numérique associé à l'intégration de contacts très raides (pas de temps très faible) restreint cependant son emploi à des systèmes de taille modeste au regard des milliards de particules des procédés industriels, et motive le recours à des modèles réduits opérant à une échelle plus grossière.
 
-\paragraph{Les tambours tournants : transport axial, temps de séjour et internals.} Les tambours tournants sont utilisés depuis longtemps en traitement des solides --- mélange, séchage, fours, broyage --- et leur dimensionnement repose sur des grandeurs clés : rétention , temps de séjour moyen et sa distribution , ainsi que les limites de capacité. 
-Les premiers modèles empiriques (Sullivan et al.~1927, Chatterjee) puis le modèle géométrique de Saeman~1951, basé sur le profil de hauteur de lit $h(x)$ et l'angle d'inclinaison, décrivent le transport axial dans les tambours lisses. 
-Priessen et al.~\cite{priessen2021} ont récemment étendu ces travaux aux tambours équipés d'internals sectionnels, souvent utilisés industriellement comme échangeurs de chaleur : la section transverse est divisée par des parois radiales du centre vers la paroi. 
-% Leurs mesures expérimentales de temps de séjour dans un tambour de laboratoire entièrement accessible optiquement montrent que le MRT augmente jusqu'à 4 fois avec le nombre et la longueur des sections, tandis que la capacité et la dispersion axiale diminuent (coefficient de dispersion axiale d'environ $1\times10^{-6}$\,m$^2$/s). Ils proposent une approche de calcul pour quantifier l'impact des internals et soulignent une analogie qualitative avec le profil de lit de Saeman, même avec internals. Cette étude illustre que la structure de l'écoulement – et non seulement la géométrie de l'enceinte – gouverne le transport, ce qui motive directement notre comparaison de maillages épousant le lit (repère du lit) vs maillages purement géométriques.
+\paragraph{Les tambours tournants : transport axial, temps de séjour et internals.} Le dimensionnement des tambours tournants --- mélange, séchage, fours, broyage --- repose sur la rétention, le temps de séjour moyen et sa distribution. Le transport axial y est décrit depuis les travaux pionniers de Sullivan et al.~\cite{sullivan1927}, les modèles empiriques de Chatterjee et al.~\cite{chatterjee1983} et le modèle géométrique de Saeman~\cite{saeman1951} (profil de hauteur de lit), encore de référence pour les tambours lisses. Prie{\ss}en et al.~\cite{priessen2021} ont montré récemment, sur un tambour de laboratoire équipé d'internals sectionnels optiquement accessibles, que la présence de ces parois radiales multiplie le temps de séjour moyen (jusqu'à un facteur quatre) tout en réduisant la dispersion axiale. Ces travaux établissent que la structure de l'écoulement --- et non seulement la géométrie de l'enceinte --- gouverne le transport, ce qui motive la comparaison, menée dans ce mémoire, de maillages purement géométriques et de maillages adaptés à la distribution effective des particules.
 \paragraph{Les chaînes de Markov dans les procédés particulaires.} Parmi ces modèles réduits, les chaînes de Markov occupent une place de choix dans le génie des procédés particulaires. Berthiaux et Mizonov~\cite{berthiaux2004} en dressent une revue de référence : en découpant l'appareil en un nombre fini de cellules et en décrivant l'évolution de la matière par des probabilités de transition entre ces cellules, le formalisme markovien permet de modéliser une grande variété d'opérations unitaires --- mélange de poudres, broyage, classification, écoulement en lits fluidisés ou en mélangeurs statiques --- avec un nombre réduit de paramètres et un coût de calcul très faible. Les auteurs soulignent la souplesse de l'approche, qui s'accommode aussi bien de chaînes homogènes (probabilités constantes dans le temps) que de chaînes inhomogènes ou non linéaires, et sa capacité à relier des grandeurs macroscopiques observables (profils de concentration, indices de mélange) à une description probabiliste de la dynamique interne du procédé. C'est dans cette filiation que s'inscrit le présent travail, qui utilise la DEM comme source d'apprentissage des probabilités de transition.
 
 La modélisation du mélange granulaire par des approches markoviennes adossées à la DEM a émergé au cours des deux dernières décennies comme une alternative prometteuse à la DEM complète. Doucet et al.~\cite{doucet2008} ont été parmi les premiers à montrer qu'un processus de Markov stationnaire, construit à partir de données DEM de particules monodisperses, permettait de transiter d'une description déterministe à l'échelle du grain vers une description probabiliste à l'échelle de cellules.
@@ -256,13 +273,13 @@ Ces travaux convergent vers un constat : la qualité d'un modèle markovien gran
 \section{Matériel et méthodes}
 \label{sec:methode}
 
-Cette section décrit successivement : le matériau de référence et la géométrie du tambour (\S\ref{subsec:materiau}) ; le principe de la simulation DEM qui fournit les données d'apprentissage (\S\ref{subsec:dem}) ; le formalisme markovien --- vecteur d'état, matrice de transition, chaînes homogène et inhomogène --- ainsi que les paramètres qui gouvernent sa construction (\S\ref{subsec:markov}) ; enfin les méthodes de discrétisation spatiale du mélangeur (\S\ref{subsec:discretisation}). Chaque choix méthodologique est justifié au fil du texte ; les études de sensibilité qui étayent quantitativement le choix des paramètres $\tau$, $NLT$, $start$ et $step$ sont regroupées en annexe~\ref{annexe:parametres}.
+Cette section décrit successivement : le matériau de référence et la géométrie du tambour (\S\ref{subsec:materiau}) ; le principe de la simulation DEM qui fournit les données d'apprentissage (\S\ref{subsec:dem}) ; le formalisme markovien --- vecteur d'état, matrice de transition, chaînes homogène et inhomogène --- ainsi que les paramètres qui gouvernent sa construction (\S\ref{subsec:markov}) ; enfin les méthodes de discrétisation spatiale du mélangeur (\S\ref{subsec:discretisation}). Chaque choix méthodologique est justifié au fil du texte ; les études de sensibilité qui étayent quantitativement le choix des paramètres $\tau$, $\mathrm{NLT}$, $\mathrm{start}$ et $\mathrm{step}$ sont regroupées en annexe~\ref{annexe:parametres}.
 
 % ------------------------------------------------------------
 \subsection{Matériau de référence}
 \label{subsec:materiau}
 
-La simulation de référence met en scène un mélange bidisperse représentatif d'un couple semoule/couscous dans un tambour tournant. Les caractéristiques du mélange sont résumées au tableau~\ref{tab:particules}.
+La simulation de référence met en scène un mélange bidisperse représentatif d'un couple \textbf{semoule/couscous} dans un tambour tournant. Les caractéristiques du mélange sont résumées au tableau~\ref{tab:particules}.
 
 \begin{table}[ht]
   \centering
@@ -278,19 +295,18 @@ La simulation de référence met en scène un mélange bidisperse représentatif
 \end{table}
 
 Le mélangeur est un tambour cylindrique tournant autour de son axe horizontal $z$ à la vitesse de rotation constante $\omega = \SI{4}{rad/s}$. 
-La figure~\ref{fig:schema_tambour} en donne la géométrie : la vue de face (plan $x$--$y$) montre le lit de particules incliné par la rotation de la paroi, avec sa zone active proche de la surface libre (entourée en bleue sur la figure~\ref{fig:schema_tambour} gauche), lit du mélange où les grains sont entrainés par la gravité et sa zone passive, zone d'équilibre en profondeur où ils sont transportés en bloc comme précisé par Morrison et al.~\cite{morrison2016} ; 
-dans le plan $x$--$y$ ---(figure~\ref{fig:schema_tambour} gauche) et de 3/4 (figure~\ref{fig:schema_tambour} droite)--- précise les dimensions caractéristiques du tambour, le diamètre $D = 2R= 0.1 m$ et la longueur axiale $L=0.1 m$.
-% Dans la pratique, les limites exactes de la partie utile ne sont pas imposées a priori : elles sont recalées sur l'enveloppe des positions des particules observées durant le régime permanent de la simulation DEM (phase dite de \textit{fit}), ce qui évite de découper dans le vide et garantit que chaque cellule du maillage a une chance d'être peuplée.
+La figure~\ref{fig:schema_tambour} en donne la géométrie : la vue de face (plan $x$--$y$, figure~\ref{fig:schema_tambour} gauche) montre le lit de particules incliné par la rotation de la paroi, avec sa \textbf{zone active} au voisinage de la surface libre (entourée en bleu), où les grains sont entraînés par la gravité le long de la pente, et sa \textbf{zone passive} en profondeur, zone d'équilibre où ils sont transportés en bloc, comme précisé par Morrison et al.~\cite{morrison2016} ; la vue de trois quarts (figure~\ref{fig:schema_tambour} droite) précise les dimensions caractéristiques du tambour : diamètre $D = 2R = \SI{0.1}{m}$ et longueur axiale $L = \SI{0.1}{m}$.
+Le nombre de Froude $\mathrm{Fr} = \omega^2 R / g \approx 0{,}08$ place l'écoulement en régime \textit{roulant} (\textit{rolling}) au sens de la classification de Mellmann~\cite{mellmann2001} : une couche active en écoulement continu au sommet du lit et une zone passive entraînée en solide --- structure biphasique qui guidera l'interprétation des maillages et le choix du pas de temps de Markov $\tau$, calé sur un tour de tambour (annexe~\ref{annexe:tau}).
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/schema_tambour.png}
-  \caption{Géométrie du tambour tournant : (a) vue de face avec le lit granulaire incliné,  (b) vue de côté . Le tambour de dimensions caractéristiques $D = 2R=0.1m$ et $L=0.1m$ tourne à $\omega = \SI{4}{rad/s}$ autour de l'axe $z$.}
+  \caption{Géométrie du tambour tournant : (a) vue de face avec le lit granulaire incliné, (b) vue de trois quarts. Le tambour de dimensions caractéristiques $D = 2R = \SI{0.1}{m}$ et $L = \SI{0.1}{m}$ tourne à $\omega = \SI{4}{rad/s}$ autour de l'axe $z$.}
   \label{fig:schema_tambour}
 \end{figure}
 
 Les positions de l'ensemble des grains sont enregistrées tous les \SI{0.01}{s} sur \SI{60}{s}, soit 6000 instants d'observation. Cette base constitue la référence à partir de laquelle les matrices de transition sont estimées et les prédictions markoviennes sont validées. 
-La figure~\ref{fig:pv_melangeur_especes} montre le système de particules représentées avec leur diamètre réel :à l'instant initial (figure~\ref{fig:pv_melangeur_especes} gauche), 
+La figure~\ref{fig:pv_melangeur_especes} montre le système de particules représentées à leur diamètre réel : à l'instant initial (figure~\ref{fig:pv_melangeur_especes} gauche), 
 les 350 petites particules occupent une couche distincte sous les 680 grandes ; après une rotation du tambour (figure~\ref{fig:pv_melangeur_especes} droite), le lit est en écoulement et l'inclinaison de la surface libre apparaît.
 
 \begin{figure}[H]
@@ -338,11 +354,7 @@ La figure~\ref{fig:schema_forces} illustre ce bilan dans le cas du tambour tourn
   \label{fig:schema_forces}
 \end{figure}
 
-% \begin{figure}[H]
-%   \centering
-% \includegraphics[width=\linewidth]{figures/principe_simulation_DEM.png}
-% \caption{Principe de la simulation DEM}
-% \end{figure}
+
 
 Pour capturer fidèlement ces interactions de contact et éviter des instabilités qui proviendraient d'une interpénétration des particules à cause d'un pas de temps trop grand, le pas de temps de simulation est très faible (de l'ordre de $10^{-6}$\,s), ce qui rend la méthode difficilement applicable à une échelle industrielle où des milliards de particules sont en interaction. 
 
@@ -351,39 +363,38 @@ Pour capturer fidèlement ces interactions de contact et éviter des instabilit�
 \subsection{Du déterminisme particulaire au formalisme markovien}
 \label{subsec:markov}
 
-Plutôt que de suivre individuellement chaque grain, l'approche stochastique regroupe les particules dans des cellules issues d'une discrétisation spatiale de la \textbf{zone utile} du mélangeur constituée par la zone active et la zone passive, comme le montre la figure~\ref{fig:maillage_melangeur},
-permettant de suivre l'évolution du mélange à l'échelle des cellules.
+Plutôt que de suivre individuellement chaque grain, l'approche stochastique regroupe les particules dans des cellules issues d'une discrétisation spatiale de la \textbf{zone utile} du mélangeur --- constituée par la zone active et la zone passive (figure~\ref{fig:maillage_melangeur}) --- et suit l'évolution du mélange à l'échelle des cellules.
 Des probabilités de saut entre cellules sont alors appliquées afin de reproduire la dynamique des particules dans le mélangeur sur une série d'instants discrets. 
-Ce changement d'échelle autorise un pas de temps de prédiction nettement plus grand et et un vecteur d'état de taille bien plus faible que le nombre total de particules dans le tambour, ce qui engendre un coût en ressources computationnelles réduit.
+Ce changement d'échelle autorise un pas de temps de prédiction nettement plus grand et un vecteur d'état de taille bien plus faible que le nombre total de particules dans le tambour, ce qui engendre un coût en ressources computationnelles réduit.
 
 L'état du mélangeur à un instant $t_k$ est décrit par un vecteur $\mathbf{S}(t_k)$ dont chaque composante représente le nombre de particules contenues dans chaque cellule. À partir des probabilités de saut $\gamma_{j \to i}$ d'une cellule $j$ vers une cellule $i$, le nombre de particules dans la cellule $i$ à l'instant suivant s'obtient par :
 \begin{align}
 S_i(t_{k+1}) =\sum_{j=0}^{N-1}  \gamma_{j \to i}S_j(t_k).
 \label{eq:principe_projection}
 \end{align}
-Le modèle de Markov est construit sur ce vecteur de nombre de particules par cellule ; pour évaluer le modèle et observer la ségrégation d'une population de grains bi-disperses, on construira en fin de chaîne un vecteur de \emph{teneur}:
+Le modèle de Markov est construit sur ce vecteur de nombre de particules par cellule ; pour évaluer le modèle et observer la ségrégation d'une population de grains bidisperses, on construira en fin de chaîne un vecteur de \emph{teneur}:
 \begin{equation}
   C(t_k) 
 = 
 \begin{bmatrix}
   
-  c_0(t_k)=N^a_1(t_k) / ( N^a_1(t_k) + N^b_1(t_k) )\\
+  c_0(t_k)=N^a_0(t_k) / \big( N^a_0(t_k) + N^b_0(t_k) \big)\\
 \vdots\\ 
-  c_{N-1}(t_k)=N^a_{N-1}(t_k) / ( N^a_{N-1}(t_k) + N^b_{N-1}(t_k) ) 
+  c_{N-1}(t_k)=N^a_{N-1}(t_k) / \big( N^a_{N-1}(t_k) + N^b_{N-1}(t_k) \big) 
    
 \end{bmatrix}
 \label{eq:def_teneur_locale}
 \end{equation}
-avec $N^a_i(t_k)$, respectivement $N^b_i(t_k)$, le nombre de particules de type $a$ ou $b$, dans la cellule $i$ à l'instant $t_k$.
+avec $N^a_i(t_k)$ et $N^b_i(t_k)$ les nombres de petites (espèce $a$) et de grandes particules (espèce $b$) dans la cellule $i$ à l'instant $t_k$.
 
-La figure~\ref{fig:maillage_melangeur} donne au lecteur une idée du processus de mélange que le modèle doit reproduire : le mélangeur non discrétisé, avec ses particules de tailles distinctes, est montré à quatre instants --- configuration initiale séparée, lit en écoulement à $t=\SI{1.57}{s}$ après un tour, mélange avancé à $t = \SI{10}{s}$ après environ 6 tours , régime tardif $t = \SI{30}{s}$ où les petites particules se concentrent au cœur et contre la paroi. 
+La figure~\ref{fig:maillage_melangeur} donne au lecteur une idée du processus de mélange que le modèle doit reproduire : le mélangeur non discrétisé, avec ses particules de tailles distinctes, est montré à quatre instants --- configuration initiale séparée, lit en écoulement à $t=\SI{1.57}{s}$ après un tour, mélange avancé à $t = \SI{10}{s}$ après environ 6 tours, régime tardif $t = \SI{30}{s}$ où les petites particules se sont concentrées au cœur du lit. 
 La figure~\ref{fig:maillage_melangeur_voronoi} montre les  particules à trois instants $t=\SI{1.57}{s}$, $t=\SI{10}{s}$ et $t=\SI{30}{s}$ après discrétisation (découpage de Voronoï) : chaque grain porte la couleur de sa cellule.
 
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.9\linewidth]{figures/pv_melange_instants.png}
-  \caption{Mélangeur non discrétisé à des instants distincts (particules aux diamètres réels, petites 4 mm en bleu, grandes 8 mm en rouge) : état initial séparé, lit en écoulement ($t = \SI{1.57}{s}$), mélange avancé ($t = \SI{10}{s}$) et régime tardif ($t = \SI{30}{s}$).}
+  \caption{Mélangeur non discrétisé à des instants distincts (particules aux diamètres réels, petites \SI{4}{mm} en bleu, grandes \SI{8}{mm} en rouge) : état initial séparé, lit en écoulement ($t = \SI{1.57}{s}$), mélange avancé ($t = \SI{10}{s}$) et régime tardif ($t = \SI{30}{s}$), où les petites particules se concentrent au cœur du lit.}
   \label{fig:maillage_melangeur}
 \end{figure}
 
@@ -419,12 +430,12 @@ On considère l'état du mélangeur à un instant $t_k$ défini par le contenu d
   \end{bmatrix},
   \label{eq:vecteur_etat}
 \end{equation}
-où la composante $S_i(t_k)$, $i \in [0, N-1]$, est le \textbf{nombre de particules} présentes dans la cellule $i$ à l'instant $t_k$. C'est ce vecteur nombre de particules qui sert à construire le modèle de Markov : les matrices de transition étant estimées séparément pour chaque espèce (\S\ref{subsubsec:matrice}), le comptage est effectué par espèce (nombre de petites particules par cellule pour la matrice des petites, nombre de grandes pour celle des grandes).
+où la composante $S_i(t_k)$, $i \in \{0, \dots, N-1\}$, est le \textbf{nombre de particules} présentes dans la cellule $i$ à l'instant $t_k$. C'est ce vecteur nombre de particules qui sert à construire le modèle de Markov : les matrices de transition étant estimées séparément pour chaque espèce (\S\ref{subsubsec:matrice}), le comptage est effectué par espèce (nombre de petites particules par cellule pour la matrice des petites, nombre de grandes pour celle des grandes).
 
 On définit par ailleurs la \textbf{teneur locale} en une espèce de la cellule $i$ (Annexe~\ref{annexe:teneur}), c'est-à-dire le nombre de particules de cette espèce rapporté au nombre total de particules de la cellule. 
 Elle est reconstruite en fin de chaîne, à partir des nombres de particules prédits pour chaque espèce, afin d'évaluer le modèle et d'observer la ségrégation --- elle discrimine les zones enrichies ou appauvries en une espèce là où le comptage brut ne renseigne que sur l'occupation du mélangeur. La figure~\ref{fig:schema_teneur_locale}, en annexe~\ref{annexe:teneur}, illustre cette teneur locale sur un découpage cartésien.
 
-Concrètement, le vecteur d'état se construit de la manière suivante. Une fois le mélangeur discrétisé, chaque particule se voit attribuer un \textbf{label} qui dépend de son appartenance à une cellule : à l'instant $t_k$, la particule $p$ de coordonnées $(x_p, y_p, z_p)$ reçoit le label $l_p(t_k) \in [0, N-1]$ de la cellule qui la contient. Cette labélisation est  propre à chaque méthode de découpage (\S\ref{subsec:discretisation}), qui est ajusté une seule fois sur le régime permanent puis appliqué à l'identique sur tous les pas de temps : les labels ainsi produits constituent la référence DEM avec laquelle la prédiction de Markov sera comparée. Le vecteur d'état de comptage s'obtient alors en dénombrant, pour chaque cellule $i$, les particules dont le label vaut $i$ :
+Concrètement, le vecteur d'état se construit de la manière suivante. Une fois le mélangeur discrétisé, chaque particule se voit attribuer un \textbf{label} qui dépend de son appartenance à une cellule : à l'instant $t_k$, la particule $p$ de coordonnées $(x_p, y_p, z_p)$ reçoit le label $l_p(t_k) \in \{0, \dots, N-1\}$ de la cellule qui la contient. Cette labélisation est  propre à chaque méthode de découpage (\S\ref{subsec:discretisation}), qui est ajusté une seule fois sur le régime permanent puis appliqué à l'identique sur tous les pas de temps : les labels ainsi produits constituent la référence DEM avec laquelle la prédiction de Markov sera comparée. Le vecteur d'état de comptage s'obtient alors en dénombrant, pour chaque cellule $i$, les particules dont le label vaut $i$ :
 \begin{equation}
   S_i(t_k) = \sum_{p=1}^{N_p} \phi_p(i, t_k),
   \qquad
@@ -442,31 +453,33 @@ où $\phi_p(i,t_k)$ est la fonction qui indique de l'appartenance de la particul
 \subsubsection{Construction de la matrice de transition}
 \label{subsubsec:matrice}
 
-La matrice de transition $\mathbf{P}$ contient les probabilités qu'une particule quitte la cellule source $j$ (colonne) pour rejoindre la cellule d'arrivée $i$ (ligne) durant un intervalle $\tau=t_{k+1}-t_k$, appelé \textbf{pas de temps de Markov} : son terme général est précisément la probabilité de saut introduite en~\eqref{eq:principe_projection}, $P_{i,j} = \gamma_{j \to i}$. Elle est estimée en observant, entre deux instants séparés de $\tau$, les déplacements des particules d'une cellule vers une autre : deux vecteurs d'états --- $\mathbf{S}(t_k)$ et $\mathbf{S}(t_{k+1})$ --- sont construits aux instants $t_k$ et $t_{k+1}$ respectivement, et les paires de labels $(l_p(t_k),\, l_p(t_{k+1}))$ fournissent les comptages de transition. Cette observation est répétée sur une période dite \textbf{temps d'apprentissage} couvrant $NLT$ paires d'instants, et les probabilités obtenues sont moyennées :
+La matrice de transition $\mathbf{P}$ contient les probabilités qu'une particule quitte la cellule source $j$ (colonne) pour rejoindre la cellule d'arrivée $i$ (ligne) durant un intervalle $\tau=t_{k+1}-t_k$, appelé \textbf{pas de temps de Markov} : son terme général est précisément la probabilité de saut introduite en~\eqref{eq:principe_projection}, $P_{i,j} = \gamma_{j \to i}$. Elle est estimée en observant, entre deux instants séparés de $\tau$, les déplacements des particules d'une cellule vers une autre : deux vecteurs d'états --- $\mathbf{S}(t_k)$ et $\mathbf{S}(t_{k+1})$ --- sont construits aux instants $t_k$ et $t_{k+1}$ respectivement, et les paires de labels $(l_p(t_k),\, l_p(t_{k+1}))$ fournissent les comptages de transition. Cette observation est répétée sur un \textbf{temps d'apprentissage} couvrant $\mathrm{NLT}$ blocs, chacun subdivisé en $M_n$ paires d'instants $(t,\, t+\tau)$ ; les probabilités estimées sur chaque paire sont moyennées à l'intérieur de chaque bloc, puis entre blocs (chaîne homogène). Dans la configuration retenue, chaque bloc fournit une unique paire ($M_n = 1$) ; le formalisme autoriserait un échantillonnage plus dense (raffinage temporel), dont l'intérêt est évalué en annexe~\ref{annexe:dt} :
 
 \begin{equation}
   P_{i,j}
   =
-  \frac{1}{NLT}
-  \sum_{n=1}^{NLT}
-  \frac{1}{\phi(j,t_{n-1})}
+  \frac{1}{\mathrm{NLT}}
+  \sum_{n=1}^{\mathrm{NLT}}
+  \frac{1}{M_n}
+  \sum_{m=1}^{M_n}
+  \frac{1}{\phi\big(j,t_{n}^{(m)}\big)}
   \sum_{p=1}^{N_p}
-  \phi_p(i,t_n)\,
-  \phi_p(j,t_{n-1}),
+  \phi_p\big(i,t_{n}^{(m)}+\tau\big)\,
+  \phi_p\big(j,t_{n}^{(m)}\big),
   \label{eq:matrice_transition}
 \end{equation}
 
-où $NLT$ est le nombre d'instants d'apprentissage, $\phi_p(i,t_n)$ la fonction indicatrice définie en~\eqref{eq:comptage}, et $\phi(j,t_{n-1})=\sum_p \phi_p(j,t_{n-1})$ le nombre total de grains dans la cellule $j$.
+où $\mathrm{NLT}$ est le nombre de blocs d'apprentissage, $M_n$ le nombre de paires d'instants échantillonnées au sein du bloc $n$ ($M_n = 1$ pour la configuration retenue : une paire par tour), $\phi_p(i,t)$ la fonction indicatrice définie en~\eqref{eq:comptage}, et $\phi(j,t)=\sum_p \phi_p(j,t)$ le nombre total de grains dans la cellule source $j$ à l'instant $t$.
 
-\paragraph{Pourquoi moyenner les probabilités de transition ?} Une seule paire d'instants $(t_{n-1}, t_n)$ ne fournit qu'un échantillon limité de transitions : avec 1030 particules réparties dans $N$ cellules, certaines transitions rares peuvent être manquées ou au contraire sur-représentées par le hasard d'une configuration particulière. La moyenne sur les $NLT$ blocs d'apprentissage de l'équation~\eqref{eq:matrice_transition} réduit ce bruit statistique et produit une matrice plus représentative de la dynamique moyenne du régime permanent. Ce choix est étayé quantitativement par l'étude de sensibilité au paramètre $NLT$ présentée en annexe~\ref{annexe:nlt}.
+\paragraph{Pourquoi moyenner les probabilités de transition ?} Une seule paire d'instants $(t,\, t+\tau)$ ne fournit qu'un échantillon limité de transitions : avec 1030 particules réparties dans $N$ cellules, certaines transitions rares peuvent être manquées ou au contraire sur-représentées par le hasard d'une configuration particulière. La double moyenne de l'équation~\eqref{eq:matrice_transition} --- sur les $M_n$ paires de chaque bloc ($M_n = 1$ dans la configuration retenue), puis sur les $\mathrm{NLT}$ blocs --- réduit ce bruit statistique et produit une matrice plus représentative de la dynamique moyenne du régime permanent. Ce choix est étayé quantitativement par l'étude de sensibilité au paramètre $\mathrm{NLT}$ présentée en annexe~\ref{annexe:nlt}.
 
 \paragraph{Paramètres de construction et justification.} Quatre paramètres gouvernent la construction de la matrice ; leurs valeurs retenues sont rassemblées au tableau~\ref{tab:parametres} et la figure~\ref{fig:schema_parametres} en donne la chronologie sur l'axe du temps :
 
 \begin{itemize}[itemsep=3pt]
   \item $\boldsymbol{\tau} = \SI{1.57}{s}$ (soit 157 pas d'extraction DEM) : le pas de temps de Markov est calé sur la durée d'un tour complet du tambour tournant à $\omega = \SI{4}{rad/s}$, soit $2\pi/\omega \approx \SI{1.57}{s}$. Ce choix, physiquement interprétable, garantit que les particules ont le temps de se déplacer d'une cellule à l'autre entre deux observations (justification détaillée en annexe~\ref{annexe:tau}) ;
-  \item $\boldsymbol{start} = \SI{1.57}{s}$ : le premier instant utilisé pour l'apprentissage est choisi au début du régime permanent. Le début de simulation (régime transitoire) est volontairement écarté : les tout premiers instants correspondent à la mise en mouvement du lit, durant laquelle les probabilités de transition ne sont représentatives ni du mélange établi ni de la ségrégation en cours de formation ; apprendre sur cette phase biaiserait la matrice. L'étude comparative sur plusieurs valeurs de $start$ est donnée en annexe~\ref{annexe:start} ;
-  \item $\boldsymbol{step}$ : lorsque plusieurs blocs d'apprentissage sont utilisés ($NLT > 1$), $step$ désigne l'écart entre les débuts de deux blocs consécutifs. Sa valeur dépend du type de chaîne. Pour les \textbf{chaînes homogènes}, $step = \tau = \SI{1.57}{s}$ : les blocs se succèdent sans recouvrement ni trou, chaque bloc correspondant à un tour de tambour supplémentaire, et leurs observations sont moyennées en une matrice unique (justification en annexe~\ref{annexe:step}). Pour les \textbf{chaînes inhomogènes}, les blocs sont espacés de sept tours de tambour, de sorte que la fenêtre de simulation fournit $(60 - 1{,}57)/(1{,}57 \times 7) = 5$ blocs --- donc cinq matrices de transition successives, chacune capturant l'état de la dynamique à une phase distincte de la ségrégation ;
-  \item $\boldsymbol{dt} = 8$ pas de sortie : à l'intérieur d'un bloc, les paires d'instants $(t,\, t+\tau)$ sont échantillonnées tous les $dt$ pas de sortie DEM. Cette stratégie de raffinage temporel démultiplie le nombre de paires observées : elle contribue à ce que chaque cellule soit observée comme source au cours de l'apprentissage, ce qui évite les dénominateurs nuls --- donc les \textit{NaN} --- dans la matrice de transition. Ces \textit{NaN} sont volontairement conservés dans le calcul (et non remplacés par des zéros, qui n'auraient pas de signification physique) : leur absence totale --- la conformité de la matrice --- est retenue comme critère de validation, et l'étude correspondante est donnée en annexe~\ref{annexe:dt}. Elle montre que le besoin en observation dépend du type de découpage : les maillages géométriques exigent une labélisation dans le repère du lit pour que toutes leurs cellules soient occupées, tandis que les maillages statistiques sont conformes quel que soit $dt$ ; la valeur $dt = 8$ pas est celle qui a permis d'obtenir des matrices conformes pour les quatre méthodes, avec une statistique d'observation suffisante.
+  \item $\boldsymbol{\mathrm{start}} = \SI{1.57}{s}$ : le premier instant utilisé pour l'apprentissage est choisi au début du régime permanent. Le début de simulation (régime transitoire) est volontairement écarté : les tout premiers instants correspondent à la mise en mouvement du lit, durant laquelle les probabilités de transition ne sont représentatives ni du mélange établi ni de la ségrégation en cours de formation ; apprendre sur cette phase biaiserait la matrice. L'étude comparative sur plusieurs valeurs de $\mathrm{start}$ est donnée en annexe~\ref{annexe:start} ;
+  \item $\boldsymbol{\mathrm{step}}$ : lorsque plusieurs blocs d'apprentissage sont utilisés ($\mathrm{NLT} > 1$), $\mathrm{step}$ désigne l'intervalle libre entre la fin de la fenêtre d'observation d'un bloc et le début du suivant. Sa valeur dépend du type de chaîne. Pour les \textbf{chaînes homogènes}, $\mathrm{step} = \tau = \SI{1.57}{s}$ : les blocs se tuilent tour par tour sans recouvrement ni trou, et leurs observations sont moyennées en une matrice unique (justification en annexe~\ref{annexe:step}). Pour les \textbf{chaînes inhomogènes}, les blocs sont espacés de sept tours ($\mathrm{step} = 7\tau$), de sorte que la simulation fournit cinq matrices de transition successives, apprises autour des instants $1{,}57$, $14{,}13$, $26{,}69$, $39{,}25$ et $51{,}81$~s --- chacune capturant l'état de la dynamique à une phase distincte de la ségrégation ;
+  \item $\boldsymbol{dt} = \tau$ : à l'intérieur d'un bloc, une seule paire d'instants $(t,\, t+\tau)$ est formée (option la plus simple du formalisme : le pas \(dt\), dit de raffinage temporel, qui permettrait d'échantillonner une paire tous les $dt < \tau$ pas de sortie, est fixé à sa valeur maximale $\tau$). La conformité de la matrice de transition --- absence totale de \textit{NaN}, ceux-ci étant volontairement conservés dans le calcul plutôt que remplacés par des zéros dépourvus de sens physique --- est le critère de validation correspondant ; l'étude de l'influence de $dt$ est donnée en annexe~\ref{annexe:dt}.
 \end{itemize}
 
 \begin{table}[H]
@@ -478,17 +491,17 @@ où $NLT$ est le nombre d'instants d'apprentissage, $\phi_p(i,t_n)$ la fonction 
     Paramètre & Valeur & Signification & Justification\\
     \midrule
     $\tau$ & \SI{1.57}{s} & pas de temps de Markov & un tour de tambour (annexe~\ref{annexe:tau})\\
-    $start$ & \SI{1.57}{s} & début de l'apprentissage & début du régime permanent (annexe~\ref{annexe:start})\\
-    $step$ & \SI{1.57}{s} / 7 tours & écart entre blocs & homogène / inhomogène (annexe~\ref{annexe:step})\\
-    $NLT$ & 1 à 18 & nombre de blocs & étude de sensibilité (annexe~\ref{annexe:nlt})\\
-    $dt$ & 8 pas & raffinage temporel & conformité de $\mathbf{P}$, sans NaN (annexe~\ref{annexe:dt})\\
+    $\mathrm{start}$ & \SI{1.57}{s} & début de l'apprentissage & début du régime permanent (annexe~\ref{annexe:start})\\
+    $\mathrm{step}$ & $\tau$ / $7\tau$ & intervalle libre entre blocs & homogène / inhomogène (annexe~\ref{annexe:step})\\
+    $\mathrm{NLT}$ & 2 / 5 & nombre de blocs & compromis statistique / fenêtre (annexe~\ref{annexe:nlt})\\
+    $dt$ & $\tau$ & raffinage temporel : une paire par tour & option la plus simple, conformité sans NaN (annexe~\ref{annexe:dt})\\
     \bottomrule
   \end{tabular}
 \end{table}
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/schema_parametres_temporels.png}
-  \caption{Chronologie des paramètres temporels de l'apprentissage : à partir de $start$, chaque bloc fournit des paires $(t,\, t+\tau)$ échantillonnées tous les $dt$ ; les $NLT$ blocs successifs, décalés de $step$, sont moyennés (chaîne homogène) ou conservés séparément (chaîne inhomogène).}
+  \caption{Chronologie des paramètres temporels de l'apprentissage : à partir de $\mathrm{start}$, chaque bloc fournit une paire de transition $(t,\, t+\tau)$ ; les $\mathrm{NLT}$ blocs successifs, démarrant à $\mathrm{start} + k\,(\mathrm{step}+\tau)$, sont moyennés (chaîne homogène) ou conservés séparément (chaîne inhomogène).}
   \label{fig:schema_parametres}
 \end{figure}
 
@@ -501,7 +514,7 @@ où $NLT$ est le nombre d'instants d'apprentissage, $\phi_p(i,t_n)$ la fonction 
   \label{eq:stochastique}
 \end{equation}
 
-Ces deux conditions sont vérifiées et validées pour chacun des modèles construits : la positivité découle du fait que l'on travaille dans un espace probabilisé, et la condition de somme unitaire traduit simplement le fait que toutes les particules quittant la cellule source $j$ se retrouvent quelque part dans le mélangeur à l'instant suivant. Implicitement, sa validation signifie que la phase d'apprentissage est suffisamment longue pour voir chaque cellule observée comme source, évitant les \textit{NaN} dans la matrice. Les matrices présentées dans la section résultats, annotées au centième, satisfont toutes ce critère de conformité --- aucune n'exhibe de \textit{NaN} --- grâce au choix du raffinage temporel $dt$ justifié en annexe~\ref{annexe:dt}.
+Ces deux conditions sont vérifiées et validées pour chacun des modèles construits : la positivité découle du fait que l'on travaille avec des comptages, et la condition de somme unitaire traduit simplement que toutes les particules quittant la cellule source $j$ se retrouvent quelque part dans le mélangeur à l'instant suivant. Implicitement, sa validation signifie que la phase d'apprentissage est suffisamment riche pour voir chaque cellule observée comme source, évitant les \textit{NaN} dans la matrice. Les matrices présentées dans la section résultats, annotées au centième, satisfont toutes à ce critère de conformité --- aucune n'exhibe de \textit{NaN} --- comme l'établit l'étude de l'annexe~\ref{annexe:dt}.
 \paragraph{Deux matrices distinctes par espèce.} Les petites et les grandes particules n'ayant pas la même dynamique --- les petites percolent à travers le lit tandis que les grandes remontent en surface ---, une matrice de transition unique moyennerait deux comportements physiquement distincts. Deux matrices sont donc estimées séparément, en appliquant un masque sur les labels afin de ne compter que les particules d'une espèce donnée. Ce choix est justifié quantitativement par l'étude de sensibilité de l'annexe~\ref{annexe:especes}, qui compare l'erreur de prédiction du modèle construit sans distinction d'espèce (matrice unique) à celle du modèle construit avec distinction (matrices par espèce), pour les quatre méthodes de découpage.
 
 \paragraph{Chaîne homogène.} Lorsque $\mathbf{P}$ est supposée invariante dans le temps, la prédiction à $n$ pas s'écrit :
@@ -522,19 +535,7 @@ Ces deux conditions sont vérifiées et validées pour chacun des modèles const
   \label{eq:prediction_inhomogene}
 \end{equation}
 
-% \begin{figure}[H]
-%   \centering
-%   \includegraphics[width=0.75\textwidth]{figures/representation_melangeur.png}
-%   \caption{Construction de la matrice de transition à partir des déplacements inter-cellules observés dans le mélangeur discrétisé.}
-%   \label{fig:representation_melangeur}
-% \end{figure}
 
-% \begin{figure}[H]
-%   \centering
-%   \includegraphics[width=0.85\textwidth]{figures/representation_chaine_inhomogene.png}
-%   \caption{Principe de la chaîne inhomogène : une matrice de transition distincte est associée à chaque intervalle de temps.}
-%   \label{fig:representation_chaine_inhomogene}
-% \end{figure}
 
 % ============================================================
 % MÉTHODES DE DISCRÉTISATION
@@ -553,38 +554,22 @@ Plusieurs stratégies de maillage ont été développées ou testées durant le 
     \end{itemize}
   \item \textbf{Méthodes statistiques}, fondées sur la distribution effective des particules et des grandeurs physiques associées :
     \begin{itemize}
-      % \item découpage quantile ;
       \item découpage de Voronoï ;
-      \item découpage physique ;
-      % \item découpage adaptatif ;
-      % \item découpage par mélange gaussien ;
-      % \item découpage par clustering spectral ;
-      % \item découpage multizone ;
-      % \item découpage octree.
+      \item découpage physique.
     \end{itemize}
 \end{itemize}
 
 Quelle que soit la méthode retenue, une phase d'apprentissage sur le régime permanent est nécessaire pour caler les frontières des cellules et éviter de créer des partitions vides. Les quatre méthodes détaillées ci-dessous --- cartésienne, cylindrique, Voronoï et physique --- sont celles retenues pour la construction des modèles de la suite de l'étude : les deux premières parce qu'elles constituent les références géométriques naturelles (grille classique de la littérature d'une part, maillage épousant la géométrie du tambour d'autre part), les deux dernières parce qu'elles adaptent les cellules à la répartition effective des particules.
 
-\paragraph{Changement de repère pour les découpages géométriques}
-Avant labélisation par les méthodes géométriques, les coordonnées des particules sont exprimées dans le \textbf{repère du lit} : l'origine est placée au barycentre des positions du régime permanent, et les axes du plan transverse sont alignés sur les directions principales du lit (la direction de la surface libre inclinée devient un axe du repère). Ce changement de repère répartit les particules de manière beaucoup plus équilibrée dans les cellules : dans le repère du tambour, le lit incliné ne peuple qu'une partie des cellules d'une grille alignée sur les axes fixes, alors que dans le repère du lit chaque cellule est occupée en permanence --- condition nécessaire à la conformité de la matrice de transition (annexe~\ref{annexe:dt}). Les découpages statistiques y sont insensibles (l'algorithme des k-moyennes est invariant par translation et rotation) ; le fit des bornes est effectué sur le régime permanent. La figure~\ref{fig:repere_avant_apres} illustre l'effet de ce changement de repère sur la labélisation cartésienne : avant transformation, les bandes verticales de la grille alignée sur les axes fixes laissent des cellules marginales vides ou quasi vides ; après transformation, les bandes suivent la surface libre inclinée et les dix cellules sont toutes occupées.
-% enlève cette figure(fig:repere_avant_apre) et remplace la par celle du fig:schéma_cartesien que tu fera en deux partie: la première est celle déjà faite et la seconde est celle dans le repère du lit
-
-% \begin{figure}[H]
-%   \centering
-%   \includegraphics[width=\linewidth]{figures/repere_avant_apres.png}
-%   \caption{Effet du changement de repère sur la labélisation cartésienne (10 bandes, $t = \SI{1.57}{s}$, vue de face) : (a) avant, dans le repère du tambour, les bandes verticales laissent des cellules marginales vides ; (b) après, dans le repère du lit, les bandes suivent la surface libre et toutes les cellules sont occupées.}
-%   \label{fig:repere_avant_apres}
-% \end{figure}
 
 \paragraph{Découpage cartésien}
 Les cellules obtenues sont des parallélépipèdes rectangles de volume constant.
-Le mélangeur est segmenté selon les trois axes $x$, $y$, $z$ en un nombre fixé d'intervalles. Chaque particule reçoit un label correspondant à la cellule dans laquelle elle se trouve, selon sa position relative normalisée par l'intervalle de chaque axe. La numérotation globale suit l'ordre lexicographique $x \to y \to z$. Ce découpage, le plus répandu dans la littérature, est simple à mettre en œuvre et sert de référence ; en revanche il ne tient pas compte de la géométrie circulaire du tambour, si bien que des cellules de coin peuvent être en permanence vides ou très peu peuplées. La figure~\ref{fig:schema_cartesien} en illustre le principe.
+Le mélangeur est segmenté selon les trois axes $x$, $y$, $z$ en un nombre fixé d'intervalles. Chaque particule reçoit un label correspondant à la cellule dans laquelle elle se trouve, selon sa position relative normalisée par l'intervalle de chaque axe. La numérotation globale suit l'ordre lexicographique $x \to y \to z$. Ce découpage, le plus répandu dans la littérature, est simple à mettre en œuvre et sert de référence ; en revanche il ne tient pas compte de la géométrie circulaire du tambour, si bien que les limites des bandes se prolongent au-delà de l'enceinte et que les cellules marginales --- au-dessus de la surface libre --- ne rencontrent que peu de grains. La figure~\ref{fig:schema_cartesien} en illustre le principe. \textbf{Configuration retenue dans ce mémoire :} dix bandes parallèles à la surface libre du lit, sans partition selon les autres directions ; toutes les études de la suite utilisent cette configuration à dix cellules.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.62\textwidth]{figures/schema_decoupage_cartesien.png}
-  \caption{Principe du découpage cartésien : la partie utile du mélangeur est segmentée en cellules parallélépipédiques de volume constant, numérotées dans l'ordre lexicographique $x \to y \to z$.}
+  \caption{Principe du découpage cartésien : dix bandes parallèles à la surface libre du lit, numérotées de 0 à 9 ; leurs limites se prolongent au-delà de l'enceinte circulaire du tambour (cellules marginales au-dessus de la surface, peu ou pas occupées). La numérotation globale suit l'ordre lexicographique $x \to y \to z$.}
   \label{fig:schema_cartesien}
 \end{figure}
 
@@ -601,12 +586,12 @@ Un changement de coordonnées est d'abord opéré :
   \label{eq:cylindrique}
 \end{equation}
 
-Les particules sont ensuite affectées à des cellules définies par des intervalles en $r$, $\theta$ et $z$, dans les limites déterminées par le nombre de partitions voulu pour chaque axe. La numérotation locale suit l'ordre croissant de la position de la partition par rapport au centre du mélangeur ; la numérotation globale consiste à re-numéroter selon la direction radiale, puis angulaire et enfin selon la direction des $z$. Ce découpage épouse naturellement la géométrie du tambour : contrairement au découpage cartésien, aucune cellule ne déborde de l'enceinte circulaire, et le maillage respecte la symétrie de révolution de l'écoulement. Deux modes de segmentation radiale sont implémentés : à pas radial constant, ou à aire de section constante --- ce dernier étant préféré car il équilibre les volumes de cellules et donc les populations attendues. La figure~\ref{fig:schema_cylindrique} illustre le principe du découpage.
+Les particules sont ensuite affectées à des cellules définies par des intervalles en $r$, $\theta$ et $z$, dans les limites déterminées par le nombre de partitions voulu pour chaque axe. La numérotation locale suit l'ordre croissant de la position de la partition par rapport au centre du mélangeur ; la numérotation globale consiste à re-numéroter selon la direction radiale, puis angulaire et enfin selon la direction des $z$. Ce découpage épouse naturellement la géométrie du tambour : contrairement au découpage cartésien, aucune cellule ne déborde de l'enceinte circulaire, et le maillage respecte la symétrie de révolution de l'écoulement. Deux modes de segmentation radiale sont implémentés : à pas radial constant, ou à aire de section constante --- ce dernier étant préféré car il équilibre les volumes de cellules et donc les populations attendues. La figure~\ref{fig:schema_cylindrique} illustre le principe du découpage. \textbf{Configuration retenue dans ce mémoire :} dix secteurs issus de la seule segmentation angulaire $\theta$, centrée sur le lit (pas de partition radiale $r$ ni axiale $z$) ; toutes les études de la suite utilisent cette configuration à dix cellules.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/schema_decoupage_cylindrique.png}
-  \caption{Principe du découpage cylindrique : (a) coupe transverse montrant les intervalles radiaux ($r$) et angulaires ($\theta$) ; (b) vue de côté montrant les tranches axiales ($z$). La numérotation globale suit l'ordre radial $\to$ angulaire $\to$ axial.}
+  \caption{Principe du découpage cylindrique : (a) coupe transverse --- les limites des cellules (traits forts) partitionnent la section du tambour en dix secteurs angulaires de la configuration retenue, numérotés de $0$ à $9$ et centrés sur le barycentre du lit ; les segmentations radiale ($r$) et axiale ($z$) restent disponibles mais ne sont pas exploitées ici ($n_r = n_z = 1$) ; (b) vue de côté montrant les tranches axiales ($z$) optionnelles. La numérotation globale suit l'ordre radial $\to$ angulaire $\to$ axial.}
   \label{fig:schema_cylindrique}
 \end{figure}
 
@@ -640,9 +625,9 @@ où $\mathbf{z}_p$ désigne le vecteur position de la particule $p$, $\boldsymbo
 L'algorithme fonctionne de manière itérative en alternant deux étapes principales : une étape d'affectation des particules aux cellules, puis une étape de mise à jour des centres.
 
 \subparagraph{Initialisation des centres.}
-Les centres initiaux $\boldsymbol{\mu}_k^{(0)}$ sont choisis aléatoirement parmi les échantillons disponibles, c'est-à-dire parmi les positions des particules observées pendant la phase d'apprentissage. Ce choix aléatoire peut toutefois influencer la configuration finale de la partition, car l'algorithme peut converger vers différents minima locaux selon la position initiale des centres.
+Les centres initiaux $\boldsymbol{\mu}_k^{(0)}$ sont choisis selon la stratégie \textit{k-means++} : le premier germe est tiré uniformément parmi les observations, puis chaque germe suivant est choisi parmi les positions des particules observées pendant la phase d'apprentissage, avec une probabilité proportionnelle au carré de sa distance au centre déjà choisi le plus proche. Cet amorçage, qui espace naturellement les germes, accélère la convergence et limite le risque d'une partition aberrante ; le choix initial peut toutefois encore influencer le minimum local atteint.
 
-Afin de limiter cette dépendance et d'améliorer la robustesse du maillage, la procédure est répétée pour dix initialisations différentes. Autrement dit, dix configurations initiales distinctes sont construites, puis les modèles obtenus sont consolidés par moyenne. Cette stratégie permet de réduire l'effet d'un tirage initial défavorable et de produire une partition plus représentative de la distribution globale des particules.
+Afin de limiter cette dépendance et d'améliorer la robustesse du maillage, l'algorithme est exécuté avec dix initialisations distinctes, et seule la partition de plus faible variance intra-cellule (inertie minimale) est conservée --- stratégie dite \textit{best-of-10}, correspondant au paramétrage \texttt{n\_init=10} de l'implémentation \textit{scikit-learn} utilisée. Cette stratégie réduit l'effet d'un amorçage défavorable et produit une partition plus représentative de la distribution globale des particules.
 
 \subparagraph{Étape d'affectation.}
 À l'itération $q$, chaque particule est affectée à la cellule dont le centre est le plus proche au sens de la distance euclidienne dans l'espace des caractéristiques :
@@ -702,7 +687,7 @@ L'algorithme est arrêté lorsque l'une des deux conditions suivantes est rempli
   \item le nombre maximal d'itérations est atteint.
 \end{itemize}
 
-Dans les présents calculs, la variance seuil est fixée à $0{,}0001$ et le nombre maximal d'itérations est limité à $300$. Cette double condition permet à la fois d'interrompre l'algorithme lorsque la partition est suffisamment stable, et d'éviter un temps de calcul excessif dans les cas où la convergence serait lente.
+Dans les présents calculs, le seuil de tolérance est fixé à $1\times10^{-4}$ et le nombre maximal d'itérations à $300$ (valeurs par défaut de \textit{scikit-learn}, la tolérance s'entendant dans l'espace des caractéristiques standardisées pour le découpage physique, cf. ci-après). Cette double condition permet à la fois d'interrompre l'algorithme lorsque la partition est suffisamment stable, et d'éviter un temps de calcul excessif dans les cas où la convergence serait lente.
 
 Une fois les centres convergés, les cellules de Voronoï sont définies à partir de ces centres. Chaque particule est alors associée à la cellule correspondant au centroïde le plus proche. Ce découpage permet d'obtenir des cellules adaptées à la distribution effective des particules, contrairement à un maillage purement géométrique qui ne tient pas compte de leur occupation réelle du mélangeur.
 
@@ -718,21 +703,15 @@ Le découpage physique repose sur le même algorithme de k-moyennes que le déco
   \label{eq:physics}
 \end{equation}
 
-L'algorithme de partitionnement reste un k-means, mais opéré dans un espace de dimension quatre. La figure~\ref{fig:schema_voronoi} schématise les deux découpages statistiques : la norme de la vitesse, élevée dans la zone active de surface et faible dans le cœur passif du lit, fournit la quatrième caractéristique qui permet au découpage physique de séparer ces deux zones alors même qu'elles sont spatialement voisines.
-% Modifie cette figure pour qu'il ait une différence entre les celleules (centres) des découpages de voronoi et les découpages physique
+L'algorithme de partitionnement reste un k-means, mais opéré dans un espace de dimension quatre. Les caractéristiques n'ayant ni unité ni ordre de grandeur communs ($\sim 0{,}05$~m pour les positions, $\sim 0{,}2$~m/s pour la vitesse), le vecteur $\mathbf{z}_p$ est \textbf{standardisé} avant partitionnement : chaque dimension est centrée et réduite (moyenne nulle, écart-type unitaire estimé sur la phase d'apprentissage), et les dimensions de vitesse sont en outre pondérées d'un facteur $0{,}5$ afin de doser l'influence de la mobilité sur la partition. La figure~\ref{fig:schema_voronoi} schématise les deux découpages statistiques : la norme de la vitesse, élevée dans la zone active de surface et faible dans le cœur passif du lit, fournit la quatrième caractéristique qui permet au découpage physique de séparer ces deux zones alors même qu'elles sont spatialement voisines --- ce qui se traduit par des cellules, des frontières effectives et des centroïdes nettement distincts de ceux issus des seules positions.
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/schema_decoupage_voronoi.png}
-  \caption{Principe des découpages statistiques par k-moyennes : (a) découpage de Voronoï fondé sur les seules positions ; (b) découpage physique dont le vecteur de caractéristiques intègre la norme de la vitesse.}
+  \caption{Principe des découpages statistiques par k-moyennes (illustration à $K = 8$ cellules sur un lit modélisé ; les frontières effectives des cellules sont tracées en traits pleins et les centroïdes figurés par des croix noires) : (a) découpage de Voronoï fondé sur les seules positions $\mathbf{z}_p = [x_p\ y_p\ z_p]^T$ ; (b) découpage physique fondé sur $\mathbf{z}_p = [x_p\ y_p\ z_p\ \|\mathbf{v}_p\|]^T$ standardisé --- la norme de la vitesse, élevée en surface libre et faible au cœur du lit, y produit des cellules et des centres nettement distincts, stratifiés selon la mobilité des grains.}
   \label{fig:schema_voronoi}
 \end{figure}
 
-% \begin{figure}[H]
-%   \centering
-%   \includegraphics[width=\linewidth]{figures/espace_caracteristiques_physique.png}
-%   \caption{Espace des caractéristiques du découpage physique : positions des 1030 particules colorées par la norme de leur vitesse, (a) cumulées sur la fenêtre d'apprentissage (cinq tours du régime permanent) et (b) à un instant de la phase de prédiction. La zone active de surface (vitesses élevées, teintes claires) se distingue nettement de la zone passive du cœur du lit (vitesses faibles, teintes sombres) : c'est ce contraste que la quatrième caractéristique $\|\mathbf{v}_p\|$ permet de séparer.}
-%   \label{fig:schematisation_voronoi_physique}
-% \end{figure}
+
 
 % ============================================================
 % RÉSULTATS
@@ -745,9 +724,9 @@ Cette section présente les résultats obtenus en suivant la logique de la probl
 
 Dans un premier temps, nous analysons l'influence de la méthode de discrétisation spatiale sur la capacité prédictive du modèle markovien (\S\ref{subsec:res_discretisation}). Pour chacune des quatre méthodes de découpage --- cartésienne, cylindrique, Voronoï et physique --- sont présentées : la matrice de transition estimée séparément pour chaque espèce, l'évolution temporelle de la teneur locale en petites particules prédite par le modèle et comparée à la référence DEM, ainsi que des visualisations du mélangeur discrétisé permettant de relier ces grandeurs à la géométrie effective des cellules.
 
-Dans un second temps, nous évaluons la robustesse des modèles vis-à-vis de leurs paramètres de construction. Les études paramétriques détaillées en annexe~\ref{annexe:parametres} révèlent que les découpages statistiques (Voronoï et physique) nécessitent un temps d'observation réduit pour produire une matrice de transition conforme, contrairement aux découpages géométriques qui exigent une phase d'apprentissage plus longue (annexe~\ref{annexe:dt}).
+Dans un second temps, nous évaluons la robustesse des modèles vis-à-vis de leurs paramètres de construction. Les études paramétriques détaillées en annexe~\ref{annexe:parametres} valident les choix retenus --- pas de temps de Markov, instant de début d'apprentissage, nombre et espacement des blocs --- et établissent que la conformité des matrices de transition est acquise sans raffinage temporel, une paire de transition par tour suffisant aux quatre découpages (annexe~\ref{annexe:dt}).
 
-Enfin, nous quantifions l'apport des chaînes de Markov inhomogènes (\S\ref{subsec:res_inhomogene}). Les résultats montrent que l'inhomogénéité temporelle améliore marginalement la prédiction des modèles issus de discrétisations géométriques, dont la matrice homogène capture déjà l'essentiel de la dynamique. En revanche, elle corrige sensiblement les modèles issus de discrétisations statistiques, en particulier durant les phases transitoires de ségrégation.
+Enfin, nous quantifions l'apport des chaînes de Markov inhomogènes (\S\ref{subsec:res_inhomogene}). Les résultats montrent que l'inhomogénéité temporelle n'améliore que marginalement la prédiction des modèles issus de discrétisations géométriques --- l'actualisation des probabilités ne compensant pas l'inadaptation structurelle de leurs cellules ---, tandis qu'elle améliore sensiblement les modèles issus de discrétisations statistiques (écart moyen divisé par plus de deux pour le Voronoï), en particulier en régime quasi-établi où la ségrégation résiduelle dérive lentement.
 
 Pour quantifier le degré d'homogénéité du mélange, nous utilisons l'écart-type relatif (\textit{Relative Standard Deviation}, RSD) défini par :
 
@@ -768,40 +747,38 @@ Pour quantifier le degré d'homogénéité du mélange, nous utilisons l'écart-
   \label{eq:rsd}
 \end{equation}
 
-où $N_c$ désigne le nombre de cellules, $c_i(t)$ la teneur locale en petites particules dans la cellule $i$ à l'instant $t$, et $\bar{c}$ la teneur moyenne globale en petites particules. Le RSD vaut zéro pour un mélange parfaitement homogène et augmente avec l'hétérogénéité spatiale.
+où $N_c$ désigne le nombre de cellules \textbf{occupées} à l'instant $t$ (les cellules vides, dont la teneur est indéfinie, sont exclues du calcul), $c_i(t)$ la teneur locale en petites particules dans la cellule $i$, et $\bar{c}$ la \textbf{moyenne arithmétique des teneurs locales} sur les cellules occupées. Cette moyenne se distingue de la fraction globale en petites particules $350/1030 \approx 0{,}34$ : elle vaut typiquement $\approx 0{,}4$ en régime établi, et le RSD peut en conséquence dépasser l'unité lorsque le mélange est fortement hétérogène (cf. annexe~\ref{annexe:start}). Le RSD vaut zéro pour un mélange parfaitement homogène et augmente avec l'hétérogénéité spatiale.
 
-Chaque méthode de discrétisation est caractérisée par ses grandeurs propres --- matrice de transition, vecteurs d'état en nombre de particules et en teneur locale --- et illustrée par des vues du mélangeur discrétisé dans les plans $x$--$y$ et $z$--$y$ à des instants multiples du pas de temps de Markov $\tau$. Ces visualisations permettent de vérifier la cohérence de la labélisation, d'identifier les cellules sur- ou sous-peuplées, et de relier les propriétés des matrices à la géométrie effective des cellules.
+Le déséquilibre de population observé entre cellules reflète des phénomènes physiques : la gravité concentre les particules dans la moitié basse du tambour ; la zone passive (cœur du lit) reçoit et piège davantage de grains que la zone active (surface libre) ; la ségrégation enrichit progressivement certaines cellules en petites particules --- celles-ci percolant à travers les interstices de la couche en écoulement pour s'accumuler au cœur du lit, tandis que les grandes particules remontent en surface. C'est précisément cette hétérogénéité spatiale, évolutive dans le temps, que le modèle de Markov doit reproduire.
 
-Le déséquilibre de population entre cellules observe reflète des phénomènes physiques : la gravité concentre les particules dans la moitié basse du tambour ; la zone passive (cœur du lit) reçoit et piège davantage de grains que la zone active (surface libre) ; la ségrégation enrichit progressivement certaines cellules en petites particules --- celles-ci percolant à travers les interstices du lit vers la paroi et le cœur, tandis que les grandes particules remontent en surface. C'est précisément cette hétérogénéité spatiale, évolutive dans le temps, que le modèle de Markov doit reproduire.
-
-Toutes les matrices présentées satisfont la condition de stochasticité --- chaque colonne somme à un, aucun terme \textit{NaN} --- grâce au choix du paramètre de raffinage temporel $dt = 8$ pas justifié en annexe~\ref{annexe:dt}.
+Toutes les matrices présentées ci-dessous sont apprises avec le raffinage temporel le plus direct, $dt = \tau$ (157 pas) : une unique paire de transition --- d'un tour de tambour à l'autre --- est formée par bloc d'apprentissage, sans raffinage des observations intermédiaires. Toutes satisfont la condition de stochasticité --- chaque colonne somme à un (convention du rapport), aucun terme \textit{NaN} ---, conformément à l'étude de conformité de l'annexe~\ref{annexe:dt}, qui établit que la conformité est déjà acquise pour $dt = 157$ pas. Avec $\mathrm{NLT} = 2$, chaque coefficient $P_{i,j}$ repose sur deux répétitions du même tour : sa résolution statistique est donc bornée par l'effectif de la cellule source à chacun des deux instants de départ --- depuis quelques grains dans les bandes marginales du découpage cartésien jusqu'à une centaine de grains pour les petites particules (jusqu'à $\sim 130$ pour les grandes) dans les secteurs profonds du découpage cylindrique. Les coefficients ne sont en conséquence significatifs qu'à quelques pourcents près, cellule par cellule. Les matrices analogues apprises avec le raffinage $dt = 8$ pas --- qui exploite $\lfloor \tau/dt \rfloor = 19$ paires de transition par bloc et lisse ces fluctuations --- sont rassemblées en annexe~\ref{annexe:matrices_dt8} pour référence.
 
 \subsection{Influence de la méthode de discrétisation sur la prédiction du Modèle de Markov}
 \label{subsec:res_discretisation}
 
-Cette sous-section procède en deux temps. Dans un premier temps, chaque méthode de découpage est présentée individuellement par ses deux grandeurs caractéristiques : sa matrice de transition par espèce et une vue du mélangeur discrétisé colorée par la teneur locale de chaque cellule au début du régime établi ($t = \SI{1.57}{s}$), le numéro de chaque cellule étant inscrit à son barycentre. Dans un second temps, une approche globale confronte les quatre méthodes sur les deux indicateurs de prédiction --- le RSD et les courbes de teneur locale --- à nombre de cellules et configuration identiques (\S\ref{subsec:comparaison_methodes}).
+Chaque méthode est d'abord présentée par ses deux grandeurs caractéristiques --- matrice de transition par espèce, et vue du mélangeur discrétisé colorée par la teneur locale de chaque cellule au début du régime établi ($t = \SI{1.57}{s}$) ---, puis les quatre méthodes sont confrontées globalement sur le RSD et les courbes de teneur, à nombre de cellules et configuration identiques (\S\ref{subsec:comparaison_methodes}).
 
 \subsubsection{Découpage cartésien}
 
-La figure~\ref{fig:pv_cellules_cartesien} présente le résultat du découpage cartésien, opéré dans le repère du lit. Ce maillage divise le domaine occupé par les particules en 10 bandes parallèles à la surface libre du lit granulaire.
+La figure~\ref{fig:pv_cellules_cartesien} présente le résultat du découpage cartésien : ce maillage divise le domaine occupé par les particules en 10 bandes parallèles à la surface libre du lit granulaire.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.85\textwidth]{figures/pv_cellules_cartesien.png}
-  \caption{Découpage cartésien (10 bandes dans le repère du lit) à $t = \SI{1.57}{s}$.}
+  \caption{Découpage cartésien (10 bandes parallèles à la surface libre) à $t = \SI{1.57}{s}$.}
   \label{fig:pv_cellules_cartesien}
 \end{figure}
 
-Les matrices de transition, estimées sur deux tours de rotation du tambour ($NLT=2$) à partir du second tour ($start=\SI{1.57}{s}$), sont présentées sur la figure~\ref{fig:matrice_cartesien} pour les grandes particules (gauche) et les petites particules (droite). 
+Les matrices de transition, estimées sur deux blocs d'apprentissage ($\mathrm{NLT}=2$) à partir du second tour ($\mathrm{start}=\SI{1.57}{s}$) --- soit une fenêtre d'observation d'environ six tours, jusqu'à $t \approx 9{,}3$~s ---, sont présentées sur la figure~\ref{fig:matrice_cartesien} pour les grandes particules (gauche) et les petites particules (droite). 
 
 La structure en bande de ces matrices révèle un écoulement bidirectionnel : une partie des particules est entraînée vers le haut par la rotation du tambour --- visible sur la \textbf{sur-diagonale} prononcée --- tandis qu'une autre partie redescend sous l'effet de la gravité --- visible sur la \textbf{sous-diagonale} prononcée.
 
-La matrice des grandes particules montre une probabilité diagonale élevée ($\mathbf{0.37}$) pour les cellules adjacentes aux parois (\textbf{cellules 1 et 9} sur la figure~\ref{fig:pv_cellules_cartesien}), traduisant leur tendance à rester piégées contre les parois du mélangeur. À l'inverse, la matrice des petites particules présente des probabilités quasi uniformément réparties sur la bande, signe d'une mobilité accrue par percolation à travers les interstices du lit.
+La matrice des grandes particules montre une probabilité diagonale élevée ($0{,}37$) pour les cellules adjacentes aux parois (\textbf{cellules 1 et 9} sur la figure~\ref{fig:pv_cellules_cartesien}), traduisant leur tendance à rester piégées, quand la bande de surface (cellule~0) se vide presque intégralement à chaque tour ($P_{0,0} = 0{,}02$). À l'inverse, la matrice des petites particules présente des probabilités sensiblement mieux réparties --- à l'exception de la bande profonde~9, qui piège aussi les petites ($P_{9,9} = 0{,}36$) ---, signe d'une mobilité accrue par percolation à travers les interstices du lit.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/matrice_cartesien_especes.png}
-  \caption{Matrices de transition du découpage cartésien (10 bandes dans le repère du lit ; discrétisation temporelle : $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
+  \caption{Matrices de transition du découpage cartésien (10 bandes ; discrétisation temporelle : $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = \tau$ --- une paire de transition par tour). La version apprise avec le raffinage $dt = 8$ pas est présentée en annexe~\ref{annexe:matrices_dt8} (figure~\ref{fig:matrice_cartesien_dt8}).}
   \label{fig:matrice_cartesien}
 \end{figure}
 
@@ -809,12 +786,12 @@ La figure~\ref{fig:teneur_cartesien} compare l'évolution temporelle de la teneu
 
 On observe une ségrégation marquée durant le premier tour de rotation (régime transitoire), caractérisée par un enrichissement différencié des cellules en petites particules, suivi d'une stabilisation progressive du système.
 
-La cellule~$0$, située près du bord supérieur du tambour, présente une forte teneur en petites particules. Sa prédiction markovienne reste toutefois bruitée, ce qui s'explique par son faible volume : cette configuration géométrique favorise l'entrée préférentielle des petites particules au détriment des grandes, comme le confirment les courbes de nombre de particules en annexe~\ref{annexe:nombre_particules} (figures~\ref{fig:nb_petites_cartesien},~\ref{fig:nb_grandes_cartesien},~\ref{fig:nb_total_cartesien}).
+La cellule~$0$, située près du bord supérieur du tambour, présente une forte teneur en petites particules. Sa prédiction markovienne reste toutefois bruitée, ce qui s'explique par sa \textbf{faible population effective} : cette bande marginale de surface n'accueille qu'un petit nombre de grains, principalement des petites, qui y entrent préférentiellement au détriment des grandes, comme le confirment les courbes de nombre de particules en annexe~\ref{annexe:nombre_particules} (figures~\ref{fig:nb_petites_cartesien},~\ref{fig:nb_grandes_cartesien},~\ref{fig:nb_total_cartesien}).
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/teneur_cartesien.png}
-  \caption{Évolution de la teneur locale en petites particules au cours du temps – découpage cartésien (10 bandes, Markov homogène, $nlt=2$, $start=1{,}57$\,s, $step=\tau=1{,}57$\,s, $dt=8$ pas).}
+  \caption{Évolution de la teneur locale en petites particules au cours du temps – découpage cartésien (10 bandes, Markov homogène, $\mathrm{NLT}=2$, $\mathrm{start}=\SI{1.57}{s}$, $\mathrm{step}=\tau=\SI{1.57}{s}$, $dt=8$ pas).}
   \label{fig:teneur_cartesien}
 \end{figure}
 
@@ -822,29 +799,29 @@ La cellule~$0$, située près du bord supérieur du tambour, présente une forte
 
 \subsubsection{Découpage cylindrique}
 
-La figure~\ref{fig:pv_cellules_cylindrique} présente le résultat du découpage cylindrique, qui divise le domaine occupé par les particules en 10 secteurs angulaires dans le repère du lit. Chaque particule est labellisée selon son appartenance à un secteur.
+La figure~\ref{fig:pv_cellules_cylindrique} présente le résultat du découpage cylindrique : le domaine occupé par les particules est divisé en 10 secteurs angulaires ; chaque particule est labellisée selon son appartenance à un secteur.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.85\textwidth]{figures/pv_cellules_cylindrique.png}
-  \caption{Découpage cylindrique (10 secteurs angulaires dans le repère du lit).}
+  \caption{Découpage cylindrique (10 secteurs angulaires).}
   \label{fig:pv_cellules_cylindrique}
 \end{figure}
 
-Les matrices de transition pour les grandes particules (gauche) et les petites particules (droite) sont présentées sur la figure~\ref{fig:matrice_cylindrique}. La présence de probabilités non nulles hors diagonale confirme que les cellules communiquent entre elles durant un tour de tambour.
+Les matrices de transition pour les grandes particules (gauche) et les petites particules (droite) sont présentées sur la figure~\ref{fig:matrice_cylindrique}.
 
-On observe une probabilité diagonale marquée pour la cellule~$5$ ($P_{55}=0.45$) dans la matrice des petites particules, indiquant une tendance de ces dernières à retourner vers cette cellule après un tour de rotation. Cette observation est corroborée par l'évolution temporelle du nombre de petites particules dans cette cellule, présentée en annexe~\ref{annexe:nombre_particules} (figure~\ref{fig:nb_petites_cylindrique}).
+On observe une probabilité diagonale marquée pour la cellule~$5$ ($P_{55} \approx 0{,}33$ pour les petites particules, $0{,}40$ pour les grandes), indiquant une tendance des grains de ce secteur à s'y retrouver après un tour de rotation ; à l'inverse, les cellules~$7$ et~$8$ affichent les probabilités de retour les plus faibles ($0{,}06$ à $0{,}14$ selon l'espèce), populations renouvelées plus rapidement au sein du lit. Ces observations sont corroborées par l'évolution temporelle du nombre de particules dans chaque cellule, présentée en annexe~\ref{annexe:nombre_particules} (figures~\ref{fig:nb_petites_cylindrique} et~\ref{fig:nb_grandes_cylindrique}).
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/matrice_cylindrique_especes.png}
-  \caption{Matrices de transition du découpage cylindrique (discrétisation temporelle : $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
+  \caption{Matrices de transition du découpage cylindrique (10 secteurs ; discrétisation temporelle : $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = \tau$ --- une paire de transition par tour). La version apprise avec le raffinage $dt = 8$ pas est présentée en annexe~\ref{annexe:matrices_dt8} (figure~\ref{fig:matrice_cylindrique_dt8}).}
   \label{fig:matrice_cylindrique}
 \end{figure}
 
-La figure~\ref{fig:teneur_cylindrique} compare l'évolution temporelle de la teneur locale en petites particules prédite par la DEM et par le modèle de Markov homogène.
+La figure~\ref{fig:teneur_cylindrique} compare l'évolution temporelle de la teneur locale en petites particules mesurée dans la référence DEM et celle prédite par la chaîne de Markov homogène.
 
-Après une phase transitoire caractérisée par une ségrégation initiale, le système converge vers un état de mélange homogène, observable par la convergence des teneurs de toutes les cellules vers une valeur moyenne d'environ $0.4$.
+Après une phase transitoire caractérisée par une ségrégation initiale, le système converge vers un état de mélange homogène, observable par la convergence des teneurs de toutes les cellules vers une moyenne cellulaire d'environ $0{,}4$ (moyenne des teneurs locales, cf. définition du RSD ci-dessus).
 
 \begin{figure}[H]
   \centering
@@ -855,7 +832,7 @@ Après une phase transitoire caractérisée par une ségrégation initiale, le s
 
 \subsubsection{Découpage de Voronoï}
 
-La figure~\ref{fig:pv_cellules_voronoi} présente le résultat du découpage en cellules de Voronoï, obtenu par un algorithme de k-moyennes appliqué aux positions des particules dans le repère du lit. Les 10 cellules ainsi générées adaptent leur forme et leur taille à la distribution spatiale effective des grains.
+La figure~\ref{fig:pv_cellules_voronoi} présente le résultat du découpage en cellules de Voronoï, obtenu par un algorithme de k-moyennes appliqué aux positions des particules. Les 10 cellules ainsi générées adaptent leur forme et leur taille à la distribution spatiale effective des grains.
 
 \begin{figure}[H]
   \centering
@@ -871,11 +848,11 @@ La diagonale prononcée de la matrice des grandes particules révèle leur tenda
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/matrice_voronoi_especes.png}
-  \caption{Matrices de transition du découpage de Voronoï (discrétisation temporelle : $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
+  \caption{Matrices de transition du découpage de Voronoï (discrétisation temporelle : $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = \tau$ --- une paire de transition par tour). La version apprise avec le raffinage $dt = 8$ pas est présentée en annexe~\ref{annexe:matrices_dt8} (figure~\ref{fig:matrice_voronoi_dt8}).}
   \label{fig:matrices_voronoi}
 \end{figure}
 
-La figure~\ref{fig:teneur_voroni} compare l'évolution temporelle de la teneur locale en petites particules prédite par la DEM et par le modèle de Markov homogène.
+La figure~\ref{fig:teneur_voroni} compare l'évolution temporelle de la teneur locale en petites particules mesurée dans la référence DEM et celle prédite par la chaîne de Markov homogène.
 
 On observe une ségrégation marquée, caractérisée par une forte concentration en petites particules dans les cellules de la zone passive ($0$ et~$9$) et une faible concentration dans la cellule~$4$, située près de la surface libre dans la \textbf{zone active}. Cette répartition confirme le mécanisme de percolation : les petites particules migrent vers le cœur du lit tandis que les grandes remontent en surface.
 
@@ -900,18 +877,18 @@ La figure~\ref{fig:pv_cellules_physique} présente le résultat de ce découpage
   \label{fig:pv_cellules_physique}
 \end{figure}
 
-Les matrices de transition pour les grandes particules (gauche) et les petites particules (droite) sont présentées sur la figure~\ref{fig:matrice_physique}. La matrice des grandes particules exhibe une diagonale prononcée, traduisant leur forte tendance à rester dans leur cellule d'origine après un tour de rotation. Les cellules~$3$, $5$ et~$6$ présentent les probabilités diagonales les plus élevées, correspondant aux zones où les grandes particules résident préférentiellement.
+Les matrices de transition pour les grandes particules (gauche) et les petites particules (droite) sont présentées sur la figure~\ref{fig:matrice_physique}. La matrice des grandes particules exhibe une diagonale prononcée, traduisant leur forte tendance à rester dans leur cellule d'origine après un tour de rotation. Les cellules~$3$, $5$ et~$6$ présentent les probabilités diagonales les plus élevées ($0{,}49$, $0{,}48$ et $0{,}47$ respectivement) : les grandes particules y séjournent préférentiellement, qu'il s'agisse des cellules de surface où elles s'accumulent (cellules actives~$3$ et~$5$) ou du cœur où elles sont entraînées en bloc (cellule passive~$6$).
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/matrice_physique_especes.png}
-  \caption{Matrices de transition du découpage physique (discrétisation temporelle : $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
+  \caption{Matrices de transition du découpage physique (discrétisation temporelle : $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = \tau$ --- une paire de transition par tour). La version apprise avec le raffinage $dt = 8$ pas est présentée en annexe~\ref{annexe:matrices_dt8} (figure~\ref{fig:matrice_physique_dt8}).}
   \label{fig:matrice_physique}
 \end{figure}
 
-La figure~\ref{fig:teneur_physique_homogene} compare l'évolution temporelle de la teneur locale en petites particules prédite par la DEM et par le modèle de Markov homogène.
+La figure~\ref{fig:teneur_physique_homogene} compare l'évolution temporelle de la teneur locale en petites particules mesurée dans la référence DEM et celle prédite par la chaîne de Markov homogène.
 
-On observe une ségrégation marquée, caractérisée par une forte concentration en petites particules dans les cellules de la zone passive ($0$, $8$ et~$9$) et une faible concentration dans les cellules~$1$ et~$7$, situées près de la surface libre dans la \textbf{zone active}. Cette répartition confirme que le découpage physique capture fidèlement la dualité de l'écoulement : les petites particules percolent vers le cœur statique du lit, tandis que les grandes sont entraînées en surface par la rotation du tambour.
+On observe une ségrégation marquée : en régime établi, les cellules~$0$, $8$ et~$9$ affichent les teneurs locales en petites particules les plus élevées ($\approx 0{,}45$--$0{,}50$), tandis que les cellules~$1$ et~$7$ restent les plus pauvres ($\approx 0{,}20$--$0{,}30$). L'enrichissement de la cellule~$0$, au cœur passif du lit, traduit le piégeage des petites particules par percolation ; celui des cellules~$8$ et~$9$, qui appartiennent pourtant à la \textbf{zone active}, montre que le découpage physique résout des hétérogénéités de teneur \emph{au sein même} de la couche en écoulement --- là où un maillage purement géométrique moyennerait ces contrastes. Cette répartition confirme que le découpage physique capture fidèlement la dualité de l'écoulement : les petites particules percolent vers le cœur statique du lit, tandis que les grandes résident en surface.
 
 \begin{figure}[H]
   \centering
@@ -926,25 +903,25 @@ On observe une ségrégation marquée, caractérisée par une forte concentratio
 La figure~\ref{fig:comparaison_methodes_rsd} présente l'évolution temporelle du RSD prédit par la DEM et par les modèles de Markov homogènes pour les quatre méthodes de discrétisation spatiale. Le tableau~\ref{tab:ecart_rsd_methodes} synthétise les écarts moyens entre les prédictions markoviennes et la référence DEM.
 
 \begin{itemize}[itemsep=5pt]
-  \item \textbf{Découpage cartésien :} le modèle markovien converge vers un RSD de $0.37$, moyennant la prédiction DEM avec un écart moyen de $0.096$ et un écart-type de $0.116$. Cette dispersion élevée traduit une incapacité du modèle à suivre les variations rapides de la référence, notamment durant le régime transitoire.
+  \item \textbf{Découpage cartésien :} la chaîne homogène atteint son palier stationnaire à un RSD de $\approx 0{,}35$, légèrement sous la moyenne fluctuante de la référence DEM ($\approx 0{,}4$) ; l'écart moyen est de $0{,}096$ avec la plus forte dispersion des quatre méthodes ($\pm 0{,}116$), la courbe stationnaire ne reproduisant pas les oscillations rapides de la référence.
   
-  \item \textbf{Découpage cylindrique :} la prédiction markovienne converge vers un RSD de $0.7$, surestimant l'indice de mélange DEM avec un écart moyen de $0.103$ mais un écart-type réduit ($0.049$). L'écart quasi constant au cours du temps suggère un biais structurel du maillage cylindrique, qui moyenne indûment les zones actives et passives.
+  \item \textbf{Découpage cylindrique :} le RSD prédit s'effondre vers $\approx 0{,}05$ --- un mélange quasi homogène fictif ---, sous-estimant durablement le RSD de référence ($\approx 0{,}2$) avec un écart moyen de $0{,}103$ quasi constant au cours du temps (écart-type réduit, $0{,}049$). Cet écart systématique signe un biais structurel du maillage cylindrique, dont les secteurs rayonnant du centre à la paroi moyennent indûment les zones actives et passives et lissent le contraste de teneur.
   
-  \item \textbf{Découpage de Voronoï :} le modèle converge vers un RSD de $0.18$, avec un écart moyen de $0.095$ et un écart-type de $0.080$. Les fluctuations observées dans l'écart DEM-Markov, ainsi que la pente non nulle de la courbe markovienne, indiquent un ajustement dynamique du modèle pour suivre les oscillations de la référence.
+  \item \textbf{Découpage de Voronoï :} le palier stationnaire ($\approx 0{,}17$) est d'abord proche de la référence, mais l'écart se creuse au fil du temps (moyenne $0{,}095$, écart-type $0{,}080$) : la référence DEM dérive lentement vers $0{,}25$--$0{,}3$ sous l'effet de la ségrégation résiduelle, dérive qu'une chaîne homogène figée à son état stationnaire ne peut pas suivre.
   
-  \item \textbf{Découpage physique :} la prédiction converge vers un RSD de $0.1$, avec l'écart moyen le plus élevé ($0.111$) mais un écart-type modéré ($0.053$). L'écart quasi constant suggère là aussi un biais systématique, bien que le niveau absolu du RSD soit proche de celui de la DEM.
+  \item \textbf{Découpage physique :} même morphologie : descente initiale bien reproduite, puis palier stationnaire à $\approx 0{,}11$ sous la référence fluctuante ($0{,}15$--$0{,}25$) ; l'écart moyen est le plus élevé des quatre méthodes ($0{,}111$) mais sa dispersion reste modérée ($0{,}053$), traduisant un décalage régulier plutôt qu'un désaccord erratique.
 \end{itemize}
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/comparaison_methodes_rsd.png}
-  \caption{Influence de la méthode de discrétisation spatiale sur la prédiction : RSD DEM vs prédiction markovienne homogène pour les quatre méthodes, à nombre de cellules identique (10 cellules) et à configuration identique ($nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
+  \caption{Influence de la méthode de discrétisation spatiale sur la prédiction : RSD DEM vs prédiction markovienne homogène pour les quatre méthodes, à nombre de cellules identique (10 cellules) et à configuration identique ($\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
   \label{fig:comparaison_methodes_rsd}
 \end{figure}
 
 \begin{table}[H]
   \centering
-  \caption{Écart moyen sur $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ pour les quatre méthodes de discrétisation (10 cellules, chaîne homogène, configuration $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
+  \caption{Écart moyen sur $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ pour les quatre méthodes de discrétisation (10 cellules, chaîne homogène, configuration $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
   \label{tab:ecart_rsd_methodes}
   \begin{tabular}{lcccc}
     \toprule
@@ -956,100 +933,45 @@ La figure~\ref{fig:comparaison_methodes_rsd} présente l'évolution temporelle d
   \end{tabular}
 \end{table}
 
-La figure~\ref{fig:comparaison_methodes_teneur} montre l'évolution temporelle de l'écart absolu moyen sur la teneur locale en petites particules, comparant la DEM aux quatre modèles markoviens.
+La figure~\ref{fig:comparaison_methodes_teneur} montre l'évolution temporelle de l'écart absolu moyen sur la teneur locale en petites particules, comparant la DEM aux quatre modèles markoviens. Après un pic transitoire commun (jusqu'à $\approx 0{,}2$ à la première minute, lié à la ségrégation initiale rapide que la chaîne homogène ne capture pas), les quatre méthodes se regroupent dans une bande étroite ($\approx 0{,}03$--$0{,}06$) : les écarts moyens --- $0{,}051$ (cartésien), $0{,}041$ (cylindrique), $0{,}054$ (Voronoï) et $0{,}044$ (physique) --- sont du même ordre, aucune méthode ne dominant franchement sur cet indicateur global. Le choix d'un maillage ne se joue donc pas sur la précision scalaire moyenne mais sur la lecture physique qu'il autorise de l'écoulement, comme le montre l'analyse des matrices elles-mêmes (\S\ref{sec:discussion}).
 
 On observe que le modèle cartésien présente initialement un écart plus élevé que les autres méthodes durant les cinq premiers tours de rotation, avant de se stabiliser en régime établi. Cette phase transitoire prolongée reflète la difficulté du maillage cartésien à capturer rapidement la répartition spatiale effective des particules.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.85\textwidth]{figures/comparaison_methodes_teneur.png}
-  \caption{Approche globale sur les courbes de teneur : écart absolu moyen de teneur par cellule entre la prédiction markovienne homogène et la référence DEM, pour les quatre méthodes de découpage à nombre de cellules identique (10 cellules, configuration $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
+  \caption{Approche globale sur les courbes de teneur : écart absolu moyen de teneur par cellule entre la prédiction markovienne homogène et la référence DEM, pour les quatre méthodes de découpage à nombre de cellules identique (10 cellules, configuration $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
   \label{fig:comparaison_methodes_teneur}
 \end{figure}
 
-% Le tableau~\ref{tab:erreur_methodes} complète cette analyse en rassemblant, pour les quatre méthodes de découpage et pour chaque espèce, l'écart temporel RMS $|\text{Markov}-\text{DEM}|$ et la carte des écarts absolus par cellule (discretisation temporelle: $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas). Les écarts RMS moyens en régime établi s'échelonnent de 3,2 à 3,8 particules pour les grandes et de 6,1 à 8,6 particules pour les petites, ces dernières étant systématiquement plus difficiles à prédire du fait de leur mobilité par percolation.
-
-
-
-
-
-
-
-% \begin{sidewaystable}
-%   \centering
-%   \caption{Erreur de prédiction markovienne par méthode de discrétisation et par espèce : écart temporel RMS et carte des écarts absolus par cellule.}
-%   \label{tab:erreur_methodes}
-%   \begin{tabular}{@{}c@{}}
-%     \toprule
-%     \textbf{Cartésien} --- grandes particules (gauche), petites particules (droite)\\
-%     \includegraphics[width=0.45\textheight]{figures/erreur_lib_cartesien_large.png}%
-%     \includegraphics[width=0.45\textheight]{figures/erreur_lib_cartesien_small.png}\\
-%     \midrule
-%     \textbf{Cylindrique} --- grandes particules (gauche), petites particules (droite)\\
-%     \includegraphics[width=0.45\textheight]{figures/erreur_lib_cylindrique_large.png}%
-%     \includegraphics[width=0.45\textheight]{figures/erreur_lib_cylindrique_small.png}\\
-%     \midrule
-%     \textbf{Voronoï} --- grandes particules (gauche), petites particules (droite)\\
-%     \includegraphics[width=0.45\textheight]{figures/erreur_lib_voronoi_large.png}%
-%     \includegraphics[width=0.45\textheight]{figures/erreur_lib_voronoi_small.png}\\
-%     \midrule
-%     \textbf{Physique} --- grandes particules (gauche), petites particules (droite)\\
-%     \includegraphics[width=0.45\textheight]{figures/erreur_lib_physique_large.png}%
-%     \includegraphics[width=0.45\textheight]{figures/erreur_lib_physique_small.png}\\
-%     \bottomrule
-%   \end{tabular}
-% \end{sidewaystable}
-
-
-
-% La comparaison des quatre rangées révèle des différences substantielles tant en amplitude qu'en morphologie de l'erreur. Le modèle de Markov est donc fortement conditionné par la manière dont l'espace est partitionné : la robustesse de la prédiction ne dépend pas uniquement de la physique du mélange, mais aussi --- et peut-être surtout --- du choix de maillage. Les méthodes statistiques, qui adaptent les cellules à l'occupation réelle du mélangeur, réduisent nettement l'erreur par rapport aux références géométriques. Le cas du découpage cylindrique est instructif : bien qu'il respecte la géométrie de l'enceinte et élimine les cellules vides du cartésien, il produit le plus grand écart de RSD (tableau~\ref{tab:ecart_rsd_methodes}) --- ses cellules, solidaires de la symétrie de révolution, moyennent les zones enrichies et appauvries en petites particules. Respecter la géométrie du contenant ne suffit donc pas : c'est la structure de l'écoulement, et non celle de l'enceinte, que le maillage doit épouser.
-
-% ------------------------------------------------------------
 \subsection{Apport des chaînes inhomogènes}
 \label{subsec:res_inhomogene}
 
-% Les chaînes homogènes fournissent une première estimation acceptable, mais les chaînes inhomogènes, en actualisant les probabilités à chaque intervalle, suivent plus fidèlement la trajectoire DEM. La figure~\ref{fig:teneur_physique} superpose, pour le découpage physique, la teneur locale par cellule de la référence DEM (trait continu) et celle prédite par la chaîne inhomogène (marqueurs de points épais), avec le code couleur de cellules du rapport.
+Afin de libérer les matrices de transition de l'hypothèse de stationnarité, on associe à chaque méthode de discrétisation spatiale une séquence de matrices de transition s'adaptant au contexte temporel de la simulation. Concrètement, pour chaque méthode, une séquence de cinq matrices ($\mathrm{NLT} = 2$, $dt = 8$ pas) est apprise successivement à $t = 1{,}57$~s, $14{,}13$~s, $26{,}69$~s, $39{,}25$~s et $51{,}81$~s --- soit au premier tour, puis tous les sept tours de tambour ($\mathrm{step} = 7\tau$, figure~\ref{fig:schema_parametres}). La propagation~\eqref{eq:prediction_inhomogene} applique ensuite, à chaque instant, la matrice dont la fenêtre d'apprentissage est en cours.
 
-% \begin{figure}[H]
-%   \centering
-%   \includegraphics[width=\linewidth]{figures/teneur_physique_inhomogene_lib.png}
-%   \caption{Teneur locale en petites particules par cellule : référence DEM (trait continu) et prédiction de la chaîne inhomogène (marqueurs épais), découpage physique, 10 cellules ($start = \SI{1.57}{s}$, $\tau = \SI{1.57}{s}$, $dt = 8$ pas ; blocs espacés de 7 tours, soit 5 matrices).}
-%   \label{fig:teneur_physique}
-% \end{figure}
+La figure~\ref{fig:rsd_homogene_inhomogene} montre l'évolution du RSD au cours du temps pour chacune des quatre méthodes de discrétisation spatiale. Chaque graphique comporte la référence DEM, la prédiction de la chaîne homogène et celle de la chaîne inhomogène pour la méthode correspondante ; la table~\ref{tab:inhomogene} quantifie les écarts moyens entre les deux familles de chaînes et la référence.
 
-% L'étude est ensuite étendue aux quatre méthodes de découpage --- géométriques comme statistiques --- afin de mesurer si l'apport de l'inhomogénéité dépend de la famille de maillage. La figure~\ref{fig:rsd_physique} superpose, pour chaque méthode sur une même figure, le RSD DEM (trait continu) et les prédictions des chaînes homogène et inhomogène (marqueurs de points épais), à nombre de cellules identique (10 cellules) et à configuration identique.
-Pour capturer plus finement la dynamique des particules, plusieurs modèles de Markov sont construits pour chaque méthode de discretisation spatiale du mélangeur tout le long de la simulation DEM. Au premier tour, puis après sept tours de rotation du tambour;
-soit au total cinq modèles de Markov par méthode de discrétisation spatiale.
-
-La figure~\ref{fig:rsd_homogene_inhomogene} montre l'évolution du RSD au cours du temps pour chacune des quatre méthodes de discrétisation spatiale. Chaque graphique comporte la prédiction DEM, la prédiction de Markov homogène et la prédiction de Markov inhomogène 
-pour la méthode de discretisation spatiale correspondante.
-
-L'on observe que les prédictions des chaînes inhomogènes se rapprochent davantage de la prédiction DEM correspodante que les chaînes homogènes. Cette observation se confirme 
-par la comparaison des écarts moyens de prédiction entre la DEM et les chaînes homogènes et inhomogènes dans la table~\ref{tab:inhomogene}.
-
-Toutefois, cette écart est plus grand pour les méthodes de discrétisation statistiques(voronoï et physique) que pour les méthode de discrétisation géométrique (cartésien et cylindrique).
+Les chaînes inhomogènes suivent de plus près la référence DEM que les chaînes homogènes, et ce d'autant plus nettement que le maillage épouse l'écoulement. L'écart moyen de RSD est ainsi divisé par plus de deux pour le découpage de Voronoï ($0{,}041$ contre $0{,}095$) et réduit de près de moitié pour le découpage physique ($0{,}061$ contre $0{,}111$), alors que le gain reste marginal pour les maillages géométriques ($0{,}083$ contre $0{,}096$ pour le cartésien, $0{,}101$ contre $0{,}103$ pour le cylindrique). Le gain est le plus visible au-delà de $t \approx 10$~s : la référence y dérive lentement sous l'effet de la ségrégation résiduelle, dérive que la séquence de matrices --- réactualisée tous les sept tours --- capture fidèlement (figures~\ref{fig:rsd_homogene_inhomogene}, panneaux Voronoï et physique), là où la chaîne homogène demeure figée à son état stationnaire. À l'inverse, pour un maillage structurellement inadapté (cylindrique), actualiser les probabilités ne corrige pas le lissage du contraste de teneur : les deux chaînes y confondent presque leurs prédictions.
 
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/rsd_homogene_inhomogene_methodes.png}
-  \caption{RSD de la teneur en petites particules our les quatre méthodes, 10 cellules chacune ($start = \SI{1.57}{s}$, $\tau = \SI{1.57}{s}$, $dt = 8$ pas ; chaîne inhomogène : blocs espacés de 7 tours, soit 5 matrices).}
+  \caption{RSD de la teneur en petites particules pour les quatre méthodes, 10 cellules chacune ($\mathrm{start} = \SI{1.57}{s}$, $\tau = \SI{1.57}{s}$, $dt = 8$ pas ; chaîne inhomogène : cinq matrices apprises à 1{,}57~s, 14{,}13~s, 26{,}69~s, 39{,}25~s et 51{,}81~s, $\mathrm{step} = 7\tau$).}
   \label{fig:rsd_homogene_inhomogene}
 \end{figure}
-% Deux enseignements se dégagent de cette comparaison. D'une part, l'inhomogénéité améliore la prédiction pour les quatre méthodes, mais avec des amplitudes très contrastées : l'écart moyen passe de 0{,}083 à 0{,}027 pour le Voronoï et de 0{,}103 à 0{,}054 pour le physique --- un gain d'un facteur deux à trois pour les découpages statistiques --- tandis qu'il ne recule que de 0{,}078 à 0{,}067 pour le cartésien et de 0{,}098 à 0{,}095 pour le cylindrique. D'autre part, cette asymétrie s'interprète par la structure des cellules : celles des découpages statistiques, calées sur l'écoulement, voient leurs probabilités de transition évoluer essentiellement sous l'effet de la ségrégation en cours --- une dynamique lente que la séquence de matrices capture fidèlement, d'où le gain important ; celles des découpages géométriques souffrent d'abord d'une inadaptation structurelle à l'écoulement (moyenne de zones actives et passives dans une même cellule) que l'actualisation temporelle des probabilités ne peut pas corriger --- le gain reste marginal, en particulier pour le cylindrique. L'écart entre chaînes homogène et inhomogène est particulièrement net durant les phases où la dynamique évolue --- début de l'homogénéisation, épisodes de ségrégation --- c'est-à-dire précisément là où l'hypothèse de stationnarité de la chaîne homogène est mise en défaut.
-% L'apport de l'inhomogénéité doit donc être mis en regard du choix de discrétisation : c'est la combinaison d'un découpage adapté à l'écoulement (statistique) et d'une chaîne inhomogène qui produit les prédictions les plus fidèles (écart moyen de 0{,}027 pour le Voronoï), tandis qu'une chaîne inhomogène appliquée à un maillage inadapté n'en corrige pas les défauts structurels. Cette interaction entre qualité du maillage et nécessité de l'inhomogénéité est reprise en perspective.
 
 
 
 \begin{table}[H]
   \centering
-  \caption{Comparaison homogène vs inhomogène}
+  \caption{Écart moyen de RSD avec la référence DEM, pour les chaînes homogène et inhomogène et pour chaque méthode de discrétisation, sur la fenêtre de prédiction $t \in [1{,}57~\text{s};\,60~\text{s}]$ (chaîne inhomogène : cinq matrices apprises à 1{,}57~s, 14{,}13~s, 26{,}69~s, 39{,}25~s et 51{,}81~s). Le gain de l'inhomogénéité est considérable pour les maillages statistiques, marginal pour les maillages géométriques.}
   \label{tab:inhomogene}
   \pgfplotstabletypeset[
     col sep=space, string type,
     columns/methode/.style={column name=Méthode},
-    columns/homogene/.style={column name=Homogène, fixed, precision=2},
-    columns/inhomogene/.style={column name=Inhomogène, fixed, precision=2},
+    columns/homogene/.style={column name=Homogène, fixed, precision=3},
+    columns/inhomogene/.style={column name=Inhomogène, fixed, precision=3},
     every head row/.style={before row=\toprule, after row=\midrule},
     every last row/.style={after row=\bottomrule},
   ]{figures/inhomogene_table.txt}
@@ -1061,21 +983,41 @@ Toutefois, cette écart est plus grand pour les méthodes de discrétisation sta
 % DISCUSSION
 % ============================================================
 \section{Discussion}
+\label{sec:discussion}
 
-De l'étude faite sur l'influence de la méthode de discrétisation spatiale du mélangeur sur la prédiction par une chaîne de Markov homogène nous pouvons dire:
- que quelque soit la méthode de discrétisation choisie, précision la prédiction de Markov de l'état de mélange du système est sensiblement pareille. Toutefois l'état du mélange du système 
- diffère que l'on choisit une méthode ou une autre.
+\paragraph{Une lecture synthétique de l'écoulement.}
+De l'étude menée sur l'influence de la méthode de discrétisation spatiale du mélangeur sur la prédiction par une chaîne de Markov homogène, il ressort que les quatre maillages conduisent à des erreurs moyennes du même ordre sur l'indicateur global RSD ($0{,}096$ à $0{,}111$) --- mais qu'elles ne décrivent pas le même état de mélange : le cylindrique prédit un mélange quasi homogène fictif (RSD stationnaire $\approx 0{,}05$ contre $\approx 0{,}2$ mesuré), quand cartésien, Voronoï et physique plafonnent à des paliers distincts ($\approx 0{,}35$, $0{,}17$ et $0{,}11$), tous figés sous la référence qui dérive lentement. La chaîne homogène converge en effet vers sa distribution stationnaire : elle ne peut, par construction, suivre la dérive lente de la ségrégation résiduelle --- c'est précisément là que la chaîne inhomogène prend le relais (\S\ref{subsec:res_inhomogene}). Au-delà de la prédiction, la matrice de transition elle-même constitue une lecture synthétique de l'écoulement : sa diagonale mesure la résidence des grains dans chaque cellule, ses bandes latérales les flux dominant et contraire, et son examen par espèce fait apparaître la dualité de comportement attendue dans un tambour tournant --- les grandes particules restent plus longtemps dans leur cellule d'origine tandis que les petites se redistribuent plus rapidement, cohérence qualitative avec les mécanismes de percolation et de convection qui justifie pleinement la construction de matrices séparées par espèce (annexe~\ref{annexe:especes}).
 
- De l'étude portant sur l'apport des chaînes inhomogènes sur la prédiction de l'état de mélange du système, nous constatons que cet apport influencé par la méthode de discrétisation choisie:
- pour les méthodes de discrétisation spatiale géométrique (cartésienne et cylindrique), les chaînes homogènes n'enrichissent pas énormement la prédiction du modèle de Markov; 
- Les méthodes de discrétisation spatiale statistiques quant à elle enrichissent considérablement la prédiction du modèle de Markov.
-% \paragraph{Dualité de comportement entre espèces.} Les matrices de transition, quelle que soit la méthode de maillage, montrent systématiquement que les grandes particules restent plus longtemps dans leur cellule d'origine tandis que les petites se redistribuent plus rapidement. Cette asymétrie, cohérente avec les mécanismes de percolation et de convection dans un tambour tournant, justifie pleinement la construction de matrices séparées.
+\paragraph{Rôle déterminant de l'adéquation maillage--écoulement.}
+Le facteur déterminant de la qualité d'un maillage n'est pas sa famille en soi, mais l'adéquation entre ses cellules et la zone effectivement occupée par l'écoulement : un maillage dont certaines cellules ne rencontreraient jamais de grains serait structurellement invalide (matrice non conforme, annexe~\ref{annexe:dt}). Les approches statistiques --- Voronoï, physique --- réalisent cette adéquation automatiquement, puisque leurs centroïdes se placent d'eux-mêmes là où se trouvent les particules. Le découpage physique va un cran plus loin : sa quatrième caractéristique, la norme de la vitesse, lui permet de résoudre la coexistence entre zone active de surface et zone quasi-statique en profondeur --- y compris les contrastes de teneur \emph{au sein} de la couche active (cellules~$8$ et~$9$ enrichies, cellules~$1$ et~$7$ appauvries, figure~\ref{fig:teneur_physique_homogene}) ---, ce qu'aucun maillage purement géométrique à dix cellules ne capture. Sur les indicateurs scalaires moyens, aucune méthode ne domine nettement (écarts de RSD de $0{,}095$ à $0{,}111$, écarts de teneur de $0{,}041$ à $0{,}054$) : l'intérêt du découpage physique est d'abord d'\textbf{interprétabilité} --- ses cellules sont identifiables aux zones de l'écoulement --- et de potentiel prédictif, comme en témoigne le gain maximal qu'il retire, avec le Voronoï, de la chaîne inhomogène (\S\ref{subsec:res_inhomogene}).
 
-% \paragraph{Rôle déterminant de la discrétisation et du repère de labélisation.} Un maillage géométrique opéré dans le repère fixe du tambour produit des cellules structurellement vides --- coin bas de la grille cartésienne, couronne interne cylindrique --- qui rendent la matrice non conforme quel que soit le temps d'observation (annexe~\ref{annexe:dt}). Exprimer les positions dans le repère du lit avant labélisation rétablit l'occupation de toutes les cellules et ramène les découpages géométriques au niveau des découpages statistiques (tableau~\ref{tab:ecart_rsd_methodes}) : le facteur déterminant n'est pas la famille de découpage en soi, mais l'adéquation entre les cellules et la zone effectivement occupée par l'écoulement. Les approches statistiques --- Voronoï, physique --- réalisent cette adéquation automatiquement, sans changement de repère ni réglage, ce qui reste leur avantage pratique décisif.
+Du point de vue de la robustesse du protocole, deux contrôles complètent le dispositif : l'étude d'influence du nombre de blocs d'apprentissage, conduite sur le découpage cylindrique en complément du découpage physique, y confirme la même convergence et légitime le choix $\mathrm{NLT} = 2$ pour la seconde méthode géométrique (annexe~\ref{annexe:nlt}, figure~\ref{fig:etude_nlt_cylindrique}) ; et les matrices de transition présentées dans le corps du texte sont apprises par l'estimation la plus directe possible ($dt = \tau$, une paire de transition par tour) --- la conformité des matrices à fort $dt$ ayant été établie en annexe~\ref{annexe:dt} ---, leurs versions raffinées $dt = 8$ pas étant conservées en annexe~\ref{annexe:matrices_dt8} à titre de référence.
 
-% \paragraph{Pertinence de la variable d'état.} Le comptage par cellule décrit l'occupation globale mais masque la ségrégation. La teneur locale en petites particules, en revanche, fait apparaître des hétérogénéités marquées (cellules 9 et 4, par exemple) et offre un indicateur directement relié au phénomène physique étudié.
+\paragraph{Apport nuancé des chaînes inhomogènes.}
+De l'étude portant sur l'apport des chaînes inhomogènes, il ressort que celui-ci dépend fortement du maillage : pour les découpages géométriques, l'actualisation temporelle des probabilités n'enrichit que marginalement la prédiction --- elle ne corrige pas l'inadaptation structurelle des cellules (écart quasi inchangé pour le cylindrique, $0{,}101$ contre $0{,}103$) ; pour les découpages statistiques, dont les cellules épousent déjà l'écoulement, le gain est considérable et porte sur toute la fenêtre de prédiction --- écart divisé par plus de deux pour le Voronoï ($0{,}041$ contre $0{,}095$), réduit de près de moitié pour le physique ($0{,}061$ contre $0{,}111$). La réactualisation périodique des matrices permet en particulier de suivre la dérive lente de la ségrégation résiduelle, inaccessible à la chaîne homogène figée à sa distribution stationnaire --- un résultat qui plaide, à l'échelle industrielle, pour un couplage re-synchronisé pour les cycles longs plutôt que pour un modèle unique figé.
 
-% Enfin, les chaînes inhomogènes se révèlent indispensables dès que l'on souhaite capturer les phases transitoires ou les variations temporelles des probabilités de transition, là où l'hypothèse stationnaire d'une chaîne homogène atteint ses limites ; leur gain est maximal lorsque le maillage épouse déjà l'écoulement (écart moyen divisé par trois pour le Voronoï), tandis qu'elles ne corrigent pas les défauts structurels d'un maillage inadapté. Le piégeage des particules dans les zones passives, visible à travers les fortes probabilités diagonales --- utilisées ici comme indicateur physique et non comme critère de validation ---, souligne par ailleurs la nécessité d'un maillage capable de résoudre la coexistence entre zone active de surface et zone quasi-statique en profondeur.
+\paragraph{Limites de la teneur comme variable d'état.}
+Le comptage par cellule décrit l'occupation globale mais masque la ségrégation ; la teneur locale, choisie ici comme variable de mélange, fait apparaître les hétérogénéités recherchées, au prix d'une sensibilité accrue pour les cellules peu peuplées : leur teneur, rapport de petits effectifs, est numériquement bruitée et sa prédiction --- produit de matrices indépendantes par espèce --- n'est pas toujours fiable (cellule~$0$ du cartésien, figure~\ref{fig:teneur_cartesien}). Un choix intermédiaire (distribution jointe position--espèce, ou régularisation des cellules à faible effectif) constitue une voie d'amélioration.
+
+\paragraph{Aptitudes comparées des maillages.}
+Le tableau~\ref{tab:synthese_maillages} synthétise les forces et faiblesses constatées. À stade industriel, le coût de calcul milite en outre pour le maillage le plus informatif : l'apprentissage d'une matrice $10 \times 10$ par espèce ne mobilise qu'une phase DEM de quelques secondes simulées, et la propagation markovienne sur $60$~s simulées se réduit à quelques produits matrice--vecteur --- un coût négligeable en regard de la DEM équivalente, ce qui ouvre la voie à l'utilisation de ces modèles comme éléments de modèles réduits pour les cycles longs.
+
+\begin{table}[H]
+  \centering
+  \caption{Synthèse qualitative des quatre maillages (10 cellules, chaîne homogène).}
+  \label{tab:synthese_maillages}
+  \renewcommand{\arraystretch}{1.3}
+  \begin{tabularx}{\textwidth}{l X X}
+    \toprule
+    \textbf{Maillage} & \textbf{Aptitudes} & \textbf{Limites constatées} \\
+    \midrule
+    Cartésien & Simplicité de mise en \oe uvre ; référence de la littérature ; teneurs cellulaires correctement ordonnées & Teneur bruitée des bandes marginales, très peu peuplées \\
+    Cylindrique & Géométrie naturelle du tambour ; transition vers les CFD par cellules & Secteurs moyennant zone active et cœur ; RSD structurellement biaisé \\
+    Voronoï (k-means) & Cellules équilibrées en population ; conformité immédiate ; DSE répartie & Frontières purement géométriques, ne résolvant pas la dualité active/passive \\
+    Physique & Lecture physique la plus riche (cellules identifiables aux zones de l'écoulement) ; résolution des hétérogénéités de teneur au sein même de la couche active ; plus fort gain à l'inhomogénéité avec le Voronoï & Choix supplémentaires (standardisation, poids pondérant $0{,}5$ de la vitesse) à justifier et régler \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
 
 % ============================================================
 % CONCLUSION ET PERSPECTIVES
@@ -1086,17 +1028,14 @@ De l'étude faite sur l'influence de la méthode de discrétisation spatiale du 
 Ce mémoire a proposé et évalué une modélisation stochastique par chaînes de Markov pour reproduire la ségrégation de particules bidisperses dans un tambour tournant, à partir de données DEM de référence. Les principaux apports sont les suivants :
 
 \begin{itemize}
-  % \item La construction de matrices de transition distinctes par espèce met en évidence des dynamiques contrastées entre petites et grandes particules.
-  \item Le choix de la méthode de discrétisation spatiale du mélangeur influence sur l'état de mélange du système prédite par une chaîne de Markov homogène. Toutefois quelque soit la méthode de discrétisation spatiale choisie, l'erreur de prédiction est sensiblement pareil.
-  \item Pour les méthodes de discrétisation spatiale géométrique, les chaînes inhomogènes n'améliorent pas pour autant la prédiction du modèle de Markov; tandis qu'elles améliorent la prédiction du modèle de Markov issue d'une discrétisation spatiale statistique.
-  % \item Le choix de la discrétisation spatiale et du repère de labélisation conditionne fortement la fidélité du modèle : dans le repère fixe du tambour, les maillages géométriques présentent des cellules structurellement vides qui rendent la matrice non conforme ; labélisés dans le repère du lit, ils rejoignent les maillages statistiques (écarts moyens de RSD de 0{,}078 à 0{,}103 pour les quatre méthodes à 10 cellules). Les maillages statistiques conservent l'avantage de réaliser cette adéquation automatiquement, avec un besoin de temps d'observation minimal.
-  % \item Un vecteur d'état fondé sur la teneur locale en petites particules discrimine la ségrégation bien mieux qu'un simple comptage.
-  % \item Les chaînes inhomogènes, en actualisant les probabilités à chaque pas, suivent plus fidèlement l'évolution DEM que les chaînes homogènes, en particulier durant les régimes transitoires.
+  \item Le choix de la méthode de discrétisation spatiale du mélangeur influence l'état de mélange prédit bien plus que sa précision apparente : à dix cellules, les quatre maillages affichent des écarts moyens de RSD du même ordre ($0{,}096$ à $0{,}111$), mais le cylindrique prédit un mélange quasi homogène fictif (RSD stationnaire $\approx 0{,}05$), quand cartésien, Voronoï et physique plafonnent à des paliers distincts ($\approx 0{,}35$, $0{,}17$, $0{,}11$) ; seul un maillage adapté à la structure de l'écoulement conserve un contraste de teneur réaliste.
+  \item L'adéquation des cellules à l'écoulement prime sur la famille de maillage : alignées sur la zone effectivement occupée, les cellules des maillages géométriques rejoignent les performances des maillages statistiques, qui réalisent cette adéquation automatiquement.
+  \item La construction de matrices de transition distinctes par espèce met en évidence des dynamiques contrastées entre petites et grandes particules --- résidence allongée des grandes, redistribution rapide des petites ---, cohérente avec les mécanismes de percolation et de convection du tambour tournant.
+  \item Un vecteur d'état fondé sur la teneur locale en petites particules discrimine la ségrégation bien mieux qu'un simple comptage, au prix toutefois d'une prédiction peu fiable pour les cellules de faible effectif --- produit de matrices indépendantes dont les petits effectifs cumulent les bruits relatifs.
+  \item Les chaînes inhomogènes améliorent systématiquement la prédiction --- jusqu'à diviser l'écart moyen par plus de deux pour le découpage de Voronoï --- en capturant la dérive lente de la ségrégation résiduelle que la chaîne homogène fige à sa distribution stationnaire ; leur gain est maximal lorsque le maillage épouse déjà l'écoulement, et demeure marginal sinon.
 \end{itemize}
 
-Une perspective de prolongement se dessine: \textbf{Dans quelle mesure priviligier une chaîne homogène plutôt qu'une chaîne inhomogène?} Nous pensons que la reponse à question dépendra de la précision avec laquelle on veut prédire l'état de mélange du système
-et par conséquent le choix de la méthode de discrétisation spatiale. 
-% Plusieurs axes de prolongement se dessinent. Une question ouverte, directement issue de nos résultats, mérite d'être posée : \textbf{est-il possible de se passer de la chaîne inhomogène lorsque le choix de la méthode de discrétisation est bien fait ?} Nos observations suggèrent en effet qu'un maillage adapté à la physique de l'écoulement (découpage physique) absorbe une partie de la non-stationnarité que la chaîne inhomogène corrige autrement ; une étude systématique croisant méthodes de découpage et types de chaînes permettrait de quantifier ce compromis et, le cas échéant, de privilégier un modèle homogène --- plus simple et plus économe --- adossé à un maillage optimal. Il serait également pertinent de mener une étude paramétrique systématique --- nombre de cellules, pas de temps markovien, durée d'apprentissage --- afin de compléter les études de sensibilité de l'annexe~\ref{annexe:parametres}. L'extension à des configurations industrielles impliquant plusieurs millions de grains permettrait d'évaluer le compromis entre précision et coût computationnel. Enfin, l'intégration d'indicateurs de corrélation spatiale ou de fonctions de distribution radiale viendrait compléter le RSD pour une caractérisation plus fine de la structure du mélange.
+Plusieurs axes de prolongement se dessinent. Une question ouverte, directement issue de ces résultats, mérite d'être posée : \textbf{dans quelle mesure peut-on privilégier une chaîne homogène plutôt qu'une chaîne inhomogène ?} Nos observations suggèrent qu'un maillage adapté à la physique de l'écoulement absorbe une partie de la non-stationnarité que la chaîne inhomogène corrige autrement ; la réponse dépendra de la précision requise sur l'état de mélange, et donc du choix de la méthode de discrétisation spatiale. À plus long terme, ce travail s'inscrit dans une perspective d'exploitation industrielle : les modèles de ségrégation par chaînes de Markov, appris sur quelques tours de tambour simulés par DEM, pourraient prédire la qualité du mélange sur des cycles annuels complets --- inaccessibles à la DEM seule ---, à condition de réactualiser périodiquement les matrices de transition au fil du procédé. Il serait également pertinent de poursuivre l'étude paramétrique systématique amorcée en annexe~\ref{annexe:parametres} (nombre de cellules, pas de temps markovien, durée d'apprentissage), d'étendre l'approche à des configurations industrielles impliquant plusieurs millions de grains pour évaluer le compromis précision / coût de calcul, et de compléter le RSD par des indicateurs de corrélation spatiale ou des fonctions de distribution radiale pour une caractérisation plus fine de la structure du mélange.
 
 % ============================================================
 % BIBLIOGRAPHIE
@@ -1104,7 +1043,6 @@ et par conséquent le choix de la méthode de discrétisation spatiale.
 \cleardoublepage
 \phantomsection
 \addcontentsline{toc}{section}{Références bibliographiques}
-\nocite{mellmann2001,morrison2016}
 \printbibliography[
   heading=bibliographie,
   title={Références bibliographiques}
@@ -1120,7 +1058,7 @@ et par conséquent le choix de la méthode de discrétisation spatiale.
 
 \section{Justification des paramètres du modèle de Markov}
 \label{annexe:parametres}
-Cette annexe rassemble les études comparatives qui justifient les valeurs des paramètres de construction du modèle (tableau~\ref{tab:parametres} du corps du texte) : le pas de temps de Markov $\tau$ (\S\ref{annexe:tau}), le nombre de blocs d'apprentissage $NLT$ (\S\ref{annexe:nlt}), l'instant de départ $start$ (\S\ref{annexe:start}), l'écart entre blocs $step$ (\S\ref{annexe:step}) et le raffinage temporel $dt$ (\S\ref{annexe:dt}). La démarche suit l'étude comparative de Doucet et al.~\cite{doucet2008} : deux familles de grandeurs de comparaison sont utilisées --- d'une part la convergence de la matrice de transition elle-même, mesurée par une erreur relative entre matrices (grandeur retenue par ces auteurs pour valider la stationnarité du processus appris), d'autre part la fidélité de la prédiction, mesurée par l'écart des indicateurs macroscopiques (RSD de la teneur) entre le modèle et la référence DEM. Pour chaque étude, la configuration complète du modèle ($nlt$, $start$, $step$, $\tau$, $dt$) est explicitée. Tous les temps sont exprimés en secondes ; on rappelle que le pas de sortie des résultats DEM vaut \SI{0.01}{s}, si bien que $\SI{1.57}{s}$ correspond à 157 pas de sortie.
+Cette annexe rassemble les études comparatives qui justifient les valeurs des paramètres de construction du modèle (tableau~\ref{tab:parametres} du corps du texte) : le pas de temps de Markov $\tau$ (\S\ref{annexe:tau}), le nombre de blocs d'apprentissage $\mathrm{NLT}$ (\S\ref{annexe:nlt}), l'instant de départ $\mathrm{start}$ (\S\ref{annexe:start}), l'écart entre blocs $\mathrm{step}$ (\S\ref{annexe:step}) et le raffinage temporel $dt$ (\S\ref{annexe:dt}). La démarche suit l'étude comparative de Doucet et al.~\cite{doucet2008} : deux familles de grandeurs de comparaison sont utilisées --- d'une part la convergence de la matrice de transition elle-même, mesurée par une erreur relative entre matrices (grandeur retenue par ces auteurs pour valider la stationnarité du processus appris), d'autre part la fidélité de la prédiction, mesurée par l'écart des indicateurs macroscopiques (RSD de la teneur) entre le modèle et la référence DEM. Pour chaque étude, la configuration complète du modèle ($\mathrm{NLT}$, $\mathrm{start}$, $\mathrm{step}$, $\tau$, $dt$) est explicitée. Tous les temps sont exprimés en secondes ; on rappelle que le pas de sortie des résultats DEM vaut \SI{0.01}{s}, si bien que $\SI{1.57}{s}$ correspond à 157 pas de sortie.
 
 % ------------------------------------------------------------
 \subsection{Choix du pas de temps de Markov \texorpdfstring{$\tau = \SI{1.57}{s}$}{tau = 1,57 s}}
@@ -1147,67 +1085,60 @@ Ce choix répond à un double impératif. D'une part, $\tau$ doit être suffisam
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/etude_tau_rsd.png}
-  \caption{Influence du pas de temps de Markov $\tau$ sur la cinétique de mélange prédite, calculée sur les données de la simulation (découpage physique, 10 cellules ; discretisation temporelle: $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau$, $dt = \tau/10$) : RSD DEM de la teneur en petites particules (noir) et prédictions markoviennes homogènes pour $\tau$ de \SI{0.1}{s} à \SI{10}{s}. La courbe épaisse correspond à la valeur retenue $\tau = \SI{1.57}{s}$.}
+  \caption{Influence du pas de temps de Markov $\tau$ sur la cinétique de mélange prédite, calculée sur les données de la simulation (découpage physique, 10 cellules ; discrétisation temporelle : $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau$, $dt = \tau/10$) : RSD DEM de la teneur en petites particules (noir) et prédictions markoviennes homogènes pour $\tau$ de \SI{0.1}{s} à \SI{10}{s}. La courbe épaisse correspond à la valeur retenue $\tau = \SI{1.57}{s}$.}
   \label{fig:etude_tau}
 \end{figure}
 
-% À titre de complément, l'étude menée durant le stage sur un maillage plus fin (découpage physique, 30 cellules, RSD par espèce) conduit au même constat (figure~\ref{fig:etude_tau_30}).
 
-% \begin{figure}[H]
-%   \centering
-%   \begin{minipage}{\textwidth}
-%     \centering
-%     \includegraphics[width=0.8\linewidth]{figures/etude_tau_grandes.png}
-%     \subcaption*{(a) Grandes particules}
-%   \end{minipage}
-
-%   \vspace{0.3cm}
-%   \begin{minipage}{\textwidth}
-%     \centering
-%     \includegraphics[width=0.8\linewidth]{figures/etude_tau_petites.png}
-%     \subcaption*{(b) Petites particules}
-%   \end{minipage}
-%   \caption{Étude complémentaire de l'influence de $\tau$ (découpage physique, 30 cellules) : RSD de la DEM (noir) et prédictions markoviennes pour $\tau$ de \SI{0.1}{s} à \SI{10}{s}.}
-%   \label{fig:etude_tau_30}
-% \end{figure}
 
 % ------------------------------------------------------------
-\subsection{Choix du nombre de blocs d'apprentissage \texorpdfstring{$NLT$}{NLT}}
+\subsection{Choix du nombre de blocs d'apprentissage \texorpdfstring{$\mathrm{NLT}$}{NLT}}
 \label{annexe:nlt}
 
-Le paramètre $NLT$ contrôle le nombre de blocs d'apprentissage sur lesquels les probabilités de transition sont observées, puis moyennées (chaîne homogène) ou conservées séparément (chaîne inhomogène).
+Le paramètre $\mathrm{NLT}$ contrôle le nombre de blocs d'apprentissage sur lesquels les probabilités de transition sont observées, puis moyennées (chaîne homogène) ou conservées séparément (chaîne inhomogène).
 
-L'ensemble de cette étude est mené avec le raffinage temporel $dt = 1$ pas : pour cette valeur, aucun \textit{NaN} n'apparaît dans les matrices --- chaque cellule est observée comme source, la matrice est conforme (annexe~\ref{annexe:dt}) --- et le nombre de paires d'observation par bloc est maximal, chaque instant du bloc étant exploité. Ce choix isole ainsi l'effet propre de $NLT$ : la comparaison des matrices ne dépend que du nombre de tours observés, et non d'une éventuelle sous-observation liée à un échantillonnage plus grossier.
+L'ensemble de cette étude est mené avec le raffinage temporel $dt = 1$ pas : pour cette valeur, aucun \textit{NaN} n'apparaît dans les matrices --- chaque cellule est observée comme source, la matrice est conforme (annexe~\ref{annexe:dt}) --- et le nombre de paires d'observation par bloc est maximal, chaque instant du bloc étant exploité. Ce choix isole ainsi l'effet propre de $\mathrm{NLT}$ : la comparaison des matrices ne dépend que du nombre de tours observés, et non d'une éventuelle sous-observation liée à un échantillonnage plus grossier.
 
 À la suite de Doucet et al.~\cite{doucet2008}, qui valident la stationnarité de leur processus de Markov en comparant les matrices de transition obtenues pour des durées d'apprentissage croissantes, la grandeur de comparaison retenue pour cette étude est l'\textbf{erreur relative sur la matrice de transition} :
 \begin{equation}
-  E(NLT)
+  E(\mathrm{NLT})
   =
-  \frac{\left\| \mathbf{P}^{(NLT)} - \mathbf{P}^{(\mathrm{réf})} \right\|_F}
+  \frac{\left\| \mathbf{P}^{(\mathrm{NLT})} - \mathbf{P}^{(\mathrm{réf})} \right\|_F}
        {\left\| \mathbf{P}^{(\mathrm{réf})} \right\|_F},
   \label{eq:erreur_relative_nlt}
 \end{equation}
-où $\mathbf{P}^{(NLT)}$ est la matrice apprise avec $NLT$ blocs, $\mathbf{P}^{(\mathrm{réf})}$ la matrice de référence apprise avec le plus grand nombre de blocs disponible ($NLT_{\mathrm{réf}} = 18$), et $\|\cdot\|_F$ la norme de Frobenius. Cette erreur mesure directement la convergence des probabilités de transition avec la durée d'apprentissage, indépendamment de toute propagation.
+où $\mathbf{P}^{(\mathrm{NLT})}$ est la matrice apprise avec $\mathrm{NLT}$ blocs, $\mathbf{P}^{(\mathrm{réf})}$ la matrice de référence apprise avec le plus grand nombre de blocs disponible ($\mathrm{NLT}_{\mathrm{réf}} = 18$), et $\|\cdot\|_F$ la norme de Frobenius. Cette erreur mesure directement la convergence des probabilités de transition avec la durée d'apprentissage, indépendamment de toute propagation.
 
-L'étude est menée sur le découpage physique (10 cellules) avec la configuration $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 1$ pas, pour $NLT$ de 1 à 18 et pour chaque espèce (figure~\ref{fig:etude_nlt_courbe}). La décroissance est monotone pour les deux espèces : pour les petites particules, l'erreur relative passe de $0{,}134$ ($NLT = 1$) à $0{,}092$ ($NLT = 3$), $0{,}033$ ($NLT = 8$) et $0{,}021$ ($NLT = 12$) ; pour les grandes, dont la dynamique est plus régulière, elle reste inférieure dès le départ ($0{,}045$ à $NLT = 1$, $0{,}013$ à $NLT = 12$). Deux enseignements en découlent : d'une part la matrice converge bien vers une matrice stationnaire lorsque le nombre de tours observés augmente --- ce qui légitime l'hypothèse markovienne homogène sur le régime permanent, comme chez Doucet et al. ---, d'autre part une dizaine de blocs suffit à stabiliser les probabilités à quelques pourcents près, la statistique des petites particules (350 individus, percolation rapide) exigeant davantage de blocs que celle des grandes (680 individus, transport en bloc).
+L'étude est menée sur le découpage physique (10 cellules) avec la configuration $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = 1$ pas, pour $\mathrm{NLT}$ de 1 à 18 et pour chaque espèce (figure~\ref{fig:etude_nlt_courbe}). La décroissance est monotone pour les deux espèces : pour les petites particules, l'erreur relative passe de $0{,}134$ ($\mathrm{NLT} = 1$) à $0{,}092$ ($\mathrm{NLT} = 3$), $0{,}033$ ($\mathrm{NLT} = 8$) et $0{,}021$ ($\mathrm{NLT} = 12$) ; pour les grandes, dont la dynamique est plus régulière, elle reste inférieure dès le départ ($0{,}045$ à $\mathrm{NLT} = 1$, $0{,}013$ à $\mathrm{NLT} = 12$). Deux enseignements en découlent : d'une part la matrice converge bien vers une matrice stationnaire lorsque le nombre de tours observés augmente --- ce qui légitime l'hypothèse markovienne homogène sur le régime permanent, comme chez Doucet et al. ---, d'autre part une dizaine de blocs suffit à stabiliser les probabilités à quelques pourcents près, la statistique des petites particules (350 individus, percolation rapide) exigeant davantage de blocs que celle des grandes (680 individus, transport en bloc).
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.78\textwidth]{figures/etude_nlt_erreur_relative.png}
-  \caption{Étude de sensibilité au nombre de blocs d'apprentissage $NLT$ par l'erreur relative sur la matrice de transition (équation~\eqref{eq:erreur_relative_nlt}, grandeur de comparaison de Doucet et al.~\cite{doucet2008}) : découpage physique, 10 cellules, configuration $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 1$ pas, référence $NLT_{\mathrm{réf}} = 18$.}
+  \caption{Étude de sensibilité au nombre de blocs d'apprentissage $\mathrm{NLT}$ par l'erreur relative sur la matrice de transition (équation~\eqref{eq:erreur_relative_nlt}, grandeur de comparaison de Doucet et al.~\cite{doucet2008}) : découpage physique, 10 cellules, configuration $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = 1$ pas, référence $\mathrm{NLT}_{\mathrm{réf}} = 18$.}
   \label{fig:etude_nlt_courbe}
 \end{figure}
 
-En complément, l'erreur de prédiction $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$, moyennée sur la fenêtre de prédiction, suit la même tendance ($0{,}068$ à $NLT = 8$, $0{,}055$ à $NLT = 18$) : la convergence de la matrice se traduit directement par celle de la prédiction.
+En complément, l'erreur de prédiction $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$, moyennée sur la fenêtre de prédiction, suit la même tendance ($0{,}068$ à $\mathrm{NLT} = 8$, $0{,}055$ à $\mathrm{NLT} = 18$) : la convergence de la matrice se traduit directement par celle de la prédiction.
 
-La comparaison détaillée des cas $NLT = 1$ et $NLT = 18$ --- ce dernier étant le seuil auquel la matrice de transition a convergé au sens de l'erreur relative ci-dessus --- (figures~\ref{fig:etude_nlt_ecart} et~\ref{fig:etude_nlt_teneur}) illustre ces deux régimes cellule par cellule. Avec $NLT = 1$, des cellules restent durablement mal prédites (bandes persistantes sur la carte des écarts). Avec $NLT = 18$, les erreurs résiduelles se concentrent sur des épisodes courts plutôt que sur des cellules entières ; la prédiction suit sensiblement mieux les trajectoires DEM de teneur, cellule par cellule.
+La même étude a été conduite pour le découpage cylindrique (10 secteurs), second maillage géométrique du corpus, dans une configuration strictement identique (figure~\ref{fig:etude_nlt_cylindrique}). La convergence y est claire : pour les petites particules, l'erreur relative décroît de $0{,}101$ ($\mathrm{NLT} = 1$) à $0{,}081$ ($\mathrm{NLT} = 2$), $0{,}042$ ($\mathrm{NLT} = 5$) et $0{,}025$ ($\mathrm{NLT} = 8$) ; pour les grandes, plus régulières, elle reste basse dès le départ et décroît de $0{,}053$ ($\mathrm{NLT} = 1$) à $0{,}024$ ($\mathrm{NLT} = 8$). Le choix $\mathrm{NLT} = 2$ du corps du texte y produit ainsi une matrice à moins de $8\,\%$ (petites) voire $5\,\%$ (grandes) de la matrice de référence --- niveau tout à fait comparable à celui observé pour le découpage physique aux mêmes paramètres ---, ce qui justifie \emph{a posteriori} que la même valeur de $\mathrm{NLT}$ ait été retenue pour les chaînes homogènes des deux maillages.
 
-En contrepartie, augmenter $NLT$ allonge la fenêtre temporelle mobilisée par l'apprentissage ($NLT \times (step + \tau)$ pas DEM) et accroît le coût de construction. La valeur retenue résulte donc d'un compromis entre robustesse statistique et étendue de la fenêtre d'apprentissage ; pour les chaînes inhomogènes, un $NLT$ élevé est en outre nécessaire pour disposer d'une matrice par intervalle sur toute la durée de prédiction.
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\textwidth]{figures/etude_nlt_erreur_relative_cylindrique.png}
+  \caption{Étude de sensibilité au nombre de blocs d'apprentissage $\mathrm{NLT}$ par l'erreur relative sur la matrice de transition (équation~\eqref{eq:erreur_relative_nlt}, grandeur de comparaison de Doucet et al.~\cite{doucet2008}) : découpage cylindrique, 10 cellules, configuration $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = 1$ pas, référence $\mathrm{NLT}_{\mathrm{réf}} = 18$.}
+  \label{fig:etude_nlt_cylindrique}
+\end{figure}
+
+La comparaison détaillée des cas $\mathrm{NLT} = 1$ et $\mathrm{NLT} = 18$ --- ce dernier étant le seuil auquel la matrice de transition a convergé au sens de l'erreur relative ci-dessus --- (figures~\ref{fig:etude_nlt_ecart} et~\ref{fig:etude_nlt_teneur}) illustre ces deux régimes cellule par cellule. Avec $\mathrm{NLT} = 1$, des cellules restent durablement mal prédites (bandes persistantes sur la carte des écarts). Avec $\mathrm{NLT} = 18$, les erreurs résiduelles se concentrent sur des épisodes courts plutôt que sur des cellules entières ; la prédiction suit sensiblement mieux les trajectoires DEM de teneur, cellule par cellule.
+
+En contrepartie, augmenter $\mathrm{NLT}$ allonge la fenêtre temporelle mobilisée par l'apprentissage ($\mathrm{NLT} \times (\mathrm{step} + \tau)$ pas DEM) et accroît le coût de construction. La valeur retenue résulte donc d'un compromis entre robustesse statistique et étendue de la fenêtre d'apprentissage ; pour les chaînes inhomogènes, un $\mathrm{NLT}$ élevé est en outre nécessaire pour disposer d'une matrice par intervalle sur toute la durée de prédiction.
+
+Pour les chaînes homogènes étudiées dans le corps du texte, la valeur retenue est $\mathrm{NLT} = 2$. Ce choix, volontairement inférieur au seuil de convergence statistique de la matrice (une dizaine de blocs), s'explique ainsi : avec deux blocs, l'erreur relative sur les probabilités reste modérée (quelques pourcents pour les grandes, de l'ordre de 10~\% pour les petites) tandis que la fenêtre d'apprentissage demeure courte --- environ six tours ---, ce qui préserve à la fois l'hypothèse de quasi-stationnarité à l'intérieur de la fenêtre d'estimation et l'essentiel de la simulation pour la phase de validation. L'annexe montre que le gain apporté par davantage de blocs est réel mais borné : la qualité de prédiction est d'abord conditionnée par l'adéquation du maillage à l'écoulement, non par la seule durée d'observation.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/ecart_nlt_1_18_lib.png}
-  \caption{Influence du nombre de blocs d'apprentissage $NLT$ sur la qualité du modèle (découpage physique, 10 cellules, petites particules, configuration $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 1$ pas) : écart temporel RMS $|\text{Markov}-\text{DEM}|$ (gauche) et carte des écarts absolus par cellule (droite), pour $NLT = 1$ (haut) et $NLT = 18$, seuil de convergence de la matrice (bas).}
+  \caption{Influence du nombre de blocs d'apprentissage $\mathrm{NLT}$ sur la qualité du modèle (découpage physique, 10 cellules, petites particules, configuration $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = 1$ pas) : écart temporel RMS $|\text{Markov}-\text{DEM}|$ (gauche) et carte des écarts absolus par cellule (droite), pour $\mathrm{NLT} = 1$ (haut) et $\mathrm{NLT} = 18$, seuil de convergence de la matrice (bas).}
   \label{fig:etude_nlt_ecart}
 \end{figure}
 
@@ -1216,31 +1147,31 @@ En contrepartie, augmenter $NLT$ allonge la fenêtre temporelle mobilisée par l
   \begin{minipage}{\textwidth}
     \centering
     \includegraphics[width=0.95\linewidth]{figures/teneur_nlt1_lib.png}
-    \subcaption*{(a) $NLT = 1$}
+    \subcaption*{(a) $\mathrm{NLT} = 1$}
   \end{minipage}
 
   \vspace{0.3cm}
   \begin{minipage}{\textwidth}
     \centering
     \includegraphics[width=0.95\linewidth]{figures/teneur_nlt18_lib.png}
-    \subcaption*{(b) $NLT = 18$ (seuil de convergence)}
+    \subcaption*{(b) $\mathrm{NLT} = 18$ (seuil de convergence)}
   \end{minipage}
-  \caption{Teneur en petites particules par cellule, référence DEM (trait continu) et prédiction markovienne homogène (marqueurs épais) superposées, une couleur par cellule, pour $NLT = 1$ et $NLT = 18$ (découpage physique, 10 cellules, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 1$ pas).}
+  \caption{Teneur en petites particules par cellule, référence DEM (trait continu) et prédiction markovienne homogène (marqueurs épais) superposées, une couleur par cellule, pour $\mathrm{NLT} = 1$ et $\mathrm{NLT} = 18$ (découpage physique, 10 cellules, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = 1$ pas).}
   \label{fig:etude_nlt_teneur}
 \end{figure}
 
 % ------------------------------------------------------------
-\subsection{Choix de l'instant de départ \texorpdfstring{$start = \SI{1.57}{s}$}{start = 1,57 s}}
+\subsection{Choix de l'instant de départ \texorpdfstring{$\mathrm{start} = \SI{1.57}{s}$}{start = 1,57 s}}
 \label{annexe:start}
 
-Le paramètre $start$ fixe le premier instant DEM utilisé pour la phase d'apprentissage de la matrice de transition. La prédiction, elle, est systématiquement propagée depuis l'instant initial $t = \SI{0}{s}$ : la question posée par le choix du $start$ est donc de savoir sur quelle portion de la simulation les probabilités de transition doivent être apprises pour que cette prédiction soit fidèle.
+Le paramètre $\mathrm{start}$ fixe le premier instant DEM utilisé pour la phase d'apprentissage de la matrice de transition. La prédiction, elle, est systématiquement propagée depuis l'instant initial $t = \SI{0}{s}$ : la question posée par le choix du $\mathrm{start}$ est donc de savoir sur quelle portion de la simulation les probabilités de transition doivent être apprises pour que cette prédiction soit fidèle.
 
-La figure~\ref{fig:etude_start_rsd} y répond en confrontant, pour chacune des quatre méthodes de découpage, le RSD DEM de la teneur en petites particules à deux prédictions markoviennes homogènes propagées depuis $t = \SI{0}{s}$ : l'une dont la matrice est apprise en incluant le régime transitoire ($start = \SI{0}{s}$, courbe grise), l'autre dont la matrice est apprise sur le régime permanent ($start = \SI{1.57}{s}$, soit un tour de tambour, courbe colorée). La zone grisée matérialise le régime transitoire de mise en mouvement du lit ($t < \SI{1.57}{s}$), durant lequel le RSD DEM part de valeurs très élevées (0{,}9 à 1{,}1, configuration initiale séparée) et culmine jusqu'à 1{,}2 pour les maillages géométriques ; le tableau~\ref{tab:etude_start_rsd} donne les valeurs du RSD DEM à quelques instants clefs.
+La figure~\ref{fig:etude_start_rsd} y répond en confrontant, pour chacune des quatre méthodes de découpage, le RSD DEM de la teneur en petites particules à deux prédictions markoviennes homogènes propagées depuis $t = \SI{0}{s}$ : l'une dont la matrice est apprise en incluant le régime transitoire ($\mathrm{start} = \SI{0}{s}$, courbe grise), l'autre dont la matrice est apprise sur le régime permanent ($\mathrm{start} = \SI{1.57}{s}$, soit un tour de tambour, courbe colorée). La zone grisée matérialise le régime transitoire de mise en mouvement du lit ($t < \SI{1.57}{s}$), durant lequel le RSD DEM part de valeurs élevées (0{,}7 à 2{,}0 selon le maillage, la configuration initiale séparant les espèces) et culmine autour de $\approx 2{,}0$ vers $t = \SI{0.5}{s}$ pour les maillages géométriques avant de décroître ; le tableau~\ref{tab:etude_start_rsd} donne les valeurs du RSD DEM à quelques instants clefs.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/etude_start_rsd.png}
-  \caption{Justification du choix de $start$ : RSD DEM de la teneur en petites particules et prédictions markoviennes homogènes propagées depuis $t = \SI{0}{s}$, dont la matrice est apprise soit en incluant le régime transitoire ($start = \SI{0}{s}$, gris), soit sur le régime permanent ($start = \SI{1.57}{s}$, couleur), pour les quatre méthodes de découpage (discretisation temporelle: $nlt = 2$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas). La zone grisée matérialise le régime transitoire ; l'écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ est indiqué dans chaque légende.}
+  \caption{Justification du choix de $\mathrm{start}$ : RSD DEM de la teneur en petites particules et prédictions markoviennes homogènes propagées depuis $t = \SI{0}{s}$, dont la matrice est apprise soit en incluant le régime transitoire ($\mathrm{start} = \SI{0}{s}$, gris), soit sur le régime permanent ($\mathrm{start} = \SI{1.57}{s}$, couleur), pour les quatre méthodes de découpage (discrétisation temporelle : $\mathrm{NLT} = 2$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = 8$ pas). La zone grisée matérialise le régime transitoire ; l'écart moyen $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ est indiqué dans chaque légende.}
   \label{fig:etude_start_rsd}
 \end{figure}
 
@@ -1260,42 +1191,42 @@ La figure~\ref{fig:etude_start_rsd} y répond en confrontant, pour chacune des q
   \end{tabular}
 \end{table}
 
-Deux constats se dégagent de cette confrontation. D'abord, l'apprentissage sur le régime permanent améliore la prédiction sur trois des quatre méthodes : l'écart moyen passe de 0{,}124 à 0{,}095 pour le Voronoï, de 0{,}115 à 0{,}111 pour le physique et de 0{,}110 à 0{,}096 pour le cartésien --- la matrice apprise sur le transitoire encode une dynamique de démarrage (chute brutale du RSD) qui n'est plus représentative du mélange établi et dégrade la suite de la prédiction. Le cylindrique fait exception (0{,}091 contre 0{,}103), l'écart entre les deux apprentissages restant de l'ordre des fluctuations. Ensuite, quelle que soit la méthode, la trajectoire prédite traverse le régime transitoire (descente initiale du RSD) puis rejoint son palier : c'est la qualité de ce palier, comparé au niveau DEM en régime établi, qui départage les apprentissages. La valeur $start = \SI{1.57}{s}$ --- un tour de tambour, cohérente avec $\tau$ --- est donc retenue.
+Deux constats se dégagent de cette confrontation. D'abord, l'apprentissage sur le régime permanent améliore la prédiction sur trois des quatre méthodes : l'écart moyen passe de 0{,}124 à 0{,}095 pour le Voronoï, de 0{,}115 à 0{,}111 pour le physique et de 0{,}110 à 0{,}096 pour le cartésien --- la matrice apprise sur le transitoire encode une dynamique de démarrage (chute brutale du RSD) qui n'est plus représentative du mélange établi et dégrade la suite de la prédiction. Le cylindrique fait exception (0{,}091 contre 0{,}103), l'écart entre les deux apprentissages restant de l'ordre des fluctuations. Ensuite, quelle que soit la méthode, la trajectoire prédite traverse le régime transitoire (descente initiale du RSD) puis rejoint son palier : c'est la qualité de ce palier, comparé au niveau DEM en régime établi, qui départage les apprentissages. La valeur $\mathrm{start} = \SI{1.57}{s}$ --- un tour de tambour, cohérente avec $\tau$ --- est donc retenue.
 
-L'étude comparative est complétée par trois valeurs de $start$ --- \SI{1.57}{s} (un tour), \SI{3.14}{s} (deux tours) et \SI{15.7}{s} (dix tours) --- pour le découpage de Voronoï à 10 cellules, l'espèce des grandes particules et des paramètres par ailleurs identiques ($NLT = 1$, $\tau = step = \SI{1.57}{s}$). La figure~\ref{fig:etude_start} montre l'écart $|\text{Markov} - \text{DEM}|$ pour les trois valeurs, et le tableau~\ref{tab:etude_start} en synthétise les niveaux d'écart RMS en régime établi.
+L'étude comparative est complétée par trois valeurs de $\mathrm{start}$ --- \SI{1.57}{s} (un tour), \SI{3.14}{s} (deux tours) et \SI{15.7}{s} (dix tours) --- pour le découpage de Voronoï à 10 cellules, l'espèce des grandes particules et des paramètres par ailleurs identiques ($\mathrm{NLT} = 1$, $\tau = \mathrm{step} = \SI{1.57}{s}$). La figure~\ref{fig:etude_start} montre l'écart $|\text{Markov} - \text{DEM}|$ pour les trois valeurs, et le tableau~\ref{tab:etude_start} en synthétise les niveaux d'écart RMS en régime établi.
 
 \begin{figure}[H]
   \centering
   \begin{minipage}{\textwidth}
     \centering
     \includegraphics[width=0.95\linewidth]{figures/ecart_voronoi_start157_lib.png}
-    \subcaption*{(a) $start = \SI{1.57}{s}$}
+    \subcaption*{(a) $\mathrm{start} = \SI{1.57}{s}$}
   \end{minipage}
 
   \vspace{0.25cm}
   \begin{minipage}{\textwidth}
     \centering
     \includegraphics[width=0.95\linewidth]{figures/ecart_voronoi_start314_lib.png}
-    \subcaption*{(b) $start = \SI{3.14}{s}$}
+    \subcaption*{(b) $\mathrm{start} = \SI{3.14}{s}$}
   \end{minipage}
 
   \vspace{0.25cm}
   \begin{minipage}{\textwidth}
     \centering
     \includegraphics[width=0.95\linewidth]{figures/ecart_voronoi_start1570_lib.png}
-    \subcaption*{(c) $start = \SI{15.7}{s}$}
+    \subcaption*{(c) $\mathrm{start} = \SI{15.7}{s}$}
   \end{minipage}
-  \caption{Étude d'influence du paramètre $start$ (découpage de Voronoï, 10 cellules, grandes particules, $NLT = 1$, $\tau = step = \SI{1.57}{s}$) : écart temporel RMS et carte des écarts absolus par cellule pour $start = \SI{1.57}{s}$, \SI{3.14}{s} et \SI{15.7}{s} (temps en secondes, nombre de tours en axe supérieur).}
+  \caption{Étude d'influence du paramètre $\mathrm{start}$ (découpage de Voronoï, 10 cellules, grandes particules, $\mathrm{NLT} = 1$, $\tau = \mathrm{step} = \SI{1.57}{s}$) : écart temporel RMS et carte des écarts absolus par cellule pour $\mathrm{start} = \SI{1.57}{s}$, \SI{3.14}{s} et \SI{15.7}{s} (temps en secondes, nombre de tours en axe supérieur).}
   \label{fig:etude_start}
 \end{figure}
 
 \begin{table}[H]
   \centering
-  \caption{Synthèse de l'étude d'influence du $start$ (découpage de Voronoï, 10 cellules, grandes particules) : niveau d'écart RMS $|\text{Markov}-\text{DEM}|$ en régime établi.}
+  \caption{Synthèse de l'étude d'influence du $\mathrm{start}$ (découpage de Voronoï, 10 cellules, grandes particules) : niveau d'écart RMS $|\text{Markov}-\text{DEM}|$ en régime établi.}
   \label{tab:etude_start}
   \begin{tabular}{lccc}
     \toprule
-    & $start = \SI{1.57}{s}$ & $start = \SI{3.14}{s}$ & $start = \SI{15.7}{s}$\\
+    & $\mathrm{start} = \SI{1.57}{s}$ & $\mathrm{start} = \SI{3.14}{s}$ & $\mathrm{start} = \SI{15.7}{s}$\\
     \midrule
     Nombre de tours écoulés & 1 & 2 & 10\\
     Écart RMS moyen (particules) & 3{,}7 & 3{,}1 & 3{,}4\\
@@ -1304,60 +1235,50 @@ L'étude comparative est complétée par trois valeurs de $start$ --- \SI{1.57}{
   \end{tabular}
 \end{table}
 
-Deux constats se dégagent. D'une part, les trois valeurs de $start$ conduisent à des niveaux d'écart quasi identiques en régime établi : dès $start = \SI{1.57}{s}$, le système a atteint son régime permanent et les probabilités apprises sont stables --- retarder davantage le départ n'apporte aucun gain de précision. D'autre part, retarder le $start$ ampute d'autant la fenêtre d'apprentissage exploitable et rapproche celle-ci de la fin de la simulation. Ces observations confirment le choix $start = \SI{1.57}{s}$ établi par la confrontation des prédictions de la figure~\ref{fig:etude_start_rsd}.
+Deux constats se dégagent. D'une part, les trois valeurs de $\mathrm{start}$ conduisent à des niveaux d'écart quasi identiques en régime établi : dès $\mathrm{start} = \SI{1.57}{s}$, le système a atteint son régime permanent et les probabilités apprises sont stables --- retarder davantage le départ n'apporte aucun gain de précision. D'autre part, retarder le $\mathrm{start}$ ampute d'autant la fenêtre d'apprentissage exploitable et rapproche celle-ci de la fin de la simulation. Ces observations confirment le choix $\mathrm{start} = \SI{1.57}{s}$ établi par la confrontation des prédictions de la figure~\ref{fig:etude_start_rsd}.
 
 % ------------------------------------------------------------
-\subsection{Choix de l'écart entre blocs \texorpdfstring{$step = \SI{1.57}{s}$}{step = 1,57 s}}
+\subsection{Choix de l'écart entre blocs \texorpdfstring{$\mathrm{step} = \SI{1.57}{s}$}{step = 1,57 s}}
 \label{annexe:step}
 
-Lorsque plusieurs blocs d'apprentissage sont utilisés ($NLT > 1$), le paramètre $step$ définit l'écart entre les débuts de deux blocs consécutifs : le bloc $k$ démarre à l'instant $start + k\,(step + \tau)$ (cf.\ figure~\ref{fig:schema_parametres} du corps du texte). Ce paramètre contrôle donc la manière dont les blocs pavent l'axe temporel :
+Lorsque plusieurs blocs d'apprentissage sont utilisés ($\mathrm{NLT} > 1$), le paramètre $\mathrm{step}$ définit l'écart entre les débuts de deux blocs consécutifs : le bloc $k$ démarre à l'instant $\mathrm{start} + k\,(\mathrm{step} + \tau)$ (cf.\ figure~\ref{fig:schema_parametres} du corps du texte). Ce paramètre contrôle donc la manière dont les blocs pavent l'axe temporel :
 
 \begin{itemize}[itemsep=2pt]
-  \item $step < \tau$ ferait se chevaucher les fenêtres d'observation de deux blocs successifs : les mêmes transitions seraient comptées plusieurs fois, introduisant une corrélation artificielle entre blocs qui affaiblit l'intérêt de la moyenne de l'équation~\eqref{eq:matrice_transition} ;
-  \item $step \gg \tau$ espacerait excessivement les blocs : à $NLT$ fixé, la fenêtre totale d'apprentissage $NLT \times (step + \tau)$ s'étendrait au point d'empiéter sur la fin de la simulation, réduisant la fenêtre de validation, sans gain statistique notable puisque le régime permanent est stationnaire ;
-  \item $step = \tau = \SI{1.57}{s}$ fait se succéder les blocs de manière contiguë et sans recouvrement : chaque bloc correspond exactement à un tour de tambour supplémentaire, chaque transition observée est comptée une seule fois, et la fenêtre d'apprentissage reste compacte.
+  \item $\mathrm{step} < \tau$ ferait se chevaucher les fenêtres d'observation de deux blocs successifs : les mêmes transitions seraient comptées plusieurs fois, introduisant une corrélation artificielle entre blocs qui affaiblit l'intérêt de la moyenne de l'équation~\eqref{eq:matrice_transition} ;
+  \item $\mathrm{step} \gg \tau$ espacerait excessivement les blocs : à $\mathrm{NLT}$ fixé, la fenêtre totale d'apprentissage $\mathrm{NLT} \times (\mathrm{step} + \tau)$ s'étendrait au point d'empiéter sur la fin de la simulation, réduisant la fenêtre de validation, sans gain statistique notable puisque le régime permanent est stationnaire ;
+  \item $\mathrm{step} = \tau = \SI{1.57}{s}$ fait se succéder les blocs de manière contiguë et sans recouvrement : chaque bloc correspond exactement à un tour de tambour supplémentaire, chaque transition observée est comptée une seule fois, et la fenêtre d'apprentissage reste compacte.
 \end{itemize}
 
-La justification du choix de $step$ tient en deux points. D'une part, il s'agit d'éviter le surapprentissage du modèle : avec $step \geq \tau$, les fenêtres d'observation des blocs ne se recouvrent pas, chaque transition n'est comptée qu'une seule fois, et la matrice moyenne de l'équation~\eqref{eq:matrice_transition} agrège des observations indépendantes plutôt que de réapprendre plusieurs fois les mêmes transitions. D'autre part, $step$ structure la construction de la chaîne inhomogène, et sa valeur diffère selon le type de chaîne. Pour les \textbf{chaînes homogènes}, $step = \tau = \SI{1.57}{s}$ : les blocs contigus couvrent chacun un tour de tambour et leur moyenne produit la matrice unique, la cohérence $\tau = step = start = \SI{1.57}{s}$ alignant la chronologie d'apprentissage sur la période physique du tambour. Pour les \textbf{chaînes inhomogènes}, les blocs sont au contraire espacés de sept tours : la fenêtre de simulation fournit alors $(60 - 1{,}57)/(1{,}57 \times 7) = 5$ blocs, donc cinq matrices $\mathbf{P}^{(k)}$ réparties sur toute la durée du mélange --- chacune capture l'état de la dynamique à une phase distincte de la ségrégation (début de l'homogénéisation, ségrégation en cours, régime asymptotique), et la prédiction de l'équation~\eqref{eq:prediction_inhomogene} consomme successivement la matrice du bloc dont la fenêtre temporelle contient le pas courant.
+La justification du choix de $\mathrm{step}$ tient en deux points. D'une part, il s'agit d'éviter le surapprentissage du modèle : avec $\mathrm{step} \geq \tau$, les fenêtres d'observation des blocs ne se recouvrent pas, chaque transition n'est comptée qu'une seule fois, et la matrice moyenne de l'équation~\eqref{eq:matrice_transition} agrège des observations indépendantes plutôt que de réapprendre plusieurs fois les mêmes transitions. D'autre part, $\mathrm{step}$ structure la construction de la chaîne inhomogène, et sa valeur diffère selon le type de chaîne. Pour les \textbf{chaînes homogènes}, $\mathrm{step} = \tau = \SI{1.57}{s}$ : les blocs contigus couvrent chacun un tour de tambour et leur moyenne produit la matrice unique, la cohérence $\tau = \mathrm{step} = \mathrm{start} = \SI{1.57}{s}$ alignant la chronologie d'apprentissage sur la période physique du tambour. Pour les \textbf{chaînes inhomogènes}, les blocs sont au contraire espacés de sept tours : la fenêtre de simulation fournit alors $(60 - 1{,}57)/(1{,}57 \times 7) = 5$ blocs, donc cinq matrices $\mathbf{P}^{(k)}$ réparties sur toute la durée du mélange --- chacune capture l'état de la dynamique à une phase distincte de la ségrégation (début de l'homogénéisation, ségrégation en cours, régime asymptotique), et la prédiction de l'équation~\eqref{eq:prediction_inhomogene} consomme successivement la matrice du bloc dont la fenêtre temporelle contient le pas courant.
 
 % ------------------------------------------------------------
 % ------------------------------------------------------------
-\subsection{Conformité de la matrice de transition : repère de labélisation et raffinage temporel \texorpdfstring{$dt$}{dt}}
+\subsection{Conformité de la matrice de transition et raffinage temporel \texorpdfstring{$dt$}{dt}}
 \label{annexe:dt}
 
 La matrice de transition n'est exploitable que si chacune de ses colonnes est définie : une cellule jamais observée comme cellule source produit un dénominateur nul dans l'équation~\eqref{eq:matrice_transition}, donc des \textit{NaN} dans la colonne correspondante --- ces \textit{NaN} sont conservés tels quels dans le calcul, et non remplacés par des zéros, précisément pour que la condition d'homogénéisation (chaque colonne somme à un) puisse être réellement vérifiée. Le critère de conformité retenu est l'absence totale de \textit{NaN}, contrôlée sur les matrices arrondies au centième présentées dans le corps du texte.
 
-L'étude fait varier le raffinage temporel $dt$ de 157 à 2 pas de sortie, à configuration fixée ($nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$), et compte le nombre de colonnes contenant des \textit{NaN} (pire cas des deux espèces). Elle est menée pour les découpages géométriques dans deux repères de labélisation : le repère du tambour (axes fixes du laboratoire) et le repère du lit (origine au barycentre du régime permanent, axes alignés sur les directions principales du lit). La figure~\ref{fig:etude_dt} et le tableau~\ref{tab:etude_dt} rassemblent les résultats.
+\paragraph{Rôle du raffinage temporel $dt$.} Le formalisme de l'équation~\eqref{eq:matrice_transition} permet d'échantillonner, au sein de chaque bloc d'apprentissage, une paire de transition $(t,\ t+\tau)$ tous les $dt$ pas de sortie DEM. Le raffinage $dt$ fixe donc le \emph{nombre de paires d'observation} dont l'estimation de $\mathbf{P}$ est la moyenne : $dt = \tau$ (157 pas) donne une seule paire par tour --- option la plus simple, retenue dans le corps du texte --- tandis que $dt = 8$ pas en fournit $\lfloor \tau/dt \rfloor = 19$ par tour. Sur le régime permanent, augmenter le nombre de paires ne modifie pas la moyenne attendue de la matrice (stationnarité) mais \emph{lisse le bruit d'échantillonnage} : avec deux paires au total ($\mathrm{NLT} = 2$, $dt = \tau$), chaque coefficient $P_{i,j}$ ne vaut qu'à un pas de $1/N_j$ près, $N_j$ étant l'effectif de la cellule source aux instants de départ. $dt$ joue enfin un rôle de garde-fou pour la conformité : plus les paires sont nombreuses, plus il est probable que chaque cellule soit observée au moins une fois comme source.
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.9\textwidth]{figures/etude_dt_nan.png}
-  \caption{Conformité de la matrice de transition selon le raffinage temporel $dt$ : nombre de colonnes contenant des \textit{NaN}, pour les découpages géométriques dans les deux repères de labélisation et pour les découpages statistiques ($nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$).}
-  \label{fig:etude_dt}
-\end{figure}
+\paragraph{Résultat pour les chaînes homogènes.} À configuration fixée ($\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$), l'étude fait varier $dt$ de $157$ à $2$ pas de sortie, pour les quatre méthodes de découpage et le pire cas des deux espèces (tableau~\ref{tab:etude_dt}) : \textbf{aucune colonne de \textit{NaN} n'apparaît pour aucune valeur de $dt$} --- la conformité est déjà acquise pour $dt = \tau$, ce qui justifie l'apprentissage à une paire de transition par tour utilisé dans le corps du texte. Attention toutefois à la résolution : les cellules marginales du découpage cartésien ne comptent que quelques grains (voire un seul) à certains instants de départ, si bien que leurs lignes de $\mathbf{P}$ ne sont significatives qu'à la maille $1/N$ près (jusqu'à $1/2$) ; les versions raffinées $dt = 8$ pas, rassemblées en annexe~\ref{annexe:matrices_dt8}, montrent les mêmes structures avec un bruit dix-neuf fois réduit.
 
 \begin{table}[H]
   \centering
-  \caption{Nombre de colonnes de $\mathbf{P}$ contenant des \textit{NaN} selon $dt$. La matrice est conforme lorsque ce nombre est nul.}
+  \caption{Nombre de colonnes de $\mathbf{P}$ contenant des \textit{NaN} selon le raffinage temporel $dt$, pire cas des deux espèces (chaîne homogène, $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$). La matrice est conforme lorsque ce nombre est nul : ici pour toutes les valeurs testées.}
   \label{tab:etude_dt}
   \begin{tabular}{lccccccc}
     \toprule
     $dt$ (pas) & 157 & 78 & 39 & 16 & 8 & 4 & 2\\
     \midrule
-    Cartésien (repère tambour)   & 1 & 1 & 1 & 1 & 1 & 1 & 1\\
-    Cylindrique (repère tambour) & 2 & 2 & 1 & 1 & 1 & 1 & 1\\
-    Cartésien (repère du lit)    & 0 & 0 & 0 & 0 & \textbf{0} & 0 & 0\\
-    Cylindrique (repère du lit)  & 0 & 0 & 0 & 0 & \textbf{0} & 0 & 0\\
-    Voronoï                      & 0 & 0 & 0 & 0 & \textbf{0} & 0 & 0\\
-    Physique                     & 0 & 0 & 0 & 0 & \textbf{0} & 0 & 0\\
+    Cartésien   & 0 & 0 & 0 & 0 & 0 & 0 & 0\\
+    Cylindrique & 0 & 0 & 0 & 0 & 0 & 0 & 0\\
+    Voronoï     & 0 & 0 & 0 & 0 & 0 & 0 & 0\\
+    Physique    & 0 & 0 & 0 & 0 & 0 & 0 & 0\\
     \bottomrule
   \end{tabular}
 \end{table}
 
-Deux enseignements se dégagent. D'abord, dans le repère du tambour, les découpages géométriques ne deviennent conformes pour \emph{aucune} valeur de $dt$ : leurs cellules marginales --- coin bas de la grille cartésienne, couronne interne cylindrique dont une partie est au-dessus du lit --- sont structurellement vides, et aucun raffinage temporel ne peut y créer d'observations. La configuration des cellules impose donc, pour ces méthodes, un temps d'observation qui serait infini : c'est le changement de repère (labélisation dans le repère du lit) qui rétablit la conformité, en alignant les cellules sur la zone effectivement occupée. Les découpages statistiques, dont les centroïdes se placent d'eux-mêmes dans le lit, sont conformes quel que soit $dt$ --- y compris avec une seule paire d'observation par bloc ($dt = 157$) : leur besoin en temps d'observation est minimal, ce qui constitue un avantage opérationnel notable.
-
-Ensuite, une fois le repère adapté, la conformité est acquise pour toutes les valeurs de $dt$ testées ; la valeur $dt = 8$ pas est retenue pour l'ensemble des études du mémoire car elle fournit, en plus de la conformité, un nombre de paires d'observation suffisant pour stabiliser les probabilités (une vingtaine de paires par bloc), tout en restant d'un coût de construction modéré. C'est pour cette valeur de $dt$ que les matrices présentées dans le corps du texte sont conformes, la présente étude en constituant la justification.
-
+\paragraph{Conséquence pour les chaînes inhomogènes.} La situation est différente pour les chaînes inhomogènes, dont chaque matrice $\mathbf{P}^{(k)}$ est apprise sur un bloc \emph{isolé} (cinq blocs espacés de sept tours). Avec $dt = \tau$, la matrice d'un bloc ne repose alors que sur \emph{une} paire de transition : les cellules dont l'effectif est nul à l'instant de départ considéré y produisent une colonne de \textit{NaN} --- c'est le cas de 1 à 2 colonnes sur 10 pour le premier bloc ($t = \SI{1.57}{s}$, cellules marginales peu peuplées au premier tour), quel que soit le découpage ; les quatre blocs suivants restent conformes. Le raffinage $dt = 8$ pas, qui observe chaque cellule sur dix-neuf départs espacés par tour, restaure la conformité de toutes les matrices. \textbf{Les chaînes inhomogènes sont en conséquence construites avec $dt = 8$ pas}, compromis entre richesse statistique et conformité, là où les chaînes homogènes --- qui moyennent deux blocs contigus --- n'en ont pas besoin.
 % ------------------------------------------------------------
 \subsection{Justification des matrices distinctes par espèce}
 \label{annexe:especes}
@@ -1367,7 +1288,7 @@ Cette étude de sensibilité compare l'erreur de prédiction du modèle selon qu
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/etude_especes_rsd.png}
-  \caption{Justification des matrices distinctes par espèce : RSD DEM de la teneur en petites particules vs prédictions markoviennes construites sans distinction d'espèce (matrice unique, gris) et avec distinction (matrices par espèce, couleur), pour les quatre méthodes de découpage (discretisation temporelle: $nlt = 2$, $start = \SI{1.57}{s}$, $step = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
+  \caption{Justification des matrices distinctes par espèce : RSD DEM de la teneur en petites particules vs prédictions markoviennes construites sans distinction d'espèce (matrice unique, gris) et avec distinction (matrices par espèce, couleur), pour les quatre méthodes de découpage (discrétisation temporelle : $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
   \label{fig:etude_especes}
 \end{figure}
 
@@ -1379,19 +1300,19 @@ Cette étude de sensibilité compare l'erreur de prédiction du modèle selon qu
     \toprule
     & Cartésien & Cylindrique & Voronoï & Physique\\
     \midrule
-    Sans distinction & 0{,}370 & 0{,}146 & 0{,}215 & 0{,}202\\
-    Avec distinction & \textbf{0{,}078} & \textbf{0{,}098} & \textbf{0{,}083} & \textbf{0{,}103}\\
+    Sans distinction & 0{,}398 & 0{,}145 & 0{,}234 & 0{,}204\\
+    Avec distinction & \textbf{0{,}096} & \textbf{0{,}103} & \textbf{0{,}095} & \textbf{0{,}111}\\
     \bottomrule
   \end{tabular}
 \end{table}
 
-Constat : quelle que soit la méthode de découpage, la matrice unique fait converger le RSD prédit vers zéro --- c'est-à-dire vers un mélange parfait fictif --- car les deux comptages, propagés par les mêmes probabilités, deviennent proportionnels et la teneur locale s'uniformise artificiellement. La distinction des espèces réduit l'écart moyen d'un facteur 1,5 à 4,7 selon la méthode (0{,}215 contre 0{,}083 pour le Voronoï) : les petites particules (percolation rapide) et les grandes (transport en bloc, piégeage en zone passive) n'obéissent pas aux mêmes probabilités de saut, comme le montrent d'ailleurs les cartographies de matrices du corps du texte (figures~\ref{fig:matrice_cartesien}, \ref{fig:matrices_voronoi} et~\ref{fig:matrice_physique}), et seule la propagation par des matrices propres à chaque espèce préserve le contraste de teneur qui fonde l'observation de la ségrégation.
+Constat : quelle que soit la méthode de découpage, la matrice unique fait converger le RSD prédit vers zéro --- c'est-à-dire vers un mélange parfait fictif --- car les deux comptages, propagés par les mêmes probabilités, deviennent proportionnels et la teneur locale s'uniformise artificiellement. La distinction des espèces réduit l'écart moyen d'un facteur 1,4 à 4,2 selon la méthode (0{,}234 contre 0{,}095 pour le Voronoï, 0{,}398 contre 0{,}096 pour le cartésien) : les petites particules (percolation rapide) et les grandes (transport en bloc, piégeage en zone passive) n'obéissent pas aux mêmes probabilités de saut, comme le montrent d'ailleurs les cartographies de matrices du corps du texte (figures~\ref{fig:matrice_cartesien}, \ref{fig:matrices_voronoi} et~\ref{fig:matrice_physique}), et seule la propagation par des matrices propres à chaque espèce préserve le contraste de teneur qui fonde l'observation de la ségrégation.
 
 % ------------------------------------------------------------
 \subsection{Illustration de la teneur locale}
 \label{annexe:teneur}
 
-La figure~\ref{fig:schema_teneur_locale} illustre la définition de la teneur locale en petites particules sur un découpage cartésien : dans chaque cellule $i$, la teneur $c_i$ est le rapport du nombre de petites particules au nombre total de particules de la cellule. Un mélange parfaitement homogène donnerait la même teneur dans toutes les cellules (ici $c_i = 0{,}5$ pour un mélange équimassique en nombre) ; les écarts de teneur entre cellules --- de $0{,}12$ à $0{,}88$ dans cet exemple --- signent la ségrégation.
+La figure~\ref{fig:schema_teneur_locale} illustre la définition de la teneur locale en petites particules sur un découpage cartésien : dans chaque cellule $i$, la teneur $c_i$ est le rapport du nombre de petites particules au nombre total de particules de la cellule. Un mélange parfaitement homogène donnerait la même teneur dans toutes les cellules --- valeur qui serait ici $c_i = 350/1030 \approx 0{,}34$ pour le matériau du mémoire (les valeurs $0{,}12$, $0{,}5$, $0{,}88$ de la figure sont purement illustratives) ; les écarts de teneur entre cellules signent la ségrégation.
 
 \begin{figure}[H]
   \centering
@@ -1399,7 +1320,7 @@ La figure~\ref{fig:schema_teneur_locale} illustre la définition de la teneur lo
   \caption{Illustration de la teneur locale en petites particules $c_i$ dans un découpage cartésien : rapport du nombre de petites particules (bleu) au nombre total de particules de la cellule. Les écarts de teneur entre cellules signent la ségrégation.}
   \label{fig:schema_teneur_locale}
 \end{figure}
-\section{Details sur le nombre de particules}
+\section{Détails sur le nombre de particules}
 \label{annexe:nombre_particules}
 \subsection{Découpage cartésien}
 
@@ -1446,7 +1367,7 @@ La figure~\ref{fig:schema_teneur_locale} illustre la définition de la teneur lo
   \label{fig:nb_total_cylindrique}
 \end{figure}
 
-\subsection{Découpage voronoi}
+\subsection{Découpage de Voronoï}
 
 \begin{figure}[H]
   \centering
@@ -1492,5 +1413,38 @@ La figure~\ref{fig:schema_teneur_locale} illustre la définition de la teneur lo
   \label{fig:nb_total_physique}
 \end{figure}
 
+% ------------------------------------------------------------
+\section{Matrices de transition apprises avec le raffinage \texorpdfstring{$dt = 8$}{dt = 8} pas}
+\label{annexe:matrices_dt8}
+
+Cette annexe rassemble, pour référence, les matrices de transition des quatre méthodes de découpage apprises avec le raffinage temporel $dt = 8$ pas --- paramètre temporel standard de toutes les chaînes construites dans ce mémoire (tableau~\ref{tab:parametres}), dont la conformité est démontrée en annexe~\ref{annexe:dt}. Avec $dt = 8$ pas, chaque bloc d'apprentissage fournit $\lfloor \tau/dt \rfloor = 19$ paires de transition (espacées de \SI{0.08}{s}) au lieu d'une seule lorsque $dt = \tau$ : les coefficients de ces matrices sont donc des moyennes sur un jeu d'observations dix-neuf fois plus riche, moins sensibles aux fluctuations d'échantillonnage évoquées au \S\ref{subsec:res_discretisation}. Leur structure --- diagonale dominante, bandes latérales de flux --- est néanmoins tout à fait comparable à celle des matrices $dt = \tau$ du corps du texte. La convention de représentation est la même (convention du rapport : axe horizontal = cellule source, axe vertical = cellule d'arrivée, coefficients affichés au centième, grande espèce à gauche et petite espèce à droite).
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/matrice_cartesien_especes.png}
+  \caption{Matrices de transition du découpage cartésien (10 bandes) apprises avec le raffinage $dt = 8$ pas (19 paires de transition par bloc, $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$).}
+  \label{fig:matrice_cartesien_dt8}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/matrice_cylindrique_especes.png}
+  \caption{Matrices de transition du découpage cylindrique (10 secteurs) apprises avec le raffinage $dt = 8$ pas (19 paires de transition par bloc, $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$).}
+  \label{fig:matrice_cylindrique_dt8}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/matrice_voronoi_especes.png}
+  \caption{Matrices de transition du découpage de Voronoï apprises avec le raffinage $dt = 8$ pas (19 paires de transition par bloc, $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$).}
+  \label{fig:matrice_voronoi_dt8}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/matrice_physique_especes.png}
+  \caption{Matrices de transition du découpage physique apprises avec le raffinage $dt = 8$ pas (19 paires de transition par bloc, $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$).}
+  \label{fig:matrice_physique_dt8}
+\end{figure}
 
 \end{document}

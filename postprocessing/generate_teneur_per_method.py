@@ -231,7 +231,7 @@ class EtudeMethode:
         return trajs, t_mk, acts
 
 def config_for(method, **kw):
-    base = dict(nlt=2, tau=TAU, step=TAU, dt=8, start_index=START)
+    base = dict(nlt=2, tau=TAU, step=TAU, dt=TAU, start_index=START)
     base.update(kw)
     return ExperimentConfig(method=method, **base)
 
@@ -402,7 +402,9 @@ if __name__ == "__main__":
         # Model entraine depuis START, prediction depuis 0s, chaines inhomogenes avec blocs espaces de 7 tours
         STEP_INH = 6 * TAU
         NLT_INH = int((N_T - START) // (STEP_INH + TAU))
-        cfg_inh = config_for(et.method, nlt=NLT_INH, step=STEP_INH)
+        # Inhomogène : blocs isolés → dt=8 pour la conformité de chaque
+        # matrice de bloc (cf. commentaire dans etudes_librairie.py).
+        cfg_inh = config_for(et.method, nlt=NLT_INH, step=STEP_INH, dt=8)
         trajs_inh, t_mk_inh, acts_inh = et.markov_traj_inhomogeneous(cfg_inh, start_pred=0)
         n_inh = min(len(trajs_inh["small"]), len(trajs_inh["large"]))
         C_mk_inh = concentration_from_S(trajs_inh["small"][:n_inh], trajs_inh["large"][:n_inh])
