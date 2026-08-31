@@ -177,7 +177,7 @@ $C(t_k)$ : vecteur, de taille $N$, dont la composante $c_i(t_k)$ représente la 
 
 $t_k$ : instant d'observation du mélangeur, instant de prédiction du modèle de Markov
 
-$\gamma_{j \to  i}$ : probabilité de transition d'une particule de la cellule $j$ vers la cellule $i$
+$\gamma_{j \to i}$ : probabilité de transition d'une particule de la cellule $j$ vers la cellule $i$
 
 $\mathbf{P}$ : matrice de transition, de taille $N \times N$
 
@@ -388,7 +388,7 @@ Le modèle de Markov est construit sur ce vecteur de nombre de particules par ce
 avec $N^a_i(t_k)$ et $N^b_i(t_k)$ les nombres de petites (espèce $a$) et de grandes particules (espèce $b$) dans la cellule $i$ à l'instant $t_k$.
 
 La figure~\ref{fig:maillage_melangeur} donne au lecteur une idée du processus de mélange que le modèle doit reproduire : le mélangeur non discrétisé, avec ses particules de tailles distinctes, est montré à quatre instants --- configuration initiale séparée, lit en écoulement à $t=\SI{1.57}{s}$ après un tour, mélange avancé à $t = \SI{10}{s}$ après environ 6 tours, régime tardif $t = \SI{30}{s}$ où les petites particules se sont concentrées au cœur du lit. 
-La figure~\ref{fig:maillage_melangeur_voronoi} montre les  particules à trois instants $t=\SI{1.57}{s}$, $t=\SI{10}{s}$ et $t=\SI{30}{s}$ après discrétisation (découpage de Voronoï) : chaque grain porte la couleur de sa cellule.
+La figure~\ref{fig:maillage_melangeur_voronoi} montre les particules à trois instants $t=\SI{1.57}{s}$, $t=\SI{10}{s}$ et $t=\SI{30}{s}$ après discrétisation (découpage de Voronoï) : chaque grain porte la couleur de sa cellule.
 
 
 \begin{figure}[H]
@@ -660,7 +660,7 @@ Une fois les particules affectées aux différentes cellules, les centres sont r
   =
   \frac{1}{\left|\mathcal{C}_k^{(q)}\right|}
   \sum_{p \in \mathcal{C}_k^{(q)}}
-  \mathbf{z}_p ,
+  \mathbf{z}_p,
   \label{eq:update_kmeans}
 \end{equation}
 
@@ -1177,7 +1177,7 @@ La figure~\ref{fig:etude_start_rsd} y répond en confrontant, pour chacune des q
 
 \begin{table}[H]
   \centering
-  \caption{RSD DEM de la teneur en petites particules  à quelques instants, par méthode de découpage : le régime transitoire ($t < \SI{1.57}{s}$) présente des valeurs hautes et erratiques ; la décroissance s'installe au-delà.}
+  \caption{RSD DEM de la teneur en petites particules à quelques instants, par méthode de découpage : le régime transitoire ($t < \SI{1.57}{s}$) présente des valeurs hautes et erratiques ; la décroissance s'installe au-delà.}
   \label{tab:etude_start_rsd}
   \begin{tabular}{lccccccc}
     \toprule
