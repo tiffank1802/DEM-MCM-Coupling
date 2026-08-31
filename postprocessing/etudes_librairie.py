@@ -692,7 +692,7 @@ def chaines_inhomogenes(etudes):
     resume = {}
     for ax, (key, et) in zip(axes.flat, etudes.items()):
         cfg = config_for(et.method)
-        cfg_inh = config_for(et.method, nlt=NLT_INH, step=STEP_INH)
+        cfg_inh = config_for(et.method, nlt=NLT_INH, step=STEP_INH, dt=8)
         rsd_h, t_h, acts = et.markov_rsd(cfg, start_pred=0)
         rsd_i, t_i = et.markov_rsd_inhomogeneous(cfg_inh, start_pred=0)
         n = min(len(rsd_h), len(rsd_i))
@@ -755,7 +755,7 @@ def chaines_inhomogenes(etudes):
 
     # garder aussi l'ancien nom pour compatibilité physique
     et = etudes["physique"]
-    cfg_inh = config_for(et.method, nlt=NLT_INH, step=STEP_INH)
+    cfg_inh = config_for(et.method, nlt=NLT_INH, step=STEP_INH, dt=8)
     trajs, t_mk, acts = et.markov_traj_inhomogeneous(cfg_inh, start_pred=0)
     act = acts["small"] & acts["large"]
     cells = np.where(act)[0]
