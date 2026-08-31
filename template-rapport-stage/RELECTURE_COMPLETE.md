@@ -141,22 +141,26 @@ Anomalies relevées, par sévérité :
 
 | # | Sévérité | Localisation | Constat | Action |
 |---|---|---|---|---|
-| F1 | **HAUTE** | §7.3 + caption fig:rsd_homogene_inhomogene + annexe step | Le texte cite 5 matrices apprises à 1,57 / 14,13 / 26,69 / 39,25 / 51,81 s (step=7τ) — or `etudes_librairie.py`, générateur de la figure actuelle, utilise `STEP_INH = 6τ` → départs réels 1,57 / 12,56 / 23,55 / 34,54 / 45,53 s | Régénérer la figure §7.3 + tab:inhomogene avec `step=7τ` (5 blocs tiennent : dernier départ 51,81+1,57 ≤ 58,4 s) ou aligner le texte sur 6τ ; décision au moment de la régénération finale |
+| F1 | ~~HAUTE~~ | §7.3 + §3.3 + captions fig/tab inhomogène + annexe step | Le texte citait 5 matrices à 1,57 / 14,13 / 26,69 / 39,25 / 51,81 s (step=7τ libre) alors que la figure sur disque (code : `STEP_INH = 6τ` libre) correspond à des départs séparés de 7τ : 1,57 / 12,56 / 23,55 / 34,54 / 45,53 s | **corrigé** : texte aligné sur la réalité du code/figure (débuts séparés de 7 tours, `step = 6τ ≈ 9,42 s` d'intervalle libre) — formulation « débuts des blocs séparés de sept tours » conservée, fidèle à l'intention de l'auteur (commentaire du code) |
 | F2 | MOYENNE | captions §7.2.2 (fig:comparaison_*, tab:ecart_rsd), fig:teneur_* | `dt = 8 pas` (vrai aujourd'hui ; migrations dt=τ en attente) | Synchronisées au run final (PLAN_MIGRATION_DT_TAU.md §3) ; risque extrême de l'oublier → checklist de clôture |
 | F3 | ~~MOYENNE~~ | §7.3 « (NLT = 2, dt = 8 pas) » | formulation confuse (NLT devrait évoquer 5) | **corrigée** (« $dt = 8$ pas » seul) |
 | F4 | ~~MOYENNE~~ | annexe matrices dt8 : « paramètre standard de toutes les chaînes (tableau) » | faux depuis le passage du tableau à dt=τ | **corrigée** |
 | F5 | BASSE | corps entier | 93 tirets cadratins `---` | passage 4 : en varier ~1/3 |
-| F6 | BASSE | §6.2 fig:schema_parametres caption vs texte table (valeur step « τ / 7τ ») | deux conventions d'écriture cohabitent (blocs « tuilés » vs « espacés de sept tours ») : clarté → formulation unique | passage 2 |
-| F7 | INFO | scripts : 2ᵉ et 3ᵉ `cfg_inh` d'`etudes_librairie.py` héritaient du nouveau `dt=τ` par défaut (NaN bloc 1) | **corrigé** (dt=8 explicite ×3) | — |
+| F6 | ~~BASSE~~ | §6.2 fig:schema_parametres caption vs texte table | schéma générique (aucun chiffre de step) : pas de conflit ; avec F1, la formulation « débuts séparés de sept tours (step = 6τ libre) » est désormais uniforme ; titre annexe step neutralisé | **corrigé** |
+| F7 | INFO | scripts : 2ᵉ et 3ᵉ `cfg_inh` d'`etudes_librairie.py` héritaient du nouveau `dt=τ` par défaut (NaN bloc 1) | **corrigé** (dt=8 explicite ×4, y compris `cfg_inh_t` raté au premier passage) | — |
+| F8 | HAUTE (code) | `etudes_librairie.py` : après bascule du défaut à dt=τ, plusieurs études référencées auraient été régénérées en silence avec dt=τ alors que leurs PNG/captions annoncent dt=8 | **corrigé** par figeage explicite : `etude_start` (caption l.1174 dt=8 ✓), `etude_especes` (caption dt=8 ✓), `matrices_annotees` (annexe matrices dt8 ✓), `table_erreurs` et `etude_step` (suptitres PNG mentionnant dt=8 ; PNG **non référencés** dans main.tex — artefacts dormants). Désormais : défaut τ = figures de corps uniquement (= cible du lot prédiction) ; tout le reste est épinglé | faire la même revue sur les autres scripts régénérateurs au moment du lot prédiction |
 
 ### Checklist de clôture (à cocher à la fin de la régénération finale)
 
-- [ ] figures teneur ×4, nombre ×12, comparaison RSD + teneur, tables
-      4/inhomogène, espèces régénérées sous `config_for(dt=TAU)` + captions
-      passées à `dt = \tau`
-- [ ] F1 tranchée (texte OU figure aligné) et `NLT_INH` recompté
+- [ ] figures teneur ×4, nombre ×12, comparaison RSD + teneur régénérées sous
+      `config_for(dt=TAU)` + captions passées à `dt = \tau` (les tables
+      inhomogène/espèces et les figures start/espèces/matrices-dt8 restent
+      volontairement à dt=8, déjà épinglé côté code)
+- [x] F1 tranchée : texte aligné sur le code/figure (débuts à 1,57/12,56/23,55/34,54/45,53 s ; `step = 6τ` libre) — `NLT_INH = 5` inchangé (cohérent)
 - [ ] valeurs RSD/teneur/paliers citées dans §7, §8, §8.1 (0,096–0,111 ;
-      0,05/0,35/0,17/0,11 ; « divisé par plus de deux ») revérifiées sur
-      sorties fraîches
+      0,05/0,35/0,17/0,11 ; « divisé par plus de deux » ; 0,083/0,101/0,041/0,061)
+      revérifiées sur sorties fraîches — attention : les écarts homogènes
+      changeront légèrement sous dt=τ, les `inhomogene_table.txt` également
+      (blocs 2–5 propres), parole à ré-harmoniser sur tout le corpus
 - [ ] relance des 4 contrôles automatiques (§6 tableau du haut)
 - [ ] sauvegarde `main_backup_*.tex` avant commit final

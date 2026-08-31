@@ -464,8 +464,10 @@ def etude_start(etudes):
     fig, axes = plt.subplots(2, 2, figsize=(12.5, 8.6), sharex=True)
     resume = {}
     for ax, (key, et) in zip(axes.flat, etudes.items()):
-        cfg_tr = config_for(et.method, start_index=0)
-        cfg_pm = config_for(et.method, start_index=START)
+        # dt=8 explicite : la figure publiee (annexe start) a ete produite
+        # avec ce raffinage et sa caption le mentionne
+        cfg_tr = config_for(et.method, start_index=0, dt=8)
+        cfg_pm = config_for(et.method, start_index=START, dt=8)
         rsd_tr, t_tr, acts = et.markov_rsd(cfg_tr, start_pred=0)
         rsd_pm, t_pm, _ = et.markov_rsd(cfg_pm, start_pred=0)
         t_dem = np.arange(0, N_T, 20)
@@ -570,7 +572,8 @@ def etude_nlt(etudes):
 def etude_step(etudes):
     et = etudes["physique"]
     steps = [40, 80, 157, 314, 471]
-    errs = [_erreur(et, config_for(et.method, nlt=3, step=s)) for s in steps]
+    # PNG non reference dans le rapport mais titre interne annoncant dt=8 : figer
+    errs = [_erreur(et, config_for(et.method, nlt=3, step=s, dt=8)) for s in steps]
     for s, e in zip(steps, errs):
         print(f"  step={s} -> {e:.4f}")
     fig, ax = plt.subplots(figsize=(8.6, 5))
@@ -596,7 +599,9 @@ def etude_especes(etudes):
     fig, axes = plt.subplots(2, 2, figsize=(12.5, 8.6), sharex=True)
     resume = {}
     for ax, (key, et) in zip(axes.flat, etudes.items()):
-        cfg = config_for(et.method)
+        # dt=8 explicite : la figure publiee (annexe especes) a ete produite
+        # avec ce raffinage et sa caption le mentionne
+        cfg = config_for(et.method, dt=8)
         rsd_avec, t_mk, acts = et.markov_rsd(cfg, start_pred=0)
         rsd_sans, _ = et.markov_rsd_single_P(cfg, start_pred=0)
         n = min(len(rsd_avec), len(rsd_sans))
@@ -729,7 +734,7 @@ def chaines_inhomogenes(etudes):
 
     # teneur locale par cellule, chaîne inhomogène – pour toutes méthodes (demande utilisateur)
     for key_ten, et_ten in etudes.items():
-        cfg_inh_t = config_for(et_ten.method, nlt=NLT_INH, step=STEP_INH)
+        cfg_inh_t = config_for(et_ten.method, nlt=NLT_INH, step=STEP_INH, dt=8)
         trajs_t, t_mk_t, acts_t = et_ten.markov_traj_inhomogeneous(cfg_inh_t, start_pred=0)
         act_t = acts_t["small"] & acts_t["large"]
         cells_t = np.where(act_t)[0]
@@ -1256,7 +1261,9 @@ def matrices_annotees(etudes):
     somme à un).
     """
     for key, et in etudes.items():
-        cfg = config_for(et.method)
+        # dt=8 explicite : ces PNG sont les versions raffinees presentees en
+        # annexe (figure matrice_*_especes, 19 paires par bloc)
+        cfg = config_for(et.method, dt=8)
         P_small = et.build_P(cfg, "small")
         P_large = et.build_P(cfg, "large")
         for sp, P in (("small", P_small), ("large", P_large)):
@@ -1296,7 +1303,8 @@ def table_erreurs(etudes):
     noms_sp = {"large": "grandes", "small": "petites"}
     for key in ("cartesien", "cylindrique", "voronoi", "physique"):
         et = etudes[key]
-        cfg = config_for(et.method)
+        # dt=8 explicite : le suptitre des figures l'annonce
+        cfg = config_for(et.method, dt=8)
         for sp in ("large", "small"):
             P_clean, act = clean_transition_matrix(
                 np.nan_to_num(et.build_P(cfg, sp), nan=0.0))
