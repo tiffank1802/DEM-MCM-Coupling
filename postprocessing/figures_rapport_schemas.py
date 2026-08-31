@@ -225,6 +225,7 @@ def schema_cartesien():
     cs = cs_bounds[1:-1]
     # segment utilisé pour tracer la surface libre et ses annotations
     xl = np.array([-1.35 * R, 1.25 * R])
+    cell_centers = []
     for c in cs:
         p0 = c * tangent
         # Intersection avec le tambour : |p0 + t normal| <= R.
@@ -243,10 +244,12 @@ def schema_cartesien():
         if t_min < t_max:
             p1, p2 = p0 + t_min * normal, p0 + t_max * normal
             ax.plot([p1[0], p2[0]], [p1[1], p2[1]], "k-", lw=2.4, zorder=4)
-    # numérotation des cellules, au centre de chaque bande
+            cell_centers.append((p1 + p2) / 2)
+    # numérotation des cellules, placée dans la partie basse occupée par le lit
     for k in range(nbands):
         cm = 0.5 * (cs_bounds[k] + cs_bounds[k + 1])
-        p = cm * tangent
+        # Décalage vers l'intérieur du lit (côté inférieur de la surface).
+        p = cm * tangent - 0.45 * normal
         ax.text(p[0], p[1], str(k), fontsize=13, ha="center", va="center",
                 color="k",
                 bbox=dict(fc="white", ec="none", alpha=0.85, pad=0.12),
