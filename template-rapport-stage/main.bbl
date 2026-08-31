@@ -53,8 +53,8 @@
       \strng{authorbibnamehash}{faeda3dc0385c2338d97307a76fb9d15}
       \strng{authornamehash}{faeda3dc0385c2338d97307a76fb9d15}
       \strng{authorfullhash}{7e60e85f2e39fb318ecf24c18cc834da}
-      \field{sortinit}{2}
-      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
+      \field{sortinit}{3}
+      \field{sortinithash}{ad6fe7482ffbd7b9f99c9e8b5dccd3d7}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{journaltitle}{Waste Management}
@@ -86,8 +86,8 @@
       \strng{authorbibnamehash}{95c063cb8336718e96baaceeced88d01}
       \strng{authornamehash}{95c063cb8336718e96baaceeced88d01}
       \strng{authorfullhash}{95c063cb8336718e96baaceeced88d01}
-      \field{sortinit}{3}
-      \field{sortinithash}{ad6fe7482ffbd7b9f99c9e8b5dccd3d7}
+      \field{sortinit}{4}
+      \field{sortinithash}{9381316451d1b9788675a07e972a12a7}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{journaltitle}{Géotechnique}
@@ -99,6 +99,162 @@
       \range{pages}{19}
       \verb{doi}
       \verb 10.1680/geot.1979.29.1.47
+      \endverb
+    \endentry
+    \entry{sullivan1927}{report}{}
+      \name{author}{3}{}{%
+        {{hash=f7ca160029bbe94b0b216ce0da580f0e}{%
+           family={Sullivan},
+           familyi={S\bibinitperiod},
+           given={John\bibnamedelima D.},
+           giveni={J\bibinitperiod\bibinitdelim D\bibinitperiod}}}%
+        {{hash=832395986a9d676014dc883479858498}{%
+           family={Maier},
+           familyi={M\bibinitperiod},
+           given={Christian\bibnamedelima G.},
+           giveni={C\bibinitperiod\bibinitdelim G\bibinitperiod}}}%
+        {{hash=b203a008a83413647e911dc6b47f485a}{%
+           family={Ralston},
+           familyi={R\bibinitperiod},
+           given={Oliver\bibnamedelima C.},
+           giveni={O\bibinitperiod\bibinitdelim C\bibinitperiod}}}%
+      }
+      \list{institution}{1}{%
+        {U.S. Bureau of Mines}%
+      }
+      \list{location}{1}{%
+        {Washington, D.C.}%
+      }
+      \strng{namehash}{58450db39f3d2651c51ffd092ca73eab}
+      \strng{fullhash}{58450db39f3d2651c51ffd092ca73eab}
+      \strng{bibnamehash}{58450db39f3d2651c51ffd092ca73eab}
+      \strng{authorbibnamehash}{58450db39f3d2651c51ffd092ca73eab}
+      \strng{authornamehash}{58450db39f3d2651c51ffd092ca73eab}
+      \strng{authorfullhash}{58450db39f3d2651c51ffd092ca73eab}
+      \field{sortinit}{5}
+      \field{sortinithash}{20e9b4b0b173788c5dace24730f47d8c}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{number}{384}
+      \field{title}{Passage of Solid Particles Through Rotary Cylindrical Kilns}
+      \field{type}{Technical Paper}
+      \field{year}{1927}
+      \field{pages}{1\bibrangedash 42}
+      \range{pages}{42}
+    \endentry
+    \entry{chatterjee1983}{article}{}
+      \name{author}{4}{}{%
+        {{hash=cfb9c019993da5080a009f610514d35d}{%
+           family={Chatterjee},
+           familyi={C\bibinitperiod},
+           given={A.},
+           giveni={A\bibinitperiod}}}%
+        {{hash=313383c855044c9c1acd408093080d17}{%
+           family={Sathe},
+           familyi={S\bibinitperiod},
+           given={A.\bibnamedelimi V.},
+           giveni={A\bibinitperiod\bibinitdelim V\bibinitperiod}}}%
+        {{hash=ef1bf999fc420c708ddca3c8fea29fd3}{%
+           family={Mukhopadhyay},
+           familyi={M\bibinitperiod},
+           given={M.\bibnamedelimi P.},
+           giveni={M\bibinitperiod\bibinitdelim P\bibinitperiod}}}%
+        {{hash=082eec6878003c2892562926c5e4e721}{%
+           family={Sen},
+           familyi={S\bibinitperiod},
+           given={P.\bibnamedelimi K.},
+           giveni={P\bibinitperiod\bibinitdelim K\bibinitperiod}}}%
+      }
+      \strng{namehash}{aa192e2e7e0da622a8f40e53970957ef}
+      \strng{fullhash}{1217353c64d88ef21aa3096620355e80}
+      \strng{bibnamehash}{aa192e2e7e0da622a8f40e53970957ef}
+      \strng{authorbibnamehash}{aa192e2e7e0da622a8f40e53970957ef}
+      \strng{authornamehash}{aa192e2e7e0da622a8f40e53970957ef}
+      \strng{authorfullhash}{1217353c64d88ef21aa3096620355e80}
+      \field{sortinit}{6}
+      \field{sortinithash}{b33bc299efb3c36abec520a4c896a66d}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Metallurgical Transactions B}
+      \field{number}{3}
+      \field{title}{Flow of materials in rotary kilns used for sponge iron manufacture: {Part I}. {Effect} of some operational variables}
+      \field{volume}{14}
+      \field{year}{1983}
+      \field{pages}{375\bibrangedash 381}
+      \range{pages}{7}
+    \endentry
+    \entry{saeman1951}{article}{}
+      \name{author}{1}{}{%
+        {{hash=c35b473dcfec724aba2715de2154eaf2}{%
+           family={Saeman},
+           familyi={S\bibinitperiod},
+           given={W.\bibnamedelimi C.},
+           giveni={W\bibinitperiod\bibinitdelim C\bibinitperiod}}}%
+      }
+      \strng{namehash}{c35b473dcfec724aba2715de2154eaf2}
+      \strng{fullhash}{c35b473dcfec724aba2715de2154eaf2}
+      \strng{bibnamehash}{c35b473dcfec724aba2715de2154eaf2}
+      \strng{authorbibnamehash}{c35b473dcfec724aba2715de2154eaf2}
+      \strng{authornamehash}{c35b473dcfec724aba2715de2154eaf2}
+      \strng{authorfullhash}{c35b473dcfec724aba2715de2154eaf2}
+      \field{sortinit}{7}
+      \field{sortinithash}{108d0be1b1bee9773a1173443802c0a3}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Chemical Engineering Progress}
+      \field{number}{10}
+      \field{title}{Passage of solids through rotary kilns: factors affecting time of passage}
+      \field{volume}{47}
+      \field{year}{1951}
+      \field{pages}{508\bibrangedash 514}
+      \range{pages}{7}
+    \endentry
+    \entry{priessen2021}{article}{}
+      \name{author}{5}{}{%
+        {{hash=7245d70e38302661590bb6563f7cdbcd}{%
+           family={Prie{ß}en},
+           familyi={P\bibinitperiod},
+           given={Joscha},
+           giveni={J\bibinitperiod}}}%
+        {{hash=911e4228c62dca0fb3df143ff1add94b}{%
+           family={Kawka},
+           familyi={K\bibinitperiod},
+           given={Torben},
+           giveni={T\bibinitperiod}}}%
+        {{hash=671af5b98eb13eba9e8f0378bcc55a27}{%
+           family={Alisic},
+           familyi={A\bibinitperiod},
+           given={Jasmina},
+           giveni={J\bibinitperiod}}}%
+        {{hash=3fb7d8052815f1de287822370883f4b2}{%
+           family={Behrens},
+           familyi={B\bibinitperiod},
+           given={Malte},
+           giveni={M\bibinitperiod}}}%
+        {{hash=febad2cc90a59a45b7e7c90258821627}{%
+           family={Schultz},
+           familyi={S\bibinitperiod},
+           given={Heyko\bibnamedelima Juergen},
+           giveni={H\bibinitperiod\bibinitdelim J\bibinitperiod}}}%
+      }
+      \strng{namehash}{bacaae0827a7e33d95ef8282d412dd8f}
+      \strng{fullhash}{a1fb7e8ba5683b01d05e819202d9a7ad}
+      \strng{bibnamehash}{bacaae0827a7e33d95ef8282d412dd8f}
+      \strng{authorbibnamehash}{bacaae0827a7e33d95ef8282d412dd8f}
+      \strng{authornamehash}{bacaae0827a7e33d95ef8282d412dd8f}
+      \strng{authorfullhash}{a1fb7e8ba5683b01d05e819202d9a7ad}
+      \field{sortinit}{8}
+      \field{sortinithash}{a231b008ebf0ecbe0b4d96dcc159445f}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Powder Technology}
+      \field{title}{Rotary drums with sectional internals: Experimental investigation on the influence of section number and section length}
+      \field{volume}{386}
+      \field{year}{2021}
+      \field{pages}{262\bibrangedash 274}
+      \range{pages}{13}
+      \verb{doi}
+      \verb 10.1016/j.powtec.2021.03.031
       \endverb
     \endentry
     \entry{berthiaux2004}{article}{}
@@ -120,8 +276,8 @@
       \strng{authorbibnamehash}{b6cdb7dca006d00c910853cc81cebd55}
       \strng{authornamehash}{b6cdb7dca006d00c910853cc81cebd55}
       \strng{authorfullhash}{b6cdb7dca006d00c910853cc81cebd55}
-      \field{sortinit}{4}
-      \field{sortinithash}{9381316451d1b9788675a07e972a12a7}
+      \field{sortinit}{9}
+      \field{sortinithash}{0a5ebc79d83c96b6579069544c73c7d4}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{journaltitle}{The Canadian Journal of Chemical Engineering}
@@ -164,8 +320,8 @@
       \strng{authorbibnamehash}{aa1bd6e9f389bbea6d39c19a4c765eba}
       \strng{authornamehash}{aa1bd6e9f389bbea6d39c19a4c765eba}
       \strng{authorfullhash}{5d0aad53cf8164a268f5959c4ff22948}
-      \field{sortinit}{5}
-      \field{sortinithash}{20e9b4b0b173788c5dace24730f47d8c}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{journaltitle}{Computers {\&} Chemical Engineering}
@@ -198,8 +354,8 @@
       \strng{authorbibnamehash}{f4d8cd44f1280c2dd6a1bdc22aec71b9}
       \strng{authornamehash}{f4d8cd44f1280c2dd6a1bdc22aec71b9}
       \strng{authorfullhash}{f4d8cd44f1280c2dd6a1bdc22aec71b9}
-      \field{sortinit}{6}
-      \field{sortinithash}{b33bc299efb3c36abec520a4c896a66d}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{journaltitle}{Powder Technology}
@@ -241,8 +397,8 @@
       \strng{authorbibnamehash}{a2b061c4606cb553c6952a0d6dfba3b3}
       \strng{authornamehash}{a2b061c4606cb553c6952a0d6dfba3b3}
       \strng{authorfullhash}{94f33dad34ac285857d4e327b5340378}
-      \field{sortinit}{7}
-      \field{sortinithash}{108d0be1b1bee9773a1173443802c0a3}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{journaltitle}{Powder Technology}
@@ -292,8 +448,8 @@
       \strng{authorbibnamehash}{3b38e1324521707f679e14abad7583d9}
       \strng{authornamehash}{3b38e1324521707f679e14abad7583d9}
       \strng{authorfullhash}{bf0c3c262d91b028109b05e1c7cb462f}
-      \field{sortinit}{8}
-      \field{sortinithash}{a231b008ebf0ecbe0b4d96dcc159445f}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{booktitle}{Particles 2025 --- IX International Conference on Particle-based Methods}
@@ -337,8 +493,8 @@
       \strng{authorbibnamehash}{6eff14fde192db524fc8dcbaf0d5678e}
       \strng{authornamehash}{6eff14fde192db524fc8dcbaf0d5678e}
       \strng{authorfullhash}{9a6264a383767530b53a02a4e9c47e71}
-      \field{sortinit}{9}
-      \field{sortinithash}{0a5ebc79d83c96b6579069544c73c7d4}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{journaltitle}{Chemical Engineering Science}
@@ -374,7 +530,6 @@
       \field{title}{The transverse motion of solids in rotating cylinders—forms of motion and transition behavior}
       \field{volume}{118}
       \field{year}{2001}
-      \true{nocite}
       \field{pages}{251\bibrangedash 270}
       \range{pages}{20}
       \verb{doi}

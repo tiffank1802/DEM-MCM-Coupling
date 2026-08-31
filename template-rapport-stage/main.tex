@@ -273,7 +273,7 @@ Ces travaux convergent vers un constat : la qualité d'un modèle markovien gran
 \section{Matériel et méthodes}
 \label{sec:methode}
 
-Cette section décrit successivement : le matériau de référence et la géométrie du tambour (\S\ref{subsec:materiau}) ; le principe de la simulation DEM qui fournit les données d'apprentissage (\S\ref{subsec:dem}) ; le formalisme markovien (vecteur d'état, matrice de transition, chaînes homogène et inhomogène) ainsi que les paramètres qui gouvernent sa construction (\S\ref{subsec:markov}) ; enfin les méthodes de discrétisation spatiale du mélangeur (\S\ref{subsec:discretisation}). Chaque choix méthodologique est justifié au fil du texte ; les études de sensibilité qui étayent quantitativement le choix des paramètres $\tau$, $\mathrm{NLT}$, $\mathrm{start}$ et $\mathrm{step}$ sont regroupées en annexe~\ref{annexe:parametres}.
+Cette section décrit successivement : le matériau de référence et la géométrie du tambour (\S\ref{subsec:materiau}) ; le principe de la simulation DEM qui fournit les données d'apprentissage (\S\ref{subsec:dem}) ; le formalisme markovien (vecteur d'état, matrice de transition, chaînes homogène et inhomogène) ainsi que les paramètres qui gouvernent sa construction (\S\ref{subsec:markov}) ; enfin les méthodes de discrétisation spatiale du mélangeur (\S\ref{subsec:discretisation}). Chaque choix méthodologique est justifié au fil du texte ; les études de sensibilité qui étayent quantitativement le choix des paramètres de discrétisation temporelle sont regroupées en annexe~\ref{annexe:parametres}.
 
 % ------------------------------------------------------------
 \subsection{Matériau de référence}
@@ -350,7 +350,7 @@ La figure~\ref{fig:schema_forces} illustre ce bilan dans le cas du tambour tourn
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.7\textwidth]{figures/principe_simulation_DEM.png}
-  \caption{Bilan des actions mécaniques sur une particule de la zone d'équilibre du granulaire : force de contact normale $\mathbf{F}_{n,ij}$ et tangentielle $\mathbf{F}_{t,ij}$ au contact inter-grains, moment de rotation $\mathbf{M}_{r,ij}$, pesanteur $m_i\mathbf{g}$ .}
+  \caption{Bilan des actions mécaniques sur une particule de la zone d'équilibre du granulaire }
   \label{fig:schema_forces}
 \end{figure}
 
@@ -372,20 +372,7 @@ L'état du mélangeur à un instant $t_k$ est décrit par un vecteur $\mathbf{S}
 S_i(t_{k+1}) =\sum_{j=0}^{N-1}  \gamma_{j \to i}S_j(t_k).
 \label{eq:principe_projection}
 \end{align}
-Le modèle de Markov est construit sur ce vecteur de nombre de particules par cellule ; pour évaluer le modèle et observer la ségrégation d'une population de grains bidisperses, on construira en fin de chaîne un vecteur de \emph{teneur}:
-\begin{equation}
-  C(t_k) 
-= 
-\begin{bmatrix}
-  
-  c_0(t_k)=N^a_0(t_k) / \big( N^a_0(t_k) + N^b_0(t_k) \big)\\
-\vdots\\ 
-  c_{N-1}(t_k)=N^a_{N-1}(t_k) / \big( N^a_{N-1}(t_k) + N^b_{N-1}(t_k) \big) 
-   
-\end{bmatrix}
-\label{eq:def_teneur_locale}
-\end{equation}
-avec $N^a_i(t_k)$ et $N^b_i(t_k)$ les nombres de petites (espèce $a$) et de grandes particules (espèce $b$) dans la cellule $i$ à l'instant $t_k$.
+
 
 La figure~\ref{fig:maillage_melangeur} donne au lecteur une idée du processus de mélange que le modèle doit reproduire : le mélangeur non discrétisé, avec ses particules de tailles distinctes, est montré à quatre instants --- configuration initiale séparée, lit en écoulement à $t=\SI{1.57}{s}$ après un tour, mélange avancé à $t = \SI{10}{s}$ après environ 6 tours, régime tardif $t = \SI{30}{s}$ où les petites particules se sont concentrées au cœur du lit. 
 La figure~\ref{fig:maillage_melangeur_voronoi} montre les particules à trois instants $t=\SI{1.57}{s}$, $t=\SI{10}{s}$ et $t=\SI{30}{s}$ après discrétisation (découpage de Voronoï) : chaque grain porte la couleur de sa cellule.
@@ -394,14 +381,14 @@ La figure~\ref{fig:maillage_melangeur_voronoi} montre les particules à trois in
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.9\linewidth]{figures/pv_melange_instants.png}
-  \caption{Mélangeur non discrétisé à des instants distincts (particules aux diamètres réels, petites \SI{4}{mm} en bleu, grandes \SI{8}{mm} en rouge) : état initial séparé, lit en écoulement ($t = \SI{1.57}{s}$), mélange avancé ($t = \SI{10}{s}$) et régime tardif ($t = \SI{30}{s}$), où les petites particules se concentrent au cœur du lit.}
+  \caption{Mélangeur non discrétisé à des instants distincts : état initial séparé, lit en écoulement ($t = \SI{1.57}{s}$), mélange avancé ($t = \SI{10}{s}$) et régime tardif ($t = \SI{30}{s}$)}
   \label{fig:maillage_melangeur}
 \end{figure}
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/pv_melange_instants_voronoi.png}
-  \caption{Mélangeur discrétisé (découpage de Voronoï, 10 cellules) aux mêmes instants : chaque particule porte la couleur de la cellule qui la contient ; la dynamique particulaire est agrégée à l'échelle de ces cellules.}
+  \caption{Mélangeur discrétisé (découpage de Voronoï, 10 cellules) }
   \label{fig:maillage_melangeur_voronoi}
 \end{figure}
 
@@ -410,7 +397,7 @@ La construction du modèle se fait suivant trois étapes principales, détaillé
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/schema_construction_markov.png}
-  \caption{Algorithme de construction et d'exploitation du modèle de Markov : les données DEM servent d'abord à ajuster la méthode de maillage sur le régime permanent, puis à labelliser chaque particule à chaque instant ; les vecteurs d'état de comptage qui en découlent alimentent l'apprentissage de la ou des matrices de transition, la prédiction, et enfin la validation par confrontation à la référence DEM.}
+  \caption{Algorithme de construction et d'exploitation du modèle de Markov }
   \label{fig:schema_construction_markov}
 \end{figure}
 
@@ -432,9 +419,22 @@ On considère l'état du mélangeur à un instant $t_k$ défini par le contenu d
 \end{equation}
 où la composante $S_i(t_k)$, $i \in \{0, \dots, N-1\}$, est le \textbf{nombre de particules} présentes dans la cellule $i$ à l'instant $t_k$. C'est ce vecteur nombre de particules qui sert à construire le modèle de Markov : les matrices de transition étant estimées séparément pour chaque espèce (\S\ref{subsubsec:matrice}), le comptage est effectué par espèce (nombre de petites particules par cellule pour la matrice des petites, nombre de grandes pour celle des grandes).
 
-On définit par ailleurs la \textbf{teneur locale} en une espèce de la cellule $i$ (Annexe~\ref{annexe:teneur}), c'est-à-dire le nombre de particules de cette espèce rapporté au nombre total de particules de la cellule. 
-Elle est reconstruite en fin de chaîne, à partir des nombres de particules prédits pour chaque espèce, afin d'évaluer le modèle et d'observer la ségrégation --- elle discrimine les zones enrichies ou appauvries en une espèce là où le comptage brut ne renseigne que sur l'occupation du mélangeur. La figure~\ref{fig:schema_teneur_locale}, en annexe~\ref{annexe:teneur}, illustre cette teneur locale sur un découpage cartésien.
-
+On définit par ailleurs la \textbf{teneur locale} en une espèce de la cellule $i$ (Equation~\ref{eq:def_teneur_locale}), c'est-à-dire le nombre de particules de cette espèce rapporté au nombre total de particules de la cellule. 
+Elle est reconstruite en fin de chaîne, à partir des nombres de particules prédits pour chaque espèce, afin d'évaluer le modèle et d'observer la ségrégation 
+% Le modèle de Markov est construit sur ce vecteur de nombre de particules par cellule ; pour évaluer le modèle et observer la ségrégation d'une population de grains bidisperses, on construira en fin de chaîne un vecteur de \emph{teneur}:
+\begin{equation}
+  C(t_k) 
+= 
+\begin{bmatrix}
+  
+  c_0(t_k)=N^a_0(t_k) / \big( N^a_0(t_k) + N^b_0(t_k) \big)\\
+\vdots\\ 
+  c_{N-1}(t_k)=N^a_{N-1}(t_k) / \big( N^a_{N-1}(t_k) + N^b_{N-1}(t_k) \big) 
+   
+\end{bmatrix}
+\label{eq:def_teneur_locale}
+\end{equation}
+avec $N^a_i(t_k)$ et $N^b_i(t_k)$ les nombres de petites (espèce $a$) et de grandes particules (espèce $b$) dans la cellule $i$ à l'instant $t_k$.
 Concrètement, le vecteur d'état se construit de la manière suivante. Une fois le mélangeur discrétisé, chaque particule se voit attribuer un \textbf{label} qui dépend de son appartenance à une cellule : à l'instant $t_k$, la particule $p$ de coordonnées $(x_p, y_p, z_p)$ reçoit le label $l_p(t_k) \in \{0, \dots, N-1\}$ de la cellule qui la contient. Cette labélisation est  propre à chaque méthode de découpage (\S\ref{subsec:discretisation}), qui est ajusté une seule fois sur le régime permanent puis appliqué à l'identique sur tous les pas de temps : les labels ainsi produits constituent la référence DEM avec laquelle la prédiction de Markov sera comparée. Le vecteur d'état de comptage s'obtient alors en dénombrant, pour chaque cellule $i$, les particules dont le label vaut $i$ :
 \begin{equation}
   S_i(t_k) = \sum_{p=1}^{N_p} \phi_p(i, t_k),
@@ -569,7 +569,7 @@ Le mélangeur est segmenté selon les trois axes $x$, $y$, $z$ en un nombre fix�
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.62\textwidth]{figures/schema_decoupage_cartesien.png}
-  \caption{Principe du découpage cartésien : dix bandes parallèles à la surface libre du lit, numérotées de 0 à 9 ; leurs limites se prolongent au-delà de l'enceinte circulaire du tambour (cellules marginales au-dessus de la surface, peu ou pas occupées). La numérotation globale suit l'ordre lexicographique $x \to y \to z$.}
+  \caption{Principe du découpage cartésien }
   \label{fig:schema_cartesien}
 \end{figure}
 
@@ -591,7 +591,7 @@ Les particules sont ensuite affectées à des cellules définies par des interva
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/schema_decoupage_cylindrique.png}
-  \caption{Principe du découpage cylindrique : (a) coupe transverse --- les limites des cellules (traits forts) partitionnent la section du tambour en dix secteurs angulaires de la configuration retenue, numérotés de $0$ à $9$ et centrés sur le barycentre du lit ; les segmentations radiale ($r$) et axiale ($z$) restent disponibles mais ne sont pas exploitées ici ($n_r = n_z = 1$) ; (b) vue de côté montrant les tranches axiales ($z$) optionnelles. La numérotation globale suit l'ordre radial $\to$ angulaire $\to$ axial.}
+  \caption{Principe du découpage cylindrique }
   \label{fig:schema_cylindrique}
 \end{figure}
 
@@ -707,7 +707,7 @@ L'algorithme de partitionnement reste un k-means, mais opéré dans un espace de
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/schema_decoupage_voronoi.png}
-  \caption{Principe des découpages statistiques par k-moyennes (illustration à $K = 8$ cellules sur un lit modélisé ; les frontières effectives des cellules sont tracées en traits pleins et les centroïdes figurés par des croix noires) : (a) découpage de Voronoï fondé sur les seules positions $\mathbf{z}_p = [x_p\ y_p\ z_p]^T$ ; (b) découpage physique fondé sur $\mathbf{z}_p = [x_p\ y_p\ z_p\ \|\mathbf{v}_p\|]^T$ standardisé --- la norme de la vitesse, élevée en surface libre et faible au cœur du lit, y produit des cellules et des centres nettement distincts, stratifiés selon la mobilité des grains.}
+  \caption{Principe des découpages statistiques par k-moyennes  (a) découpage de Voronoï ; (b) découpage physique }
   \label{fig:schema_voronoi}
 \end{figure}
 
@@ -778,7 +778,7 @@ La matrice des grandes particules montre une probabilité diagonale élevée ($0
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/matrice_cartesien_especes.png}
-  \caption{Matrices de transition du découpage cartésien (10 bandes ; discrétisation temporelle : $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = \tau$ --- une paire de transition par tour). La version apprise avec le raffinage $dt = 8$ pas est présentée en annexe~\ref{annexe:matrices_dt8} (figure~\ref{fig:matrice_cartesien_dt8}).}
+  \caption{Matrices de transition du découpage cartésien (10 bandes ; discrétisation temporelle : $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = \tau$ --- une paire de transition par tour). La version apprise avec le raffinage $dt = \tau$ pas est présentée en annexe~\ref{annexe:matrices_dt8} (figure~\ref{fig:matrice_cartesien_dt8}).}
   \label{fig:matrice_cartesien}
 \end{figure}
 
@@ -791,7 +791,7 @@ La cellule~$0$, située près du bord supérieur du tambour, présente une forte
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/teneur_cartesien.png}
-  \caption{Évolution de la teneur locale en petites particules au cours du temps – découpage cartésien (10 bandes, Markov homogène, $\mathrm{NLT}=2$, $\mathrm{start}=\SI{1.57}{s}$, $\mathrm{step}=\tau=\SI{1.57}{s}$, $dt=8$ pas).}
+  \caption{Évolution de la teneur locale en petites particules au cours du temps :découpage cartésien }
   \label{fig:teneur_cartesien}
 \end{figure}
 
@@ -815,7 +815,7 @@ On observe une probabilité diagonale marquée pour la cellule~$5$ ($P_{55} \app
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/matrice_cylindrique_especes.png}
-  \caption{Matrices de transition du découpage cylindrique (10 secteurs ; discrétisation temporelle : $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = \tau$ --- une paire de transition par tour). La version apprise avec le raffinage $dt = 8$ pas est présentée en annexe~\ref{annexe:matrices_dt8} (figure~\ref{fig:matrice_cylindrique_dt8}).}
+  \caption{Matrices de transition du découpage cylindrique (10 secteurs)}
   \label{fig:matrice_cylindrique}
 \end{figure}
 
@@ -848,7 +848,7 @@ La diagonale prononcée de la matrice des grandes particules révèle leur tenda
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/matrice_voronoi_especes.png}
-  \caption{Matrices de transition du découpage de Voronoï (discrétisation temporelle : $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = \tau$ --- une paire de transition par tour). La version apprise avec le raffinage $dt = 8$ pas est présentée en annexe~\ref{annexe:matrices_dt8} (figure~\ref{fig:matrice_voronoi_dt8}).}
+  \caption{Matrices de transition du découpage de Voronoï }
   \label{fig:matrices_voronoi}
 \end{figure}
 
@@ -882,7 +882,7 @@ Les matrices de transition pour les grandes particules (gauche) et les petites p
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/matrice_physique_especes.png}
-  \caption{Matrices de transition du découpage physique (discrétisation temporelle : $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = \tau$ --- une paire de transition par tour). La version apprise avec le raffinage $dt = 8$ pas est présentée en annexe~\ref{annexe:matrices_dt8} (figure~\ref{fig:matrice_physique_dt8}).}
+  \caption{Matrices de transition du découpage physique }
   \label{fig:matrice_physique}
 \end{figure}
 
@@ -893,7 +893,7 @@ On observe une ségrégation marquée : en régime établi, les cellules~$0$, $8
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/teneur_physique.png}
-  \caption{Évolution de la teneur locale en petites particules au cours du temps – découpage physique.}
+  \caption{Évolution de la teneur locale en petites particules au cours du temps: découpage physique.}
   \label{fig:teneur_physique_homogene}
 \end{figure}
 
@@ -915,13 +915,13 @@ La figure~\ref{fig:comparaison_methodes_rsd} présente l'évolution temporelle d
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/comparaison_methodes_rsd.png}
-  \caption{Influence de la méthode de discrétisation spatiale sur la prédiction : RSD DEM vs prédiction markovienne homogène pour les quatre méthodes, à nombre de cellules identique (10 cellules) et à configuration identique ($\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
+  \caption{Influence de la méthode de discrétisation spatiale sur la prédiction : RSD DEM vs prédiction markovienne homogène pour les quatre méthodes}
   \label{fig:comparaison_methodes_rsd}
 \end{figure}
 
 \begin{table}[H]
   \centering
-  \caption{Écart moyen sur $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ pour les quatre méthodes de discrétisation (10 cellules, chaîne homogène, configuration $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
+  \caption{Écart moyen sur $|\mathrm{RSD}_{\text{Markov}} - \mathrm{RSD}_{\text{DEM}}|$ pour les quatre méthodes de discrétisation }
   \label{tab:ecart_rsd_methodes}
   \begin{tabular}{lcccc}
     \toprule
@@ -940,7 +940,7 @@ On observe que le modèle cartésien présente initialement un écart plus élev
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.85\textwidth]{figures/comparaison_methodes_teneur.png}
-  \caption{Approche globale sur les courbes de teneur : écart absolu moyen de teneur par cellule entre la prédiction markovienne homogène et la référence DEM, pour les quatre méthodes de découpage à nombre de cellules identique (10 cellules, configuration $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = 8$ pas).}
+  \caption{Approche globale sur les courbes de teneur : écart absolu moyen de teneur }
   \label{fig:comparaison_methodes_teneur}
 \end{figure}
 
@@ -957,7 +957,7 @@ Les chaînes inhomogènes suivent de plus près la référence DEM que les chaî
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/rsd_homogene_inhomogene_methodes.png}
-  \caption{RSD de la teneur en petites particules pour les quatre méthodes, 10 cellules chacune ($\mathrm{start} = \SI{1.57}{s}$, $\tau = \SI{1.57}{s}$, $dt = 8$ pas ; chaîne inhomogène : cinq matrices apprises à 1{,}57~s, 12{,}56~s, 23{,}55~s, 34{,}54~s et 45{,}53~s, $\mathrm{step} = 6\tau$).}
+  \caption{RSD de la teneur en petites particules pour les quatre méthodes, 10 cellules chacune (chaîne inhomogène : cinq matrices apprises à 1{,}57~s, 12{,}56~s, 23{,}55~s, 34{,}54~s et 45{,}53~s, $\mathrm{step} = 6\tau$).}
   \label{fig:rsd_homogene_inhomogene}
 \end{figure}
 
