@@ -219,16 +219,32 @@ def schema_cartesien():
     # les constantes cs décalent les coupes le long de la surface.
     normal = np.array([np.sin(a), np.cos(a)])
     tangent = np.array([np.cos(a), -np.sin(a)])
-    cs = np.linspace(-0.92 * R, 0.92 * R, nbands + 1)
+    # Neuf limites internes pour dix cellules. Chaque trait est tronqué
+    # aux deux frontières physiques : paroi circulaire et surface du lit.
+    cs_bounds = np.linspace(-0.92 * R, 0.92 * R, nbands + 1)
+    cs = cs_bounds[1:-1]
     # segment utilisé pour tracer la surface libre et ses annotations
     xl = np.array([-1.35 * R, 1.25 * R])
     for c in cs:
         p0 = c * tangent
-        p1, p2 = p0 - 1.8 * R * normal, p0 + 1.8 * R * normal
-        ax.plot([p1[0], p2[0]], [p1[1], p2[1]], "k-", lw=2.4, zorder=4)
+        # Intersection avec le tambour : |p0 + t normal| <= R.
+        t_circle = np.sqrt(max(R**2 - np.dot(p0, p0), 0.0))
+        t_min, t_max = -t_circle, t_circle
+        # Intersection avec la surface libre ; on ne conserve que le côté lit.
+        # La surface est y = -0.15 R - tan(a) x.
+        surface_at_t0 = p0[1] + 0.15 * R + np.tan(a) * p0[0]
+        surface_slope = normal[1] + np.tan(a) * normal[0]
+        t_surface = -surface_at_t0 / surface_slope
+        if surface_slope > 0:
+            t_min = max(t_min, t_surface)
+        else:
+            t_max = min(t_max, t_surface)
+        if t_min < t_max:
+            p1, p2 = p0 + t_min * normal, p0 + t_max * normal
+            ax.plot([p1[0], p2[0]], [p1[1], p2[1]], "k-", lw=2.4, zorder=4)
     # numérotation des cellules, au centre de chaque bande
     for k in range(nbands):
-        cm = 0.5 * (cs[k] + cs[k + 1])
+        cm = 0.5 * (cs_bounds[k] + cs_bounds[k + 1])
         p = cm * tangent
         ax.text(p[0], p[1], str(k), fontsize=13, ha="center", va="center",
                 color="k",
@@ -251,7 +267,7 @@ def schema_cartesien():
     ax.axis("off")
     ax.set_title(
         "Découpage cartésien : dix bandes perpendiculaires à la surface libre\n"
-        "(les limites de bandes se prolongent hors de l'enceinte du tambour)",
+        "(les limites s'arrêtent sur la paroi et la surface du lit)",
         fontsize=12,
     )
     fig.tight_layout()
