@@ -13,3 +13,7 @@
 *.synctex.gz
 *.pdf
 ```
+# Artefacts de session agent
+__pycache__/
+template-rapport-stage/_archive/
+template-rapport-stage/main.bbl-SAVE-ERROR
