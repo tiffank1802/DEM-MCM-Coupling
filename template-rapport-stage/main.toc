@@ -38,25 +38,23 @@
 \contentsline {paragraph}{Une lecture synthétique de l'écoulement.}{29}{paragraph*.47}%
 \contentsline {paragraph}{Rôle déterminant de l'adéquation maillage--écoulement.}{30}{paragraph*.48}%
 \contentsline {paragraph}{Apport nuancé des chaînes inhomogènes.}{30}{paragraph*.49}%
-\contentsline {paragraph}{Limites de la teneur comme variable d'état.}{31}{paragraph*.50}%
-\contentsline {paragraph}{Aptitudes comparées des maillages.}{31}{paragraph*.51}%
-\contentsline {section}{\numberline {7}Conclusion et perspectives}{31}{section.7}%
-\contentsline {section}{Références bibliographiques}{33}{section*.53}%
-\contentsline {section}{Annexes}{35}{section*.54}%
-\contentsline {section}{\numberline {A}Justification des paramètres du modèle de Markov}{35}{appendix.A}%
-\contentsline {subsection}{\numberline {A.1}Choix du pas de temps de Markov $\tau = \SI {1.57}{s}$}{35}{subsection.A.1}%
-\contentsline {subsection}{\numberline {A.2}Choix du nombre de blocs d'apprentissage $\mathrm {NLT}$}{36}{subsection.A.2}%
-\contentsline {subsection}{\numberline {A.3}Choix de l'instant de départ $\mathrm {start} = \SI {1.57}{s}$}{40}{subsection.A.3}%
-\contentsline {subsection}{\numberline {A.4}Choix de l'écart entre blocs $\mathrm {step}$}{44}{subsection.A.4}%
-\contentsline {subsection}{\numberline {A.5}Conformité de la matrice de transition et raffinage temporel $dt$}{45}{subsection.A.5}%
-\contentsline {paragraph}{Rôle du raffinage temporel $dt$.}{45}{paragraph*.65}%
-\contentsline {paragraph}{Résultat pour les chaînes homogènes.}{45}{paragraph*.66}%
-\contentsline {paragraph}{Conséquence pour les chaînes inhomogènes.}{46}{paragraph*.68}%
-\contentsline {subsection}{\numberline {A.6}Justification des matrices distinctes par espèce}{46}{subsection.A.6}%
-\contentsline {subsection}{\numberline {A.7}Illustration de la teneur locale}{47}{subsection.A.7}%
-\contentsline {section}{\numberline {B}Détails sur le nombre de particules}{48}{appendix.B}%
-\contentsline {subsection}{\numberline {B.1}Découpage cartésien}{48}{subsection.B.1}%
-\contentsline {subsection}{\numberline {B.2}Découpage cylindrique}{49}{subsection.B.2}%
-\contentsline {subsection}{\numberline {B.3}Découpage de Voronoï}{51}{subsection.B.3}%
-\contentsline {subsection}{\numberline {B.4}Découpage physique}{52}{subsection.B.4}%
-\contentsline {section}{\numberline {C}Matrices de transition apprises avec le raffinage $dt = 8$ pas}{53}{appendix.C}%
+\contentsline {section}{\numberline {7}Conclusion et perspectives}{30}{section.7}%
+\contentsline {section}{Références bibliographiques}{32}{section*.50}%
+\contentsline {section}{Annexes}{34}{section*.51}%
+\contentsline {section}{\numberline {A}Justification des paramètres du modèle de Markov}{34}{appendix.A}%
+\contentsline {subsection}{\numberline {A.1}Choix du pas de temps de Markov $\tau = \SI {1.57}{s}$}{34}{subsection.A.1}%
+\contentsline {subsection}{\numberline {A.2}Choix du nombre de blocs d'apprentissage $\mathrm {NLT}$}{35}{subsection.A.2}%
+\contentsline {subsection}{\numberline {A.3}Choix de l'instant de départ $\mathrm {start} = \SI {1.57}{s}$}{39}{subsection.A.3}%
+\contentsline {subsection}{\numberline {A.4}Choix de l'écart entre blocs $\mathrm {step}$}{43}{subsection.A.4}%
+\contentsline {subsection}{\numberline {A.5}Conformité de la matrice de transition et raffinage temporel $dt$}{44}{subsection.A.5}%
+\contentsline {paragraph}{Rôle du raffinage temporel $dt$.}{44}{paragraph*.62}%
+\contentsline {paragraph}{Résultat pour les chaînes homogènes.}{44}{paragraph*.63}%
+\contentsline {paragraph}{Conséquence pour les chaînes inhomogènes.}{45}{paragraph*.65}%
+\contentsline {subsection}{\numberline {A.6}Justification des matrices distinctes par espèce}{45}{subsection.A.6}%
+\contentsline {subsection}{\numberline {A.7}Illustration de la teneur locale}{46}{subsection.A.7}%
+\contentsline {section}{\numberline {B}Détails sur le nombre de particules}{47}{appendix.B}%
+\contentsline {subsection}{\numberline {B.1}Découpage cartésien}{47}{subsection.B.1}%
+\contentsline {subsection}{\numberline {B.2}Découpage cylindrique}{48}{subsection.B.2}%
+\contentsline {subsection}{\numberline {B.3}Découpage de Voronoï}{50}{subsection.B.3}%
+\contentsline {subsection}{\numberline {B.4}Découpage physique}{51}{subsection.B.4}%
+\contentsline {section}{\numberline {C}Matrices de transition apprises avec le raffinage $dt = 8$ pas}{52}{appendix.C}%
