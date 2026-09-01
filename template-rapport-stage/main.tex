@@ -771,7 +771,7 @@ La figure~\ref{fig:pv_cellules_cartesien} présente le résultat du découpage c
 
 La structure en bande de ces matrices révèle un écoulement bidirectionnel : une partie des particules est entraînée vers le haut par la rotation du tambour --- visible sur la \textbf{sur-diagonale} prononcée --- tandis qu'une autre partie redescend sous l'effet de la gravité --- visible sur la \textbf{sous-diagonale} prononcée.
 
-La matrice des grandes particules montre une probabilité diagonale élevée ($0{,}37$) pour les cellules adjacentes aux parois (\textbf{cellules 1 et 9} sur la figure~\ref{fig:pv_cellules_cartesien}), traduisant leur tendance à rester piégées, quand la bande de surface (cellule~0) se vide presque intégralement à chaque tour ($P_{0,0} = 0{,}02$). À l'inverse, la matrice des petites particules présente des probabilités sensiblement mieux réparties --- à l'exception de la bande profonde~9, qui piège aussi les petites ($P_{9,9} = 0{,}36$) ---, signe d'une mobilité accrue par percolation à travers les interstices du lit.
+La matrice des grandes particules montre une probabilité diagonale élevée ($0{,}37$) pour les cellules adjacentes aux parois (\textbf{cellules 0 et 9} sur la figure~\ref{fig:pv_cellules_cartesien}), traduisant leur tendance à rester piégées, quand la bande de surface (cellule~0) se vide presque intégralement à chaque tour ($P_{0,0} = 0{,}02$). À l'inverse, la matrice des petites particules présente des probabilités sensiblement mieux réparties --- à l'exception de la bande profonde~9, qui piège aussi les petites ($P_{9,9} = 0{,}36$) ---, signe d'une mobilité accrue par percolation à travers les interstices du lit.
 
 \begin{figure}[H]
   \centering
@@ -866,7 +866,7 @@ On observe une ségrégation marquée, caractérisée par une forte concentratio
 
 Le découpage physique repose sur un algorithme de k-moyennes enrichi par une grandeur cinématique : la norme de la vitesse de chaque particule. Cette méthode adapte les cellules non seulement à la distribution spatiale des grains, mais également à leur mobilité locale, permettant ainsi de distinguer la zone active (surface libre, vitesses élevées) de la zone passive (cœur du lit, vitesses faibles).
 
-La figure~\ref{fig:pv_cellules_physique} présente le résultat de ce découpage. Les cellules~$0$, $1$, $2$, $4$, $6$ et~$7$ sont situées dans la \textbf{zone passive}, tandis que les cellules~$3$, $5$, $8$ et~$9$ appartiennent à la \textbf{zone active}.
+La figure~\ref{fig:pv_cellules_physique} présente le résultat de ce découpage. Les cellules~$0$, $8$ et~$9$ sont situées dans la \textbf{zone passive}, tandis que les cellules~$1$, $2$, $3$, $4$, $5$, $6$ et~$7$ appartiennent à la \textbf{zone active}.
 
 \begin{figure}[H]
   \centering
