@@ -199,11 +199,10 @@ def schema_forces():
     fig.savefig(FIGDIR / "schema_forces_tambour.png", dpi=200)
     plt.close(fig)
 
-
 def schema_cartesien():
-    """Principe du découpage cartésien : dix bandes parallèles à la
-    surface libre du lit. Les limites de bandes (segments parallèles) se
-    prolongent au-delà du cercle : côté ciel, les cellules marginales ne
+    """Principe du découpage cartésien : dix bandes dont les limites sont
+    perpendiculaires à la surface libre du lit. Les limites de bandes se
+    prolongent au-delà du cercle : côté lit, les cellules marginales ne
     rencontrent que peu ou pas de grains."""
     fig, ax = plt.subplots(figsize=(7.6, 6.4))
     R = 1.0
@@ -214,30 +213,62 @@ def schema_cartesien():
     _lit_granulaire(ax, R)
 
     nbands = 10
-    # bornes des bandes : 11 droites parallèles à la surface libre,
-    # de la surface libre (légèrement au-dessus) jusqu'à la paroi basse
-    cmin, cmax = -0.10 * R, -1.02 * R
-    cs = np.linspace(cmin, cmax, nbands + 1)
+    # bornes des bandes : 11 droites perpendiculaires à la surface libre.
+    normal = np.array([np.sin(a), np.cos(a)])
+    tangent = np.array([np.cos(a), -np.sin(a)])
+    cs_bounds = np.linspace(-0.92 * R, 0.92 * R, nbands + 1)
+    cs = cs_bounds[1:-1]
     xl = np.array([-1.35 * R, 1.25 * R])
+
     for c in cs:
-        ax.plot(xl, c - np.tan(a) * xl, "k-", lw=2.4, zorder=4)
-    # numérotation des cellules, au centre de chaque bande (trace à x fixe)
-    x_fix = -0.15
+        p0 = c * tangent
+        # Intersection avec le tambour
+        t_circle = np.sqrt(max(R**2 - np.dot(p0, p0), 0.0))
+        t_min, t_max = -t_circle, t_circle
+        # Intersection avec la surface libre
+        surface_at_t0 = p0[1] + 0.15 * R + np.tan(a) * p0[0]
+        surface_slope = normal[1] + np.tan(a) * normal[0]
+        t_surface = -surface_at_t0 / surface_slope
+        # --- CORRECTION : on garde le côté LIT (t < t_surface) ---
+        if surface_slope > 0:
+            t_max = min(t_max, t_surface)
+        else:
+            t_min = max(t_min, t_surface)
+        if t_min < t_max:
+            p1, p2 = p0 + t_min * normal, p0 + t_max * normal
+            ax.plot([p1[0], p2[0]], [p1[1], p2[1]], "k-", lw=2.4, zorder=4)
+
+    # numérotation des cellules, au centre géométrique de chaque bande tronquée
     for k in range(nbands):
-        cm = 0.5 * (cs[k] + cs[k + 1])
-        p = np.array([x_fix, cm - np.tan(a) * x_fix])
+        cm = 0.5 * (cs_bounds[k] + cs_bounds[k + 1])
+        p0 = cm * tangent
+        # recalcul des bornes t pour cette cellule
+        t_circle = np.sqrt(max(R**2 - np.dot(p0, p0), 0.0))
+        t_min, t_max = -t_circle, t_circle
+        surface_at_t0 = p0[1] + 0.15 * R + np.tan(a) * p0[0]
+        surface_slope = normal[1] + np.tan(a) * normal[0]
+        t_surface = -surface_at_t0 / surface_slope
+        if surface_slope > 0:
+            t_max = min(t_max, t_surface)
+        else:
+            t_min = max(t_min, t_surface)
+        # centre réel de la bande tronquée
+        t_center = 0.5 * (t_min + t_max)
+        p = p0 + t_center * normal
         ax.text(p[0], p[1], str(k), fontsize=13, ha="center", va="center",
                 color="k",
                 bbox=dict(fc="white", ec="none", alpha=0.85, pad=0.12),
                 zorder=6)
+
     # surface libre en rouge
     ax.plot(xl, -0.15 * R - np.tan(a) * xl, "-", color=ROUGE, lw=2.2,
             zorder=5)
     ax.annotate("surface libre du lit", xy=(-0.72, surf(-0.72)),
                 xytext=(-1.52, 0.52), fontsize=11.5, color=ROUGE,
                 arrowprops=dict(arrowstyle="->", color=ROUGE, lw=1.4))
-    ax.annotate("cellules marginales\n(au-dessus de la surface) :\npeu ou "
-                "pas de grains", xy=(-1.13, 0.85), xytext=(-1.50, 1.22),
+    # --- annotation déplacée vers le bas ---
+    ax.annotate("cellules marginales\n(en dessous de la surface) :\npeu ou "
+                "pas de grains", xy=(-0.95, -0.78), xytext=(-1.50, -1.18),
                 fontsize=10.5, color=GRIS, ha="left", va="center",
                 arrowprops=dict(arrowstyle="->", color=GRIS, lw=1.4))
 
@@ -246,15 +277,13 @@ def schema_cartesien():
     ax.set_aspect("equal")
     ax.axis("off")
     ax.set_title(
-        "Découpage cartésien : dix bandes parallèles à la surface libre\n"
-        "(les limites de bandes se prolongent hors de l'enceinte du tambour)",
+        "Découpage cartésien : dix bandes perpendiculaires à la surface libre\n"
+        "(les limites s'arrêtent sur la paroi et la surface du lit)",
         fontsize=12,
     )
     fig.tight_layout()
     fig.savefig(FIGDIR / "schema_decoupage_cartesien.png", dpi=200)
     plt.close(fig)
-
-
 def schema_cylindrique():
     """Principe du découpage cylindrique.
 
@@ -267,33 +296,96 @@ def schema_cylindrique():
     # ---- (a) coupe transverse : 10 secteurs angulaires (repère du lit) ---
     R = 1.0
     a = np.deg2rad(35)
+    surf = lambda x: -0.15 * R - np.tan(a) * x   # surface libre du lit
+    
+    # Paroi du tambour
     ax1.add_patch(Circle((0, 0), R, fill=False, ec=BLEU, lw=2.5, zorder=3))
+    
+    # Lit de particules
     _lit_granulaire(ax1, R)
-    # origine du repère du lit : barycentre approximatif du lit
-    Ob = np.array([0.18 * R, -0.62 * R])
+    
+    # Surface libre du lit en rouge
+    xl = np.array([-1.35 * R, 1.25 * R])
+    ax1.plot(xl, surf(xl), "-", color=ROUGE, lw=2.2, zorder=5)
+    
+    # Centre de découpage : centre approximatif de la distribution des particules
+    # Pour un lit incliné à 35° avec surface à -0.15R, le centroïde du lit
+    # est décalé vers le bas et légèrement vers la droite
+    Ob = np.array([0.08 * R, -0.48 * R])
     ntheta = 10
+    
     # base angulaire légèrement tournée (axes du lit)
     theta0 = np.deg2rad(100)
     thetas = theta0 + np.linspace(0, 2 * np.pi, ntheta + 1)
-    clip_cercle = Circle((0, 0), R, fill=False, transform=ax1.transData)
+    
+    # Tracé des limites des cellules (rayons depuis Ob)
     for th in thetas[:-1]:
         d = np.array([np.cos(th), np.sin(th)])
-        ln, = ax1.plot([Ob[0], Ob[0] + 2.2 * R * d[0]],
-                       [Ob[1], Ob[1] + 2.2 * R * d[1]], "k-", lw=2.2,
+        
+        # Intersection avec le tambour : |Ob + t*d| = R
+        # t^2 + 2*t*dot(Ob,d) + |Ob|^2 - R^2 = 0
+        b_coef = 2 * np.dot(Ob, d)
+        c_coef = np.dot(Ob, Ob) - R**2
+        discriminant = b_coef**2 - 4 * c_coef
+        
+        if discriminant >= 0:
+            t_circle = (-b_coef + np.sqrt(discriminant)) / 2
+        else:
+            t_circle = 0
+        
+        # Intersection avec la surface libre : Ob[1] + t*d[1] = surf(Ob[0] + t*d[0])
+        # Ob[1] + t*d[1] = -0.15*R - tan(a)*(Ob[0] + t*d[0])
+        # t*(d[1] + tan(a)*d[0]) = -0.15*R - tan(a)*Ob[0] - Ob[1]
+        denom = d[1] + np.tan(a) * d[0]
+        if abs(denom) > 1e-10:
+            t_surface = (-0.15 * R - np.tan(a) * Ob[0] - Ob[1]) / denom
+        else:
+            t_surface = t_circle
+        
+        # Tronquer à la surface libre si elle est plus proche que le tambour
+        # et si le rayon va vers le haut (vers la surface)
+        if d[1] + np.tan(a) * d[0] > 0:  # rayon va vers la surface
+            t_max = min(t_circle, t_surface) if t_surface > 0 else t_circle
+        else:
+            t_max = t_circle
+        
+        # Tracer le rayon depuis Ob jusqu'à t_max
+        p_end = Ob + t_max * d
+        ln, = ax1.plot([Ob[0], p_end[0]], [Ob[1], p_end[1]], "k-", lw=2.2,
                        zorder=4)
-        ln.set_clip_path(clip_cercle)
+    
     # numérotation des secteurs : rayon adapté à la distance au bord
     for k in range(ntheta):
         thm = 0.5 * (thetas[k] + thetas[k + 1])
         d = np.array([np.cos(thm), np.sin(thm)])
-        # distance du barycentre au cercle le long de d
-        tmax = (-np.dot(Ob, d) + np.sqrt(
-            max(np.dot(Ob, d) ** 2 + R * R - np.dot(Ob, Ob), 0)))
-        p = Ob + 0.62 * tmax * d
+        
+        # Calcul de t_max pour cette direction
+        b_coef = 2 * np.dot(Ob, d)
+        c_coef = np.dot(Ob, Ob) - R**2
+        discriminant = b_coef**2 - 4 * c_coef
+        
+        if discriminant >= 0:
+            t_circle = (-b_coef + np.sqrt(discriminant)) / 2
+        else:
+            t_circle = 0
+        
+        denom = d[1] + np.tan(a) * d[0]
+        if abs(denom) > 1e-10:
+            t_surface = (-0.15 * R - np.tan(a) * Ob[0] - Ob[1]) / denom
+        else:
+            t_surface = t_circle
+        
+        if d[1] + np.tan(a) * d[0] > 0:
+            t_max = min(t_circle, t_surface) if t_surface > 0 else t_circle
+        else:
+            t_max = t_circle
+        
+        p = Ob + 0.62 * t_max * d
         ax1.text(p[0], p[1], str(k), fontsize=12.5, ha="center",
                  va="center", color="k",
                  bbox=dict(fc="white", ec="none", alpha=0.75, pad=0.12),
                  zorder=5)
+    
     # arc d'un intervalle angulaire
     a1, a2_ = thetas[0], thetas[1]
     ax1.add_patch(Arc(Ob, 0.62, 0.62, angle=np.rad2deg(a1), theta1=0,
@@ -302,13 +394,33 @@ def schema_cylindrique():
     ax1.text(Ob[0] + 0.42 * np.cos(amid) - 0.02,
              Ob[1] + 0.42 * np.sin(amid) + 0.10,
              r"$\Delta\theta$", fontsize=13, color=ROUGE)
-    # repère : barycentre du lit
-    ax1.plot(Ob[0], Ob[1], "k+", ms=14, mew=2.2, zorder=6)
-    ax1.annotate("barycentre du lit", xy=Ob, xytext=Ob + [-1.18, -0.30],
-                 fontsize=10, color=GRIS, va="center",
-                 arrowprops=dict(arrowstyle="->", color=GRIS, lw=1.2))
+    
+    # Centre de découpage (centre de la distribution des particules)
+    ax1.plot(Ob[0], Ob[1], "k+", ms=16, mew=2.5, zorder=6)
+    ax1.annotate("centre de découpage\n(centre de la distribution\ndes particules)", 
+                 xy=Ob, xytext=Ob + [-1.25, -0.35],
+                 fontsize=10, color="k", fontweight="bold", va="center",
+                 arrowprops=dict(arrowstyle="->", color="k", lw=1.4))
+    
+    # Annotation : paroi du tambour
+    ax1.annotate("paroi du tambour", xy=(0.85 * R, 0.55 * R), 
+                 xytext=(1.35, 1.05),
+                 fontsize=10.5, color=BLEU, fontweight="bold",
+                 arrowprops=dict(arrowstyle="->", color=BLEU, lw=1.4))
+    
+    # Annotation : surface libre du lit
+    ax1.annotate("surface libre du lit", xy=(-0.72, surf(-0.72)),
+                 xytext=(-1.52, 0.52), fontsize=10.5, color=ROUGE,
+                 arrowprops=dict(arrowstyle="->", color=ROUGE, lw=1.4))
+    
+    # Annotation : lit de particules
+    ax1.annotate("lit de particules", xy=(0.45 * R, -0.45 * R), 
+                 xytext=(1.25, -1.15),
+                 fontsize=10.5, color=GRIS, fontweight="bold",
+                 arrowprops=dict(arrowstyle="->", color=GRIS, lw=1.4))
+    
     ax1.set_title("(a) Coupe transverse : dix secteurs angulaires dans le\n"
-                  "repère du lit — limites de cellules en traits forts",
+                  "repère du lit — limites tronquées sur la surface libre",
                   fontsize=12)
     ax1.set_xlim(-1.75, 1.75)
     ax1.set_ylim(-1.5, 1.4)
@@ -348,7 +460,6 @@ def schema_cylindrique():
     fig.tight_layout()
     fig.savefig(FIGDIR / "schema_decoupage_cylindrique.png", dpi=200)
     plt.close(fig)
-
 
 def _kmeans_manuel(features, K, rng, n_iter=60):
     """Petit k-means illustratif (initialisation Forgy, graine fixée)."""

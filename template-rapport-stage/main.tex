@@ -454,7 +454,7 @@ où $\phi_p(i,t_k)$ est la fonction qui indique de l'appartenance de la particul
 \label{subsubsec:matrice}
 
 La matrice de transition $\mathbf{P}$ contient les probabilités qu'une particule quitte la cellule source $j$ (colonne) pour rejoindre la cellule d'arrivée $i$ (ligne) durant un intervalle $\tau=t_{k+1}-t_k$, appelé \textbf{pas de temps de Markov} : son terme général est précisément la probabilité de saut introduite en~\eqref{eq:principe_projection}, $P_{i,j} = \gamma_{j \to i}$. Elle est estimée en observant, entre deux instants séparés de $\tau$, les déplacements des particules d'une cellule vers une autre : deux vecteurs d'états --- $\mathbf{S}(t_k)$ et $\mathbf{S}(t_{k+1})$ --- sont construits aux instants $t_k$ et $t_{k+1}$ respectivement, et les paires de labels $(l_p(t_k),\, l_p(t_{k+1}))$ fournissent les comptages de transition. Cette observation est répétée sur un \textbf{temps d'apprentissage} couvrant $\mathrm{NLT}$ blocs, chacun subdivisé en $M_n$ paires d'instants $(t,\, t+\tau)$ ; les probabilités estimées sur chaque paire sont moyennées à l'intérieur de chaque bloc, puis entre blocs (chaîne homogène). Dans la configuration retenue, chaque bloc fournit une unique paire ($M_n = 1$) ; le formalisme autoriserait un échantillonnage plus dense (raffinage temporel), dont l'intérêt est évalué en annexe~\ref{annexe:dt} :
-
+% utilise la notation de Doucet et al. Sans le terme M_n
 \begin{equation}
   P_{i,j}
   =
@@ -778,7 +778,7 @@ La matrice des grandes particules montre une probabilité diagonale élevée ($0
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/matrice_cartesien_especes.png}
-  \caption{Matrices de transition du découpage cartésien (10 bandes ; discrétisation temporelle : $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = \tau$ --- une paire de transition par tour). La version apprise avec le raffinage $dt = \tau$ pas est présentée en annexe~\ref{annexe:matrices_dt8} (figure~\ref{fig:matrice_cartesien_dt8}).}
+  \caption{Matrices de transition du découpage cartésien (10 bandes ; discrétisation temporelle : $\mathrm{NLT} = 2$, $\mathrm{start} = \SI{1.57}{s}$, $\mathrm{step} = \tau = \SI{1.57}{s}$, $dt = \tau$}
   \label{fig:matrice_cartesien}
 \end{figure}
 
