@@ -453,25 +453,23 @@ où $\phi_p(i,t_k)$ est la fonction qui indique de l'appartenance de la particul
 \subsubsection{Construction de la matrice de transition}
 \label{subsubsec:matrice}
 
-La matrice de transition $\mathbf{P}$ contient les probabilités qu'une particule quitte la cellule source $j$ (colonne) pour rejoindre la cellule d'arrivée $i$ (ligne) durant un intervalle $\tau=t_{k+1}-t_k$, appelé \textbf{pas de temps de Markov} : son terme général est précisément la probabilité de saut introduite en~\eqref{eq:principe_projection}, $P_{i,j} = \gamma_{j \to i}$. Elle est estimée en observant, entre deux instants séparés de $\tau$, les déplacements des particules d'une cellule vers une autre : deux vecteurs d'états --- $\mathbf{S}(t_k)$ et $\mathbf{S}(t_{k+1})$ --- sont construits aux instants $t_k$ et $t_{k+1}$ respectivement, et les paires de labels $(l_p(t_k),\, l_p(t_{k+1}))$ fournissent les comptages de transition. Cette observation est répétée sur un \textbf{temps d'apprentissage} couvrant $\mathrm{NLT}$ blocs, chacun subdivisé en $M_n$ paires d'instants $(t,\, t+\tau)$ ; les probabilités estimées sur chaque paire sont moyennées à l'intérieur de chaque bloc, puis entre blocs (chaîne homogène). Dans la configuration retenue, chaque bloc fournit une unique paire ($M_n = 1$) ; le formalisme autoriserait un échantillonnage plus dense (raffinage temporel), dont l'intérêt est évalué en annexe~\ref{annexe:dt} :
+La matrice de transition $\mathbf{P}$ contient les probabilités qu'une particule quitte la cellule source $j$ (colonne) pour rejoindre la cellule d'arrivée $i$ (ligne) durant un intervalle $\tau=t_{k+1}-t_k$, appelé \textbf{pas de temps de Markov} : son terme général est précisément la probabilité de saut introduite en~\eqref{eq:principe_projection}, $P_{i,j} = \gamma_{j \to i}$. Elle est estimée en observant, entre deux instants séparés de $\tau$, les déplacements des particules d'une cellule vers une autre : deux vecteurs d'états --- $\mathbf{S}(t_k)$ et $\mathbf{S}(t_{k+1})$ --- sont construits aux instants $t_k$ et $t_{k+1}$ respectivement, et les paires de labels $(l_p(t_k),\, l_p(t_{k+1}))$ fournissent les comptages de transition. Cette observation est répétée sur un \textbf{temps d'apprentissage} couvrant $\mathrm{NLT}$ blocs d'apprentissage ; les probabilités estimées sur chaque paire sont moyennées entre blocs (chaîne homogène). Dans la configuration retenue, chaque bloc fournit une unique paire d'instants $(t,\, t+\tau)$ ; le formalisme autoriserait un échantillonnage plus dense (raffinage temporel), dont l'intérêt est évalué en annexe~\ref{annexe:dt} :
 
 \begin{equation}
   P_{i,j}
   =
   \frac{1}{\mathrm{NLT}}
   \sum_{n=1}^{\mathrm{NLT}}
-  \frac{1}{M_n}
-  \sum_{m=1}^{M_n}
-  \frac{1}{\phi\big(j,t_{n}^{(m)}\big)}
+  \frac{1}{\phi\big(j,t_{n}\big)}
   \sum_{p=1}^{N_p}
-  \phi_p\big(i,t_{n}^{(m)}+\tau\big)\,
-  \phi_p\big(j,t_{n}^{(m)}\big),
+  \phi_p\big(i,t_{n}+\tau\big)\,
+  \phi_p\big(j,t_{n}\big),
   \label{eq:matrice_transition}
 \end{equation}
 
-où $\mathrm{NLT}$ est le nombre de blocs d'apprentissage, $M_n$ le nombre de paires d'instants échantillonnées au sein du bloc $n$ ($M_n = 1$ pour la configuration retenue : une paire par tour), $\phi_p(i,t)$ la fonction indicatrice définie en~\eqref{eq:comptage}, et $\phi(j,t)=\sum_p \phi_p(j,t)$ le nombre total de grains dans la cellule source $j$ à l'instant $t$.
+où $\mathrm{NLT}$ est le nombre de blocs d'apprentissage, $t_n$ l'instant de début du bloc $n$, $\phi_p(i,t)$ la fonction indicatrice définie en~\eqref{eq:comptage}, et $\phi(j,t)=\sum_p \phi_p(j,t)$ le nombre total de grains dans la cellule source $j$ à l'instant $t$. Cette formulation suit la notation de Doucet et al.~\cite{doucet2008} pour la construction de la matrice de transition.
 
-\paragraph{Pourquoi moyenner les probabilités de transition ?} Une seule paire d'instants $(t,\, t+\tau)$ ne fournit qu'un échantillon limité de transitions : avec 1030 particules réparties dans $N$ cellules, certaines transitions rares peuvent être manquées ou au contraire sur-représentées par le hasard d'une configuration particulière. La double moyenne de l'équation~\eqref{eq:matrice_transition} --- sur les $M_n$ paires de chaque bloc ($M_n = 1$ dans la configuration retenue), puis sur les $\mathrm{NLT}$ blocs --- réduit ce bruit statistique et produit une matrice plus représentative de la dynamique moyenne du régime permanent. Ce choix est étayé quantitativement par l'étude de sensibilité au paramètre $\mathrm{NLT}$ présentée en annexe~\ref{annexe:nlt}.
+\paragraph{Pourquoi moyenner les probabilités de transition ?} Une seule paire d'instants $(t,\, t+\tau)$ ne fournit qu'un échantillon limité de transitions : avec 1030 particules réparties dans $N$ cellules, certaines transitions rares peuvent être manquées ou au contraire sur-représentées par le hasard d'une configuration particulière. La moyenne de l'équation~\eqref{eq:matrice_transition} --- sur les $\mathrm{NLT}$ blocs --- réduit ce bruit statistique et produit une matrice plus représentative de la dynamique moyenne du régime permanent. Ce choix est étayé quantitativement par l'étude de sensibilité au paramètre $\mathrm{NLT}$ présentée en annexe~\ref{annexe:nlt}.
 
 \paragraph{Paramètres de construction et justification.} Quatre paramètres gouvernent la construction de la matrice ; leurs valeurs retenues sont rassemblées au tableau~\ref{tab:parametres} et la figure~\ref{fig:schema_parametres} en donne la chronologie sur l'axe du temps :
 
@@ -505,7 +503,7 @@ où $\mathrm{NLT}$ est le nombre de blocs d'apprentissage, $M_n$ le nombre de pa
   \label{fig:schema_parametres}
 \end{figure}
 
-\paragraph{Vérifications de cohérence.} La normalisation par $\phi(j,t_{n-1})$ dans l'équation~\eqref{eq:matrice_transition} assure le caractère stochastique en colonne de la matrice :
+\paragraph{Vérifications de cohérence.} La normalisation par $\phi(j,t_{n})$ dans l'équation~\eqref{eq:matrice_transition} assure le caractère stochastique en colonne de la matrice :
 
 \begin{equation}
   P_{ij} \geq 0,
