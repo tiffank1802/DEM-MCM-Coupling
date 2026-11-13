@@ -391,6 +391,17 @@ async function initApp() {
       setTimeout(renderStudyView, 160);
     });
   }
+  const studyCollapseBtn = document.getElementById('study-collapse-all-btn');
+  if (studyCollapseBtn) {
+    studyCollapseBtn.addEventListener('click', () => {
+      const nodes = Array.from(
+        document.querySelectorAll('#study-sidebar details.tree-node')
+      );
+      const anyOpen = nodes.some(n => n.open);
+      nodes.forEach(n => { n.open = !anyOpen; });
+      saveUiLayout();
+    });
+  }
   const expCsv = document.getElementById('study-export-csv');
   if (expCsv) expCsv.addEventListener('click', () => exportStudyData('csv'));
   const expJson = document.getElementById('study-export-json');
