@@ -84,11 +84,16 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Install dependencies (CPU PyTorch + viz + dev)
+      - name: Install headless OpenGL/X11 libs for PyVista/VTK
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgl1 libxrender1
+
+      - name: Install dependencies (CPU PyTorch + viz + pyvista + seaborn + dev)
         run: |
           python -m pip install --upgrade pip
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install -e ".[dev,viz,hf]"
+          pip install -e ".[dev,viz,hf]" pyvista seaborn
 
       - name: Run pytest suite
         run: pytest -v

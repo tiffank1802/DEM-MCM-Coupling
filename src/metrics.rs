@@ -259,11 +259,7 @@ pub fn propagate_markov_inhomogeneous(
             traj.set_row(t, &s);
         }
     } else {
-        let block_size = if n_blocks > 0 {
-            (n_steps / n_blocks).max(1)
-        } else {
-            1
-        };
+        let block_size = n_steps.checked_div(n_blocks).unwrap_or(1).max(1);
         for t in 1..n_out {
             let block_idx = ((t - 1) / block_size).min(n_blocks - 1);
             s = p_std[block_idx].vec_mul(&s)?;
