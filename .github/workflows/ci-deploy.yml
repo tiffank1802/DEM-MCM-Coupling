@@ -32,17 +32,10 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
 
-# Runners Blacksmith (https://docs.blacksmith.sh/blacksmith-runners/overview)
-# - ubuntu-latest  -> blacksmith-*-ubuntu-2404 (x64, Ubuntu 24.04)
-# - macos-latest   -> blacksmith-6vcpu-macos-latest (Apple Silicon M4)
-# - windows-latest -> blacksmith-*-windows-2025
-# Les actions de cache (actions/cache, Swatinem/rust-cache) utilisent
-# automatiquement le cache colocalisé Blacksmith (4x plus rapide, 25 Go offerts).
-
 jobs:
   rust-ci:
     name: Rust (fmt, clippy, 39 tests, egui check)
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -52,8 +45,6 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      # Swatinem/rust-cache s'appuie sur actions/cache : sur Blacksmith,
-      # le cache est servi par l'infrastructure colocalisée (aucun changement requis).
       - name: Cache Cargo registry & targets
         uses: Swatinem/rust-cache@v2
 
@@ -82,7 +73,7 @@ jobs:
 
   python-ci:
     name: Python (pytest suite)
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -115,13 +106,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: blacksmith-8vcpu-ubuntu-2404
+          - os: ubuntu-latest
             target: linux-x86_64
             ext: ""
-          - os: blacksmith-6vcpu-macos-latest
+          - os: macos-latest
             target: macos-arm64
             ext: ""
-          - os: blacksmith-4vcpu-windows-2025
+          - os: windows-latest
             target: windows-x86_64
             ext: ".exe"
     runs-on: ${{ matrix.os }}
@@ -158,7 +149,7 @@ jobs:
           Compress-Archive -Path dist-bin/* -DestinationPath "dem-mcm-coupling-${{ matrix.target }}.zip"
 
       - name: Build Python sdist & wheel
-        if: matrix.target == 'linux-x86_64'
+        if: matrix.os == 'ubuntu-latest'
         run: |
           python -m pip install --upgrade pip build
           python -m build
@@ -170,7 +161,7 @@ jobs:
           path: dem-mcm-coupling-${{ matrix.target }}.*
 
       - name: Upload Python distributions
-        if: matrix.target == 'linux-x86_64'
+        if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
           name: python-dist
@@ -180,7 +171,7 @@ jobs:
     name: Build static 3D Studio for GitHub Pages
     needs: [rust-ci, python-ci]
     if: github.event_name != 'pull_request'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -217,7 +208,7 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - name: Enable & configure GitHub Pages
         uses: actions/configure-pages@v5
@@ -232,20 +223,13 @@ jobs:
     name: Build & Push Docker image to GHCR
     needs: [rust-ci, python-ci]
     if: github.event_name != 'pull_request'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      # Builder Blacksmith : les couches Docker sont persistées sur disque NVMe
-      # entre les runs (jusqu'à 40x plus rapide que le cache type=gha).
-      - name: Set up Blacksmith Docker builder
-        uses: useblacksmith/setup-docker-builder@v2
-        with:
-          cache-key: Dockerfile
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry (ghcr.io)
         uses: docker/login-action@v3
@@ -266,20 +250,20 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push container image
-        uses: useblacksmith/build-push-action@v2
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:latest
-          cache-to: type=inline
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy-release:
     name: Publish GitHub Release
     needs: build-artifacts
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
