@@ -85,24 +85,60 @@ function renderActiveView() {
   else if (APP.activeView === 'matrix_evol') renderMatrixEvolutionView(b);
   else if (APP.activeView === 'matrices') renderMatricesView(b);
   else if (APP.activeView === 'benchmark') renderBenchmarkView();
+  else if (APP.activeView === 'study') renderStudyView();
+}
+
+function setWorkbenchMode(mode) {
+  if (mode !== 'explore' && mode !== 'study' && mode !== 'compare') return;
+  APP.workbenchMode = mode;
+  if (mode === 'study') {
+    switchView('study');
+    if (!APP.studyBundle && typeof runStudy === 'function') {
+      runStudy();
+    }
+  } else if (mode === 'compare') {
+    switchView('benchmark');
+  } else {
+    if (APP.activeView === 'study' || APP.activeView === 'benchmark') {
+      switchView('summary');
+    } else {
+      applyPanelVisibility();
+      saveUiLayout();
+    }
+  }
 }
 
 function switchView(viewId) {
   if (!document.getElementById('pane-' + viewId)) return;
   APP.activeView = viewId;
+  if (viewId === 'study') APP.workbenchMode = 'study';
+  else if (viewId === 'benchmark') APP.workbenchMode = 'compare';
+  else if (APP.workbenchMode !== 'explore') APP.workbenchMode = 'explore';
+
   document.querySelectorAll('.vtab').forEach(b => b.classList.toggle('active', b.dataset.view === viewId));
   document.querySelectorAll('.view-pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + viewId));
+  applyPanelVisibility();
   saveUiLayout();
 
   if (viewId === 'benchmark' && !APP.bundleB) {
     runDual();
+  } else if (viewId === 'study' && !APP.studyBundle) {
+    runStudy();
   } else {
     setTimeout(() => renderActiveView(), 18);
   }
 }
 
+async function runContextualAction() {
+  if (APP.workbenchMode === 'study') return runStudy();
+  if (APP.workbenchMode === 'compare') return runDual();
+  return runPrimary();
+}
+
 async function runPrimary() {
   const loader = document.getElementById('loader');
+  APP.executionStatus = 'computing';
+  applyPanelVisibility();
   loader.classList.add('show');
   try {
     const method = document.getElementById('method').value;
@@ -119,16 +155,42 @@ async function runPrimary() {
     slider.value = 0;
     populateSelectors(bundle);
     updateCellInspector(null);
+    APP.executionStatus = 'idle';
     renderActiveView();
   } catch (e) {
+    APP.executionStatus = 'error';
     alert('Erreur Rust: ' + e.message);
   } finally {
     loader.classList.remove('show');
+    applyPanelVisibility();
+  }
+}
+
+async function runStudy() {
+  const loader = document.getElementById('loader');
+  APP.executionStatus = 'computing';
+  applyPanelVisibility();
+  loader.classList.add('show');
+  try {
+    const spec = gatherStudySpecPayload();
+    const res = await fetchStudyRun(spec);
+    APP.studyBundle = res;
+    APP.studySelectedCell = { idx1: 0, idx2: 0 };
+    APP.executionStatus = 'idle';
+    renderStudyView();
+  } catch (e) {
+    APP.executionStatus = 'error';
+    alert('Erreur Étude: ' + e.message);
+  } finally {
+    loader.classList.remove('show');
+    applyPanelVisibility();
   }
 }
 
 async function runDual() {
   const loader = document.getElementById('loader');
+  APP.executionStatus = 'computing';
+  applyPanelVisibility();
   loader.classList.add('show');
   try {
     const mA = document.getElementById('method').value;
@@ -139,16 +201,21 @@ async function runDual() {
     ]);
     APP.bundleA = bA;
     APP.bundleB = bB;
+    APP.executionStatus = 'idle';
     renderActiveView();
   } catch (e) {
+    APP.executionStatus = 'error';
     alert('Erreur Dual-Mesh: ' + e.message);
   } finally {
     loader.classList.remove('show');
+    applyPanelVisibility();
   }
 }
 
 async function runBenchmark() {
   const loader = document.getElementById('loader');
+  APP.executionStatus = 'computing';
+  applyPanelVisibility();
   loader.classList.add('show');
   try {
     const method = document.getElementById('method').value;
@@ -156,11 +223,14 @@ async function runBenchmark() {
     payload.methods = ['cartesian', 'cylindrical', 'quantile', 'octree', 'voronoi', 'physics', 'adaptive'];
     const data = await fetchBenchmark(payload);
     APP.benchRows = data.rows;
+    APP.executionStatus = 'idle';
     renderBenchmarkView();
   } catch (e) {
+    APP.executionStatus = 'error';
     alert('Erreur Benchmark: ' + e.message);
   } finally {
     loader.classList.remove('show');
+    applyPanelVisibility();
   }
 }
 
@@ -245,7 +315,7 @@ async function initApp() {
     document.getElementById('dataset').value = val;
     document.getElementById('dataset-top').value = val;
     document.getElementById('start_index').value = val === 'real_chunks' ? 157 : 40;
-    runPrimary();
+    runContextualAction();
   };
   document.getElementById('dataset-top').addEventListener('change', e => syncDataset(e.target.value));
   document.getElementById('dataset').addEventListener('change', e => syncDataset(e.target.value));
@@ -259,15 +329,72 @@ async function initApp() {
   document.getElementById('color-mode').addEventListener('change', e => syncColorMode(e.target.value));
   document.getElementById('ribbon-color-mode').addEventListener('change', e => syncColorMode(e.target.value));
 
-  // Primary run triggers
-  document.getElementById('method').addEventListener('change', e => renderMethodParams(e.target.value));
-  document.getElementById('run-btn').addEventListener('click', runPrimary);
-  document.getElementById('run-tree-btn').addEventListener('click', runPrimary);
+  // Exclusive 3-mode switcher
+  document.querySelectorAll('#workbench-mode-switch .mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => setWorkbenchMode(btn.dataset.mode));
+  });
+
+  // Primary contextual run triggers
+  document.getElementById('method').addEventListener('change', e => {
+    renderMethodParams(e.target.value);
+    applyPanelVisibility();
+  });
+  document.getElementById('run-btn').addEventListener('click', runContextualAction);
   document.getElementById('run-dual-btn').addEventListener('click', runDual);
   document.getElementById('run-bench-btn').addEventListener('click', runBenchmark);
   document.getElementById('target-species').addEventListener('change', runPrimary);
   document.getElementById('full-duration').addEventListener('change', runPrimary);
   document.getElementById('no-species').addEventListener('change', runPrimary);
+
+  // Study Workshop presets & schema-driven form gating
+  const studyPresetData = await fetchStudyPresets();
+  APP.studyPresets = studyPresetData.presets || [];
+  const presetSel = document.getElementById('study-preset');
+  if (presetSel) {
+    presetSel.innerHTML = APP.studyPresets
+      .map(p => `<option value="${p.id}" title="${p.description}">${p.title}</option>`)
+      .join('');
+    presetSel.addEventListener('change', async () => {
+      const spec = await fetchStudyPresetSpec(presetSel.value);
+      if (spec) populateStudyFormFromSpec(spec);
+      else applyPresetFallbackToBuilder(presetSel.value);
+      applyPanelVisibility();
+    });
+  }
+  ['study-axis1-kind', 'study-axis2-kind', 'study-enable-laws'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => applyPanelVisibility());
+  });
+  ['study-curve-chain', 'study-sens-metric', 'study-heat-metric', 'study-transition-select'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => renderStudyView());
+  });
+  const rangeBtn = document.getElementById('study-apply-range-btn');
+  if (rangeBtn) {
+    rangeBtn.addEventListener('click', () => {
+      const a = parseFloat(document.getElementById('study-range-min').value) || 0;
+      const b = parseFloat(document.getElementById('study-range-max').value) || 100;
+      const n = Math.max(2, Math.min(15, parseInt(document.getElementById('study-range-count').value) || 6));
+      const vals = [];
+      for (let i = 0; i < n; i++) {
+        const v = a + ((b - a) * i) / (n - 1);
+        vals.push(Number.isInteger(a) && Number.isInteger(b) ? Math.round(v) : Number(v.toFixed(3)));
+      }
+      document.getElementById('study-axis1-values').value = vals.join(', ');
+    });
+  }
+  const studyToggleBtn = document.getElementById('study-toggle-builder-btn');
+  if (studyToggleBtn) {
+    studyToggleBtn.addEventListener('click', () => {
+      APP.ui.studyBuilderOpen = !APP.ui.studyBuilderOpen;
+      applyPanelVisibility();
+      setTimeout(renderStudyView, 160);
+    });
+  }
+  const expCsv = document.getElementById('study-export-csv');
+  if (expCsv) expCsv.addEventListener('click', () => exportStudyData('csv'));
+  const expJson = document.getElementById('study-export-json');
+  if (expJson) expJson.addEventListener('click', () => exportStudyData('json'));
 
   // Layer toggles
   ['show-small', 'show-large', 'show-wire', 'show-faces', 'show-vel', 'show-edges', 'show-drum'].forEach(id => {

@@ -6,8 +6,11 @@ use crate::gui::metrics_eval::vec_f64_json;
 use crate::io::json::JsonValue;
 use crate::linalg::Matrix;
 use crate::metrics::fit_probability_evolution;
+use crate::research::laws::{
+    compare_transition_laws, LawCandidateFit, LawFamily, LawSelectionCriterion,
+};
 
-/// Fitted polynomial evolution law for one significant transition `p_{i->j}(t)`
+/// Fitted polynomial + multi-family evolution laws for one significant transition `p_{i->j}(t)`
 /// across inhomogeneous NLT blocks.
 #[derive(Debug, Clone)]
 pub struct TransitionLawItem {
@@ -26,6 +29,8 @@ pub struct TransitionLawItem {
     pub mean_prob: f64,
     pub range_prob: f64,
     pub law_label: String,
+    pub best_law_family: String,
+    pub law_candidates: Vec<LawCandidateFit>,
 }
 
 impl TransitionLawItem {
@@ -46,6 +51,14 @@ impl TransitionLawItem {
         o.insert("mean_prob", JsonValue::Number(self.mean_prob));
         o.insert("range_prob", JsonValue::Number(self.range_prob));
         o.insert("law_label", JsonValue::String(self.law_label.clone()));
+        o.insert(
+            "best_law_family",
+            JsonValue::String(self.best_law_family.clone()),
+        );
+        o.insert(
+            "law_candidates",
+            JsonValue::Array(self.law_candidates.iter().map(|c| c.to_json()).collect()),
+        );
         o
     }
 }
@@ -159,7 +172,7 @@ pub fn compute_matrix_evolution(
     let mut global_vmax = 0.0f64;
     let mut components = Vec::with_capacity(candidates.len());
 
-    for (src, dst, max_prob) in candidates {
+    for (comp_idx, (src, dst, max_prob)) in candidates.into_iter().enumerate() {
         let values: Vec<f64> = blocks[..n_blocks]
             .iter()
             .map(|b| {
@@ -217,6 +230,22 @@ pub fn compute_matrix_evolution(
             )
         };
 
+        let (best_law_family, law_candidates) = if n_blocks >= 2 && comp_idx < 40 {
+            match compare_transition_laws(
+                src,
+                dst,
+                x_vals,
+                &values,
+                &LawFamily::all(),
+                LawSelectionCriterion::Aicc,
+            ) {
+                Ok(cmp) => (cmp.best_family.id().to_string(), cmp.candidates),
+                Err(_) => ("constant".to_string(), Vec::new()),
+            }
+        } else {
+            (format!("poly{degree}"), Vec::new())
+        };
+
         components.push(TransitionLawItem {
             src,
             dst,
@@ -233,6 +262,8 @@ pub fn compute_matrix_evolution(
             mean_prob,
             range_prob,
             law_label,
+            best_law_family,
+            law_candidates,
         });
     }
 

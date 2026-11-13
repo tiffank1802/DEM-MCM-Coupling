@@ -1,10 +1,15 @@
 const APP = {
   staticMode: false,
+  workbenchMode: 'explore', // 'explore' | 'study' | 'compare'
+  executionStatus: 'idle',  // 'idle' | 'computing' | 'error'
   activeView: 'summary',
   methods: [],
   bundleA: null,
   bundleB: null,
   benchRows: null,
+  studyPresets: [],
+  studyBundle: null,
+  studySelectedCell: { idx1: 0, idx2: 0 },
   frameIdx: 0,
   playing: false,
   playTimer: null,
@@ -19,6 +24,7 @@ const APP = {
     treeOpen: true,
     ribbonOpen: true,
     timelineOpen: true,
+    studyBuilderOpen: true,
   },
 };
 
@@ -39,6 +45,7 @@ function saveUiLayout() {
       if (el.id) nodes[el.id] = el.open;
     });
     localStorage.setItem('dem_mcm_cad_layout', JSON.stringify({
+      workbenchMode: APP.workbenchMode,
       activeView: APP.activeView,
       treeOpen: APP.ui.treeOpen,
       ribbonOpen: APP.ui.ribbonOpen,
@@ -53,6 +60,9 @@ function restoreUiLayout() {
     const raw = localStorage.getItem('dem_mcm_cad_layout');
     if (!raw) return;
     const saved = JSON.parse(raw);
+    if (saved.workbenchMode === 'explore' || saved.workbenchMode === 'study' || saved.workbenchMode === 'compare') {
+      APP.workbenchMode = saved.workbenchMode;
+    }
     if (typeof saved.treeOpen === 'boolean') APP.ui.treeOpen = saved.treeOpen;
     if (typeof saved.ribbonOpen === 'boolean') APP.ui.ribbonOpen = saved.ribbonOpen;
     if (typeof saved.timelineOpen === 'boolean') APP.ui.timelineOpen = saved.timelineOpen;
@@ -69,25 +79,83 @@ function restoreUiLayout() {
 }
 
 function applyPanelVisibility() {
+  const studySt = (typeof getStudyBuilderState === 'function') ? getStudyBuilderState() : {};
+  const vis = deriveUiVisibility({
+    workbenchMode: APP.workbenchMode,
+    activeView: APP.activeView,
+    executionStatus: APP.executionStatus,
+    activeMethod: document.getElementById('method')?.value || 'cartesian',
+    ui: APP.ui,
+    study: studySt,
+  });
+
+  // Top mode switcher active state
+  document.querySelectorAll('#workbench-mode-switch .mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === vis.workbenchMode);
+  });
+
+  // Single primary contextual run button
+  const runBtn = document.getElementById('run-btn');
+  if (runBtn) {
+    runBtn.textContent = vis.primaryAction.label;
+    runBtn.disabled = vis.primaryAction.disabled;
+  }
+
+  // Shell layout toggles (hidden in focused Study mode so zero 3D toggles clutter the top bar)
   const tree = document.getElementById('feature-tree');
   const ribbon = document.getElementById('ribbon-bar');
   const timeline = document.getElementById('timeline-bar');
+  const viewTabs = document.getElementById('view-tabs');
   const btnTree = document.getElementById('toggle-tree-btn');
   const btnRibbon = document.getElementById('toggle-ribbon-btn');
   const btnTimeline = document.getElementById('toggle-timeline-btn');
 
-  tree.classList.toggle('collapsed', !APP.ui.treeOpen);
-  ribbon.classList.toggle('collapsed', !APP.ui.ribbonOpen);
-  timeline.classList.toggle('collapsed', !APP.ui.timelineOpen);
+  [btnTree, btnRibbon, btnTimeline].forEach(b => {
+    if (b) b.style.display = vis.panels.showShellLayoutToggles ? 'inline-flex' : 'none';
+  });
 
-  btnTree.textContent = APP.ui.treeOpen ? '◂ Arbre' : '▸ Arbre';
-  btnTree.classList.toggle('active-toggle', APP.ui.treeOpen);
+  if (tree) tree.classList.toggle('collapsed', !vis.panels.showFeatureTree);
+  if (ribbon) ribbon.classList.toggle('collapsed', !vis.panels.showRibbon);
+  if (timeline) timeline.classList.toggle('collapsed', !vis.panels.showTimeline);
+  if (viewTabs) viewTabs.style.display = vis.panels.showBottomViewTabs ? 'flex' : 'none';
 
-  btnRibbon.textContent = APP.ui.ribbonOpen ? '▴ Ruban' : '▾ Ruban';
-  btnRibbon.classList.toggle('active-toggle', APP.ui.ribbonOpen);
+  if (btnTree) {
+    btnTree.textContent = APP.ui.treeOpen ? '◂ Arbre' : '▸ Arbre';
+    btnTree.classList.toggle('active-toggle', APP.ui.treeOpen);
+  }
+  if (btnRibbon) {
+    btnRibbon.textContent = APP.ui.ribbonOpen ? '▴ Ruban' : '▾ Ruban';
+    btnRibbon.classList.toggle('active-toggle', APP.ui.ribbonOpen);
+  }
+  if (btnTimeline) {
+    btnTimeline.textContent = APP.ui.timelineOpen ? '▾ Frise' : '▴ Frise';
+    btnTimeline.classList.toggle('active-toggle', APP.ui.timelineOpen);
+  }
 
-  btnTimeline.textContent = APP.ui.timelineOpen ? '▾ Frise' : '▴ Frise';
-  btnTimeline.classList.toggle('active-toggle', APP.ui.timelineOpen);
+  // Contextual Ribbon groups: hide 3D camera & layers when not viewing a 3D tab
+  const r3d = document.getElementById('ribbon-group-3d');
+  const rCrit = document.getElementById('ribbon-group-criterion');
+  const rViews = document.getElementById('ribbon-group-views');
+  if (r3d) r3d.style.display = vis.ribbon.showCameraAndLayers ? 'flex' : 'none';
+  if (rCrit) rCrit.style.display = vis.ribbon.showCriterionDropdown ? 'flex' : 'none';
+  if (rViews) rViews.style.display = vis.ribbon.showQuickViewJumps ? 'flex' : 'none';
+
+  // Schema-driven Study Builder field visibility
+  const setDisp = (id, show, flex = false) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = show ? (flex ? 'flex' : 'block') : 'none';
+  };
+  setDisp('study-axis1-num-box', vis.studyForm.showAxis1NumericInput, true);
+  setDisp('study-axis1-method-box', vis.studyForm.showAxis1MethodPicker);
+  setDisp('study-axis1-species-note', vis.studyForm.showAxis1SpeciesNote);
+  setDisp('study-tau-coupling-row', vis.studyForm.showTauCoupling, true);
+  setDisp('study-axis2-val-box', vis.studyForm.showAxis2Values, true);
+  setDisp('study-law-controls-box', vis.studyForm.showLawControls, true);
+
+  const studySide = document.getElementById('study-sidebar');
+  if (studySide) {
+    studySide.classList.toggle('collapsed', !APP.ui.studyBuilderOpen);
+  }
 }
 
 function defaultKwargs(method) {
@@ -275,4 +343,71 @@ function nearestEvalRow(bundle, ts) {
     if (d < bestD) { bestD = d; best = i; }
   }
   return best;
+}
+
+async function fetchStudyPresets() {
+  if (!APP.staticMode) {
+    try {
+      const r = await fetch('/api/study/presets');
+      if (r.ok) return await r.json();
+    } catch (_) {}
+  }
+  try {
+    const r = await fetch('static_data/study_presets.json');
+    if (r.ok) return await r.json();
+  } catch (_) {}
+  return { presets: typeof STUDY_PRESET_FALLBACKS !== 'undefined' ? STUDY_PRESET_FALLBACKS : [] };
+}
+
+async function fetchStudyPresetSpec(presetId) {
+  const method = document.getElementById('method')?.value || 'cartesian';
+  const base_request = currentRequest(method, gatherKwargs(method));
+  if (!APP.staticMode) {
+    try {
+      const r = await fetch('/api/study/preset_spec', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preset_id: presetId, base_request }),
+      });
+      if (r.ok) return await r.json();
+    } catch (_) {}
+  }
+  return null;
+}
+
+async function fetchStudyRun(specPayload) {
+  if (!APP.staticMode) {
+    try {
+      const resp = await fetch('/api/study/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(specPayload),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+        return data;
+      }
+      if (resp.status !== 404 && resp.status !== 405) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || 'Erreur étude Rust');
+      }
+    } catch (e) {
+      if (!String(e).includes('Failed to fetch') && !String(e).includes('NetworkError')) {
+        throw e;
+      }
+    }
+    APP.staticMode = true;
+  }
+  const ds = specPayload.base_request?.dataset || 'synthetic_drum';
+  const pid = specPayload.study_id || 'hom_start';
+  for (const url of [
+    `static_data/study_${pid}_${ds}.json`,
+    `static_data/study_${pid}_synthetic_drum.json`,
+    `static_data/study_hom_start_synthetic_drum.json`,
+  ]) {
+    const r = await fetch(url);
+    if (r.ok) return await r.json();
+  }
+  throw new Error('Étude statique indisponible');
 }

@@ -3,28 +3,39 @@
 
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver};
+use std::sync::Arc;
 use std::thread;
 
 use dem_mcm_coupling::gui::{
-    run_gui_comparison, run_method_benchmark, Camera3D, ComparisonBundle, GuiDatasetCache,
-    MethodBenchmarkRow, ViewerAppState, WorkspaceTab,
+    run_gui_comparison_cached, run_method_benchmark_cached, Camera3D, ComparisonBundle,
+    GuiDatasetCache, MethodBenchmarkRow, ViewerAppState, WorkbenchMode, WorkspaceTab,
 };
+use dem_mcm_coupling::research::{run_study, ResearchSessionCache, StudyResultBundle};
 use eframe::egui;
 
 use crate::feature_tree::draw_feature_tree;
 use crate::ribbon::draw_top_strip_and_ribbon;
 use crate::views::{
-    benchmark::draw_benchmark_view, errors::draw_errors_view, matrices::draw_matrices_view,
-    matrix_evolution::draw_matrix_evolution_view, mixer3d::draw_mixer3d_view,
-    particles::draw_particles_view, summary::draw_summary_view, teneur::draw_teneur_view,
+    benchmark::draw_benchmark_view,
+    errors::draw_errors_view,
+    matrices::draw_matrices_view,
+    matrix_evolution::draw_matrix_evolution_view,
+    mixer3d::draw_mixer3d_view,
+    particles::draw_particles_view,
+    study::{draw_study_view, EguiStudyState},
+    summary::draw_summary_view,
+    teneur::draw_teneur_view,
 };
 
 pub struct DemMcmEguiApp {
     state: ViewerAppState,
+    study_state: EguiStudyState,
+    sessions: Arc<ResearchSessionCache>,
     bundle_a: Option<ComparisonBundle>,
     bench_rows: Vec<MethodBenchmarkRow>,
     last_error: Option<String>,
     pending_rx: Option<Receiver<Result<ComparisonBundle, String>>>,
+    study_rx: Option<Receiver<Result<StudyResultBundle, String>>>,
     data_dir: PathBuf,
     computing: bool,
 }
@@ -34,10 +45,13 @@ impl DemMcmEguiApp {
         Self::apply_studio_style(&cc.egui_ctx);
         let mut app = Self {
             state: ViewerAppState::default(),
+            study_state: EguiStudyState::default(),
+            sessions: Arc::new(ResearchSessionCache::new()),
             bundle_a: None,
             bench_rows: Vec::new(),
             last_error: None,
             pending_rx: None,
+            study_rx: None,
             data_dir: PathBuf::from("../data/chunks"),
             computing: false,
         };
@@ -60,6 +74,7 @@ impl DemMcmEguiApp {
     fn trigger_compute(&mut self, ctx: egui::Context) {
         let req = self.state.request.clone();
         let data_dir = self.data_dir.clone();
+        let sessions = Arc::clone(&self.sessions);
         let (tx, rx) = mpsc::channel();
         self.pending_rx = Some(rx);
         self.computing = true;
@@ -69,10 +84,33 @@ impl DemMcmEguiApp {
             let res = if req.dataset == "real_chunks" {
                 cache
                     .get_or_load_real(&data_dir)
-                    .and_then(|frames| run_gui_comparison(&req, &frames))
+                    .and_then(|frames| run_gui_comparison_cached(&req, &frames, &sessions))
             } else {
                 let frames = cache.get_synthetic();
-                run_gui_comparison(&req, &frames)
+                run_gui_comparison_cached(&req, &frames, &sessions)
+            };
+            let _ = tx.send(res.map_err(|e| e.to_string()));
+            ctx.request_repaint();
+        });
+    }
+
+    fn trigger_study_run(&mut self, ctx: egui::Context) {
+        let spec = self.study_state.build_spec(&self.state.request);
+        let data_dir = self.data_dir.clone();
+        let sessions = Arc::clone(&self.sessions);
+        let (tx, rx) = mpsc::channel();
+        self.study_rx = Some(rx);
+        self.computing = true;
+
+        thread::spawn(move || {
+            let mut cache = GuiDatasetCache::new();
+            let res = if spec.base_request.dataset == "real_chunks" {
+                cache
+                    .get_or_load_real(&data_dir)
+                    .and_then(|frames| run_study(&spec, &sessions, &frames))
+            } else {
+                let frames = cache.get_synthetic();
+                run_study(&spec, &sessions, &frames)
             };
             let _ = tx.send(res.map_err(|e| e.to_string()));
             ctx.request_repaint();
@@ -104,7 +142,8 @@ impl DemMcmEguiApp {
         .iter()
         .map(|s| s.to_string())
         .collect();
-        self.bench_rows = run_method_benchmark(&self.state.request, &methods, &frames);
+        self.bench_rows =
+            run_method_benchmark_cached(&self.state.request, &methods, &frames, &self.sessions);
     }
 }
 
@@ -124,6 +163,20 @@ impl eframe::App for DemMcmEguiApp {
                 }
             }
         }
+        if let Some(rx) = &self.study_rx {
+            if let Ok(result) = rx.try_recv() {
+                self.computing = false;
+                self.study_rx = None;
+                match result {
+                    Ok(sb) => {
+                        self.study_state.result = Some(sb);
+                        self.study_state.selected_cell = (0, 0);
+                        self.last_error = None;
+                    }
+                    Err(e) => self.last_error = Some(e),
+                }
+            }
+        }
 
         if self.state.playing {
             if let Some(b) = &self.bundle_a {
@@ -135,11 +188,20 @@ impl eframe::App for DemMcmEguiApp {
         }
 
         let mut trigger_run = false;
+        let mut trigger_study_run = false;
         let mut run_bench = false;
 
-        draw_top_strip_and_ribbon(ctx, &mut self.state, self.computing, &mut trigger_run);
+        draw_top_strip_and_ribbon(
+            ctx,
+            &mut self.state,
+            self.computing,
+            &mut trigger_run,
+            &mut trigger_study_run,
+        );
 
-        if self.state.panels.feature_tree_expanded {
+        let is_explore = self.state.workbench_mode == WorkbenchMode::Explore;
+
+        if is_explore && self.state.panels.feature_tree_expanded {
             egui::SidePanel::left("feature_tree")
                 .resizable(true)
                 .default_width(250.0)
@@ -153,25 +215,29 @@ impl eframe::App for DemMcmEguiApp {
                 });
         }
 
-        // Bottom Onshape-style view switcher + collapsible timeline
-        egui::TopBottomPanel::bottom("view_tabs_bar").show(ctx, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                for (tab, lbl) in [
-                    (WorkspaceTab::Summary, "Sommaire"),
-                    (WorkspaceTab::Mesh3D, "Mélangeur 3D"),
-                    (WorkspaceTab::Teneur, "Teneur (Espèce)"),
-                    (WorkspaceTab::Particles, "Particules (N)"),
-                    (WorkspaceTab::Errors, "Erreurs L1 & RMS"),
-                    (WorkspaceTab::MatrixEvolution, "Évolution P_inhom(t)"),
-                    (WorkspaceTab::Matrices, "Matrices P & ΔP"),
-                    (WorkspaceTab::Benchmark, "Benchmark"),
-                ] {
-                    ui.selectable_value(&mut self.state.active_tab, tab, lbl);
-                }
+        if is_explore {
+            // Bottom Onshape-style view switcher + collapsible timeline
+            egui::TopBottomPanel::bottom("view_tabs_bar").show(ctx, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    for (tab, lbl) in [
+                        (WorkspaceTab::Summary, "Sommaire"),
+                        (WorkspaceTab::Mesh3D, "Mélangeur 3D"),
+                        (WorkspaceTab::Teneur, "Teneur (Espèce)"),
+                        (WorkspaceTab::Particles, "Particules (N)"),
+                        (WorkspaceTab::Errors, "Erreurs L1 & RMS"),
+                        (WorkspaceTab::MatrixEvolution, "Évolution P_inhom(t)"),
+                        (WorkspaceTab::Matrices, "Matrices P & ΔP"),
+                        (WorkspaceTab::Benchmark, "Benchmark"),
+                    ] {
+                        ui.selectable_value(&mut self.state.active_tab, tab, lbl);
+                    }
+                });
             });
-        });
+        }
 
-        if self.state.panels.timeline_expanded {
+        if self.state.workbench_mode != WorkbenchMode::Study
+            && self.state.panels.timeline_expanded
+        {
             if let Some(b) = &self.bundle_a {
                 egui::TopBottomPanel::bottom("parametric_timeline").show(ctx, |ui| {
                     ui.horizontal(|ui| {
@@ -197,6 +263,16 @@ impl eframe::App for DemMcmEguiApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             if let Some(err) = &self.last_error {
                 ui.colored_label(egui::Color32::LIGHT_RED, format!("Erreur: {err}"));
+            }
+            if self.state.active_tab == WorkspaceTab::Study {
+                draw_study_view(
+                    ui,
+                    &self.state.request,
+                    &mut self.study_state,
+                    self.computing,
+                    &mut trigger_study_run,
+                );
+                return;
             }
             let Some(bundle) = self.bundle_a.clone() else {
                 ui.label("Chargement de la simulation DEM...");
@@ -224,11 +300,15 @@ impl eframe::App for DemMcmEguiApp {
                 WorkspaceTab::Benchmark => {
                     draw_benchmark_view(ui, &self.bench_rows, &mut run_bench);
                 }
+                WorkspaceTab::Study => {}
             }
         });
 
-        if trigger_run {
+        if trigger_run && !self.computing {
             self.trigger_compute(ctx.clone());
+        }
+        if trigger_study_run && !self.computing {
+            self.trigger_study_run(ctx.clone());
         }
         if run_bench {
             self.run_benchmark_sync();

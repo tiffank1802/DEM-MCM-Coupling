@@ -6,6 +6,14 @@ use std::collections::HashMap;
 use crate::gui::camera3d::Camera3D;
 use crate::io::json::JsonValue;
 
+/// Exclusive top-level workbench mode preventing simultaneous button clutter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkbenchMode {
+    Explore,
+    ResearchStudy,
+    CompareAB,
+}
+
 /// Top-level views separating the compact Summary Dashboard from full-viewport Focus Views.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceTab {
@@ -17,6 +25,7 @@ pub enum WorkspaceTab {
     MatrixEvolution,
     Matrices,
     Benchmark,
+    Study,
     EguiPlan,
     // Compatibility aliases preserved for existing callers
     TeneurParticles,
@@ -355,6 +364,7 @@ impl SimulationRequest {
 /// Complete client/desktop interactive viewer state (serializable & egui-ready).
 #[derive(Debug, Clone)]
 pub struct ViewerAppState {
+    pub workbench_mode: WorkbenchMode,
     pub active_tab: WorkspaceTab,
     pub panels: CollapsiblePanelsState,
     pub evol_filter: MatrixEvolutionFilter,
@@ -379,6 +389,7 @@ pub struct ViewerAppState {
 impl Default for ViewerAppState {
     fn default() -> Self {
         Self {
+            workbench_mode: WorkbenchMode::Explore,
             active_tab: WorkspaceTab::Summary,
             panels: CollapsiblePanelsState::default(),
             evol_filter: MatrixEvolutionFilter::default(),

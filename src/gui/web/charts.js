@@ -449,3 +449,139 @@ function drawBarBenchmark(canvas, rows, metricKey = 'rmse_teneur') {
   ctx.fillStyle = 'rgba(125, 211, 189, 0.90)'; ctx.fillRect(pad.l + 165, 6, 11, 4);
   ctx.fillStyle = '#dce4ee'; ctx.fillText(`${metricLbl} Inhomogène`, pad.l + 180, 11);
 }
+
+const LAW_FAMILY_COLORS = {
+  constant: '#98a4b5',
+  linear: '#8faec9',
+  quadratic: '#7dd3bd',
+  cubic: '#b8b8e6',
+  exponential: '#eec078',
+  logarithmic: '#e5989b',
+  power: '#c9a6e0',
+};
+
+function drawStudyHeatmap2D(canvas, bundle, metricKey, selectedCell, onCellClick) {
+  if (!canvas || !bundle || !bundle.points || !bundle.points.length) return;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  if (rect.width < 10 || rect.height < 10) return;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(rect.width * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const W = rect.width, H = rect.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const l1 = bundle.primary_axis?.labels || [];
+  const l2 = bundle.secondary_axis?.labels || ['-'];
+  const nRows = l1.length;
+  const nCols = l2.length;
+  if (!nRows || !nCols) return;
+
+  const pad = { l: 74, r: 16, t: 28, b: 34 };
+  const pw = Math.max(40, W - pad.l - pad.r);
+  const ph = Math.max(40, H - pad.t - pad.b);
+  const cw = pw / nCols;
+  const ch = ph / nRows;
+
+  const ptMap = new Map();
+  let vmin = Infinity, vmax = -Infinity;
+  const getVal = p => {
+    if (metricKey === 'best_law_r2') return p.best_law_r2 ?? null;
+    if (metricKey === 'best_law_aicc') return p.best_law_aicc ?? null;
+    if (metricKey === 'best_law_oob_rmse') return p.best_law_oob_rmse ?? p.best_law_rmse ?? null;
+    if (metricKey === 'rmse_teneur_inhom') return p.rmse_teneur_inhom ?? p.rmse_teneur_hom;
+    if (metricKey === 'rmse_rsd_inhom') return p.rmse_rsd_inhom ?? p.rmse_rsd_hom;
+    if (metricKey === 'nan_rows_hom') return p.nan_rows_hom;
+    return p.rmse_rsd_hom;
+  };
+  for (const p of bundle.points) {
+    ptMap.set(`${p.idx1}:${p.idx2}`, p);
+    const v = getVal(p);
+    if (v != null && isFinite(v)) {
+      vmin = Math.min(vmin, v);
+      vmax = Math.max(vmax, v);
+    }
+  }
+  if (!isFinite(vmin)) { vmin = 0; vmax = 1; }
+  const vspan = Math.max(1e-9, vmax - vmin);
+
+  for (let r = 0; r < nRows; r++) {
+    for (let c = 0; c < nCols; c++) {
+      const p = ptMap.get(`${r}:${c}`);
+      const x = pad.l + c * cw;
+      const y = pad.t + r * ch;
+      if (!p || p.error) {
+        ctx.fillStyle = 'rgba(229, 152, 155, 0.22)';
+        ctx.fillRect(x + 1, y + 1, Math.max(2, cw - 2), Math.max(2, ch - 2));
+        ctx.fillStyle = '#e5989b';
+        ctx.font = '10px monospace';
+        ctx.fillText('N/A', x + cw * 0.35, y + ch * 0.54);
+        continue;
+      }
+
+      let txt = '';
+      if (metricKey === 'best_law_family') {
+        const fam = p.best_law_family || 'constant';
+        ctx.fillStyle = hexToRgba(LAW_FAMILY_COLORS[fam] || '#8faec9', 0.48);
+        txt = `${p.best_law_name || fam}`;
+      } else {
+        const val = getVal(p);
+        const k = val == null ? 0.5 : (val - vmin) / vspan;
+        const good = (metricKey === 'best_law_r2') ? k : (1 - k);
+        const R = Math.round(180 * (1 - good) + 52 * good);
+        const G = Math.round(70 * (1 - good) + 175 * good);
+        const B = Math.round(75 * (1 - good) + 150 * good);
+        ctx.fillStyle = `rgba(${R},${G},${B},0.72)`;
+        txt = val == null ? '—' : (Math.abs(val) >= 100 ? val.toFixed(1) : val.toFixed(3));
+      }
+      ctx.fillRect(x + 1.5, y + 1.5, Math.max(2, cw - 3), Math.max(2, ch - 3));
+
+      const isSel = selectedCell && selectedCell.idx1 === r && selectedCell.idx2 === c;
+      ctx.strokeStyle = isSel ? '#ffffff' : 'rgba(255,255,255,0.16)';
+      ctx.lineWidth = isSel ? 2.4 : 1;
+      ctx.strokeRect(x + 1.5, y + 1.5, Math.max(2, cw - 3), Math.max(2, ch - 3));
+
+      ctx.fillStyle = '#f2f6fb';
+      ctx.font = 'bold 11px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(txt.slice(0, 12), x + cw * 0.5, y + ch * 0.48);
+      if (p.best_law_r2 != null) {
+        ctx.fillStyle = 'rgba(220,228,238,0.85)';
+        ctx.font = '10px monospace';
+        ctx.fillText(`R²=${p.best_law_r2.toFixed(2)}`, x + cw * 0.5, y + ch * 0.68);
+      }
+      ctx.textAlign = 'left';
+    }
+  }
+
+  // Axis headers
+  ctx.fillStyle = '#98a4b5';
+  ctx.font = '10.5px monospace';
+  ctx.textAlign = 'center';
+  for (let c = 0; c < nCols; c++) {
+    ctx.fillText(`${bundle.secondary_axis?.kind || 'A2'}=${l2[c]}`, pad.l + (c + 0.5) * cw, pad.t - 8);
+  }
+  ctx.textAlign = 'right';
+  for (let r = 0; r < nRows; r++) {
+    ctx.fillText(`${bundle.primary_axis?.kind || 'A1'}=${l1[r]}`, pad.l - 6, pad.t + (r + 0.55) * ch);
+  }
+  ctx.textAlign = 'left';
+
+  if (!canvas._studyClickWired) {
+    canvas._studyClickWired = true;
+    canvas.addEventListener('click', e => {
+      const m = canvas._studyHeatMeta;
+      if (!m || !m.onCellClick) return;
+      const rr = canvas.getBoundingClientRect();
+      const mx = e.clientX - rr.left, my = e.clientY - rr.top;
+      const c = Math.floor((mx - m.pad.l) / m.cw);
+      const r = Math.floor((my - m.pad.t) / m.ch);
+      if (r >= 0 && r < m.nRows && c >= 0 && c < m.nCols) {
+        m.onCellClick(r, c);
+      }
+    });
+  }
+  canvas._studyHeatMeta = { pad, cw, ch, nRows, nCols, onCellClick };
+}
+

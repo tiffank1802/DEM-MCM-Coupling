@@ -81,6 +81,9 @@ fn test_web_ui_cad_shell_and_matrix_evolution_view() {
     assert!(!html.contains("Liquid Glass"));
     assert!(html.contains("pane-summary"));
     assert!(html.contains("pane-matrix_evol"));
+    assert!(html.contains("pane-study"));
+    assert!(html.contains("workbench-mode-switch"));
+    assert!(html.contains("deriveUiVisibility"));
     assert!(html.contains("feature-tree"));
     assert!(html.contains("ribbon-bar"));
 }

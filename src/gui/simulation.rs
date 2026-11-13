@@ -7,29 +7,23 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use crate::config::{ExperimentData, SpeciesExperimentData};
 use crate::data::{DataSource, DemFrame, LocalDataSource};
 use crate::error::{DemMcmError, Result};
 use crate::gui::matrix_evolution::{
     compute_matrix_evolution, MatrixEvolutionData, TransitionLawItem,
 };
-use crate::gui::mesh3d::{extract_mesh_3d, Mesh3DData};
+use crate::gui::mesh3d::Mesh3DData;
 use crate::gui::metrics_eval::{
-    build_discrepancy_heatmap, cell_teneur_row, evaluate_chain_metrics, matrix_to_json,
-    vec_f64_json, ChainEvalInput, ChainPredictionMetrics, MethodBenchmarkRow,
+    build_discrepancy_heatmap, cell_teneur_row, matrix_to_json, vec_f64_json,
+    ChainPredictionMetrics, MethodBenchmarkRow,
 };
 use crate::gui::state::SimulationRequest;
 use crate::io::json::JsonValue;
 use crate::linalg::{real_eigvals_abs, Matrix};
-use crate::metrics::{
-    clean_transition_matrix, propagate_markov, propagate_markov_inhomogeneous,
-    stationary_distribution, validate_experiment,
-};
-use crate::partitioners::{create_partitioner, PartitionerDiagnostics};
-use crate::run_sweep::{
-    detect_species, run_experiment, run_inhomogeneous_experiment, run_no_species_experiment,
-    ExperimentConfig,
-};
+use crate::metrics::stationary_distribution;
+use crate::partitioners::PartitionerDiagnostics;
+use crate::research::session::{ResearchSessionCache, TemporalEvalParams};
+use crate::run_sweep::detect_species;
 
 /// Cached dataset holder using `Arc` so repeated mesh switches & benchmarks are zero-copy.
 #[derive(Debug, Default)]
@@ -223,10 +217,23 @@ pub struct ComparisonBundle {
 }
 
 /// Run partitioner fitting + 3-D mesh extraction + homogeneous & inhomogeneous
-/// model construction + **full-duration DEM prediction** (`ts_min .. ts_max`).
+/// model construction + **full-duration DEM prediction** (`ts_min .. ts_max`),
+/// without external session caching.
 pub fn run_gui_comparison(
     req: &SimulationRequest,
     frames: &BTreeMap<usize, DemFrame>,
+) -> Result<ComparisonBundle> {
+    let ephemeral = ResearchSessionCache::new();
+    run_gui_comparison_cached(req, frames, &ephemeral)
+}
+
+/// Cached variant sharing [`ResearchSessionCache`] across interactive runs and
+/// parametric research studies so temporal parameter updates skip re-fitting
+/// and re-labelling `states_matrix`.
+pub fn run_gui_comparison_cached(
+    req: &SimulationRequest,
+    frames: &BTreeMap<usize, DemFrame>,
+    session_cache: &ResearchSessionCache,
 ) -> Result<ComparisonBundle> {
     if frames.is_empty() {
         return Err(DemMcmError::MissingData(
@@ -234,56 +241,23 @@ pub fn run_gui_comparison(
         ));
     }
 
-    let sorted_ts: Vec<usize> = frames.keys().copied().collect();
-    let ts_min = sorted_ts[0];
-    let ts_max = *sorted_ts.last().unwrap();
+    let session = session_cache.get_or_build(
+        &req.dataset,
+        &req.method,
+        &req.kwargs,
+        req.permanent_start,
+        false,
+        frames,
+    )?;
 
-    // Model construction window (`start_index .. start_index + NLT*(step+tau)`)
-    let start_index = if frames.contains_key(&req.start_index) {
+    let sorted_ts = &session.sorted_timesteps;
+    let ts_min = session.ts_min;
+    let ts_max = session.ts_max;
+    let start_index = if session.idx_to_row.contains_key(&req.start_index) {
         req.start_index
     } else {
         ts_min
     };
-    let perm_start = if req.permanent_start >= ts_min && req.permanent_start <= ts_max {
-        req.permanent_start
-    } else {
-        ts_min
-    };
-
-    // Subsample permanent phase cleanly to <= 24,000 points for fast interactive fitting
-    // while keeping full spatial extent (`cartesian` uses all frames or dense sample).
-    let perm_ts: Vec<usize> = sorted_ts
-        .iter()
-        .copied()
-        .filter(|&t| t >= perm_start)
-        .collect();
-    let fit_ts = if perm_ts.is_empty() {
-        &sorted_ts
-    } else {
-        &perm_ts
-    };
-    let approx_pts = frames[&fit_ts[0]].n_particles().max(1);
-    let target_frames = (24_000 / approx_pts).max(1);
-    let fit_stride = (fit_ts.len() / target_frames).max(1);
-
-    let mut perm_coords = Vec::new();
-    let mut perm_vels = Vec::new();
-    for (idx, &ts) in fit_ts.iter().enumerate() {
-        if idx % fit_stride != 0 && ts != ts_max {
-            continue;
-        }
-        let f = &frames[&ts];
-        perm_coords.extend_from_slice(&f.coordinates);
-        perm_vels.extend_from_slice(&f.velocities);
-    }
-
-    let mut partitioner = create_partitioner(&req.method, &req.kwargs)?;
-    if perm_vels.len() == perm_coords.len() {
-        partitioner.set_dem_velocities(Some(&perm_vels));
-    }
-    partitioner.fit(&perm_coords)?;
-
-    // Build model configuration (construction phase)
     let nlt = req.nlt.max(1);
     let step = req.step.max(1);
     let dt = req.dt.max(1);
@@ -291,59 +265,22 @@ pub fn run_gui_comparison(
     let model_t_start = start_index as i64;
     let model_t_end = (start_index + nlt * (step + tau)).min(ts_max) as i64;
 
-    let cfg = ExperimentConfig {
-        method: req.method.clone(),
-        method_kwargs: req.kwargs.clone(),
+    let eval_params = TemporalEvalParams {
         nlt,
-        tau,
         step,
         dt,
+        tau,
         start_index,
-        particle_diameter: None,
-        inhomogeneous: false,
+        no_species: req.no_species,
+        target_species: req.target_species.clone(),
+        predict_full_duration: req.predict_full_duration,
+        build_inhomogeneous: true,
     };
+    let ev = session.evaluate_temporal(&eval_params)?;
 
-    let hom_res = if req.no_species {
-        run_no_species_experiment(&cfg, partitioner.as_mut(), frames)?
-    } else {
-        run_experiment(&cfg, partitioner.as_mut(), frames)?
-    };
-
-    let mut cfg_inh = cfg.clone();
-    cfg_inh.inhomogeneous = true;
-    let inh_res = if req.no_species {
-        run_no_species_experiment(&cfg_inh, partitioner.as_mut(), frames)?
-    } else {
-        run_inhomogeneous_experiment(&cfg_inh, partitioner.as_mut(), frames)?
-    };
-
-    let mut species_keys: Vec<String> = hom_res.species.keys().cloned().collect();
-    species_keys.sort();
-    let is_single = species_keys.len() < 2;
-    let (sp_a_key, sp_b_key) = if is_single {
-        (species_keys[0].as_str(), species_keys[0].as_str())
-    } else {
-        let small_k = species_keys
-            .iter()
-            .find(|s| s.as_str() == "small")
-            .unwrap_or(&species_keys[0]);
-        let large_k = species_keys
-            .iter()
-            .find(|s| s.as_str() == "large")
-            .unwrap_or(&species_keys[1]);
-        (small_k.as_str(), large_k.as_str())
-    };
+    let is_single = ev.is_single_species;
     let target_is_large = !is_single && req.target_species == "large";
-
-    let hs = &hom_res.species[sp_a_key];
-    let hl = &hom_res.species[sp_b_key];
-    let p_hom_s = hs.p.as_ref().unwrap();
-    let p_hom_l = hl.p.as_ref().unwrap();
-    let (ps_clean, act_s) = clean_transition_matrix(p_hom_s, 0.5);
-    let (pl_clean, act_l) = clean_transition_matrix(p_hom_l, 0.5);
-
-    let times_i64 = &hs.times;
-    // Full-duration DEM prediction (`pred_start = ts_min`, matching postprocess.prepare_species)
+    let times_i64 = &session.times_i64;
     let pred_start = if req.predict_full_duration {
         ts_min
     } else {
@@ -356,184 +293,64 @@ pub fn run_gui_comparison(
     let pred_t_start = times_i64[i_pred_row];
     let pred_t_end = *times_i64.last().unwrap_or(&pred_t_start);
 
-    // 1. Propagate Homogeneous chain across full DEM duration
-    let (s_mk_hom_s, times_eval) = propagate_markov(
-        hs.s_matrix.row(i_pred_row),
-        &ps_clean,
-        times_i64,
-        pred_t_start,
-        tau,
-        &act_s,
-    )?;
-    let (s_mk_hom_l, _) = propagate_markov(
-        hl.s_matrix.row(i_pred_row),
-        &pl_clean,
-        times_i64,
-        pred_t_start,
-        tau,
-        &act_l,
-    )?;
-
-    let mut hom_exp_map = HashMap::new();
-    hom_exp_map.insert(
-        sp_a_key.to_string(),
-        SpeciesExperimentData {
-            s_matrix: hs.s_matrix.clone(),
-            times: times_i64.clone(),
-            p: Some(p_hom_s.clone()),
-            p_blocks: None,
-        },
-    );
-    if !is_single {
-        hom_exp_map.insert(
-            sp_b_key.to_string(),
-            SpeciesExperimentData {
-                s_matrix: hl.s_matrix.clone(),
-                times: times_i64.clone(),
-                p: Some(p_hom_l.clone()),
-                p_blocks: None,
-            },
-        );
-    }
-    let hom_folder = cfg.output_folder(None)?;
-    let hom_exp = ExperimentData {
-        config: cfg.to_json(),
-        stats: hom_res.stats.clone(),
-        inhomogeneous: false,
-        inhomogeneous_metadata: None,
-        states_matrix: Some(hom_res.states_matrix.clone()),
-        species: hom_exp_map,
+    let s_map = if req.no_species {
+        &session.s_matrices_all
+    } else {
+        &session.s_matrices_species
     };
-    let val_hom = validate_experiment(&hom_folder, &hom_exp, 1e-3);
-    let hom_metrics = evaluate_chain_metrics(ChainEvalInput {
-        s_dem_small: &hs.s_matrix,
-        s_dem_large: &hl.s_matrix,
-        s_mk_small: &s_mk_hom_s,
-        s_mk_large: &s_mk_hom_l,
-        times_dem: times_i64,
-        times_eval: &times_eval,
-        p_ref_small: p_hom_s,
-        p_ref_large: p_hom_l,
-        activated_small: &act_s,
-        activated_large: &act_l,
-        target_is_large,
-        validation: &val_hom,
-    })?;
+    let s_dem_s = &s_map[&ev.sp_a_key];
+    let s_dem_l = &s_map[&ev.sp_b_key];
 
-    // 2. Propagate Inhomogeneous chain across full DEM duration.
-    // Fill any active row missing transitions in a short sub-block with the
-    // homogeneous row (or self-loop) so particle count is strictly conserved (0% drift).
-    let is_res = inh_res
-        .species
-        .get(sp_a_key)
-        .or_else(|| inh_res.species.values().next())
-        .ok_or_else(|| DemMcmError::MissingData("No inhomogeneous species output".to_string()))?;
-    let il_res = inh_res.species.get(sp_b_key).unwrap_or(is_res);
-    let fallback_blocks_s = vec![p_hom_s.clone(); nlt];
-    let fallback_blocks_l = vec![p_hom_l.clone(); nlt];
-    let raw_blocks_s = is_res.p_blocks.as_ref().unwrap_or(&fallback_blocks_s);
-    let raw_blocks_l = il_res.p_blocks.as_ref().unwrap_or(&fallback_blocks_l);
+    let hom_metrics = ev.hom_metrics;
+    let times_eval = hom_metrics.times_eval.clone();
+    let inhom_metrics = ev
+        .inhom_metrics
+        .unwrap_or_else(|| hom_metrics.clone());
+    let inh_times_eval = inhom_metrics.times_eval.clone();
 
-    let stabilize_blocks = |raw: &[Matrix], p_fallback: &Matrix, act: &[bool]| -> Vec<Matrix> {
-        raw.iter()
-            .map(|b| {
-                let (mut cb, b_act) = clean_transition_matrix(b, 0.5);
-                for (r, &is_act) in act.iter().enumerate() {
-                    if is_act && !b_act[r] {
-                        let fb_sum: f64 = p_fallback.row(r).iter().sum();
-                        if fb_sum > 0.5 {
-                            cb.set_row(r, p_fallback.row(r));
-                        } else {
-                            cb.set(r, r, 1.0);
-                        }
-                    }
-                }
-                cb
-            })
-            .collect()
+    let s_mk_hom_s = ev.s_mk_hom_small;
+    let s_mk_hom_l = ev.s_mk_hom_large;
+    let s_mk_inh_s = ev.s_mk_inhom_small.unwrap_or_else(|| s_mk_hom_s.clone());
+    let s_mk_inh_l = ev.s_mk_inhom_large.unwrap_or_else(|| s_mk_hom_l.clone());
+
+    let p_hom_s = ev.p_hom_raw_small;
+    let p_hom_l = ev.p_hom_raw_large;
+    let ps_clean = ev.p_hom_clean_small;
+    let pl_clean = ev.p_hom_clean_large;
+    let act_s = ev.activated_small;
+    let act_l = ev.activated_large;
+
+    let raw_blocks_s = if ev.p_blocks_raw_small.is_empty() {
+        vec![p_hom_s.clone(); nlt]
+    } else {
+        ev.p_blocks_raw_small
     };
-
-    let clean_blocks_s = stabilize_blocks(raw_blocks_s, &ps_clean, &act_s);
-    let clean_blocks_l = stabilize_blocks(raw_blocks_l, &pl_clean, &act_l);
-    let (s_mk_inh_s, inh_times_eval) = propagate_markov_inhomogeneous(
-        is_res.s_matrix.row(i_pred_row),
-        &clean_blocks_s,
-        times_i64,
-        pred_t_start,
-        tau,
-        &act_s,
-        Some(step),
-        Some(nlt),
-    )?;
-    let (s_mk_inh_l, _) = propagate_markov_inhomogeneous(
-        il_res.s_matrix.row(i_pred_row),
-        &clean_blocks_l,
-        times_i64,
-        pred_t_start,
-        tau,
-        &act_l,
-        Some(step),
-        Some(nlt),
-    )?;
-
-    let mut inh_exp_map = HashMap::new();
-    inh_exp_map.insert(
-        sp_a_key.to_string(),
-        SpeciesExperimentData {
-            s_matrix: is_res.s_matrix.clone(),
-            times: times_i64.clone(),
-            p: None,
-            p_blocks: Some(raw_blocks_s.clone()),
-        },
-    );
-    if !is_single {
-        inh_exp_map.insert(
-            sp_b_key.to_string(),
-            SpeciesExperimentData {
-                s_matrix: il_res.s_matrix.clone(),
-                times: times_i64.clone(),
-                p: None,
-                p_blocks: Some(raw_blocks_l.clone()),
-            },
-        );
-    }
-    let mut inh_meta = JsonValue::object();
-    inh_meta.insert("n_blocks", JsonValue::Number(raw_blocks_s.len() as f64));
-    inh_meta.insert("step", JsonValue::Number(step as f64));
-    inh_meta.insert("nlt", JsonValue::Number(nlt as f64));
-    let inh_folder = format!("inhomogeneous_{hom_folder}");
-    let inh_exp = ExperimentData {
-        inhomogeneous: true,
-        config: cfg_inh.to_json(),
-        stats: inh_res.stats.clone(),
-        inhomogeneous_metadata: Some(inh_meta),
-        states_matrix: Some(inh_res.states_matrix.clone()),
-        species: inh_exp_map,
+    let raw_blocks_l = if ev.p_blocks_raw_large.is_empty() {
+        vec![p_hom_l.clone(); nlt]
+    } else {
+        ev.p_blocks_raw_large
     };
-    let val_inh = validate_experiment(&inh_folder, &inh_exp, 1e-3);
-    let block0_s = raw_blocks_s.first().unwrap_or(p_hom_s);
-    let block0_l = raw_blocks_l.first().unwrap_or(p_hom_l);
-    let inhom_metrics = evaluate_chain_metrics(ChainEvalInput {
-        s_dem_small: &is_res.s_matrix,
-        s_dem_large: &il_res.s_matrix,
-        s_mk_small: &s_mk_inh_s,
-        s_mk_large: &s_mk_inh_l,
-        times_dem: times_i64,
-        times_eval: &inh_times_eval,
-        p_ref_small: block0_s,
-        p_ref_large: block0_l,
-        activated_small: &act_s,
-        activated_large: &act_l,
-        target_is_large,
-        validation: &val_inh,
-    })?;
+    let clean_blocks_s = if ev.p_blocks_clean_small.is_empty() {
+        vec![ps_clean.clone(); nlt]
+    } else {
+        ev.p_blocks_clean_small
+    };
+    let clean_blocks_l = if ev.p_blocks_clean_large.is_empty() {
+        vec![pl_clean.clone(); nlt]
+    } else {
+        ev.p_blocks_clean_large
+    };
 
     // Per-block summaries + consecutive block relative diffs (fig_matrix_differences)
     let mut blocks = Vec::with_capacity(raw_blocks_s.len());
     let mut block_times_f64 = Vec::with_capacity(raw_blocks_s.len());
     for (b, bs) in raw_blocks_s.iter().enumerate() {
         let bl = &raw_blocks_l[b];
-        let t0 = start_index as i64 + (b * (step + tau)) as i64;
+        let t0 = ev
+            .block_times
+            .get(b)
+            .map(|&v| v as i64)
+            .unwrap_or(start_index as i64 + (b * (step + tau)) as i64);
         let t1 = t0 + (step + tau) as i64;
         block_times_f64.push(t0 as f64);
         let mut diag_vals = Vec::new();
@@ -567,16 +384,20 @@ pub fn run_gui_comparison(
         });
     }
 
-    let block_labels: Vec<String> = blocks
-        .iter()
-        .map(|b| format!("B{} [{}..{}]", b.block_index, b.t_start, b.t_end))
-        .collect();
+    let block_labels: Vec<String> = if ev.block_labels.len() == blocks.len() {
+        ev.block_labels
+    } else {
+        blocks
+            .iter()
+            .map(|b| format!("B{} [{}..{}]", b.block_index, b.t_start, b.t_end))
+            .collect()
+    };
 
     let matrix_evolution_small = compute_matrix_evolution(
         &clean_blocks_s,
         &block_times_f64,
         &block_labels,
-        sp_a_key,
+        &ev.sp_a_key,
         0.01,
         2,
         400,
@@ -585,7 +406,7 @@ pub fn run_gui_comparison(
         &clean_blocks_l,
         &block_times_f64,
         &block_labels,
-        sp_b_key,
+        &ev.sp_b_key,
         0.01,
         2,
         400,
@@ -597,7 +418,6 @@ pub fn run_gui_comparison(
         matrix_evolution_small.delta_norms_l1.clone()
     };
 
-    // Preserve `p_laws` as the top 8 off-diagonal transitions for compact summary / compatibility
     let target_evol = if target_is_large {
         &matrix_evolution_large
     } else {
@@ -611,39 +431,11 @@ pub fn run_gui_comparison(
         .cloned()
         .collect();
 
-    // 3-D mesh extraction using representative permanent-phase coordinates so every
-    // spatial cluster is faithfully represented, plus per-frame diagnostics.
-    let first_frame = frames
-        .get(&start_index)
-        .unwrap_or_else(|| frames.values().next().unwrap());
-    let mesh_coords: Vec<[f64; 3]> = if perm_coords.len() <= 4000 {
-        perm_coords.clone()
-    } else {
-        let step_p = (perm_coords.len() / 4000).max(1);
-        perm_coords.iter().step_by(step_p).copied().collect()
-    };
-    let mesh_vels: Vec<[f64; 3]> = if perm_vels.len() == perm_coords.len() {
-        if perm_vels.len() <= 4000 {
-            perm_vels.clone()
-        } else {
-            let step_p = (perm_vels.len() / 4000).max(1);
-            perm_vels.iter().step_by(step_p).copied().collect()
-        }
-    } else {
-        Vec::new()
-    };
-    let mesh_vel_opt = if mesh_vels.len() == mesh_coords.len() {
-        Some(mesh_vels.as_slice())
-    } else {
-        None
-    };
-    let mesh_states = partitioner.compute_states(&mesh_coords, mesh_vel_opt)?;
-    let mesh = extract_mesh_3d(partitioner.as_ref(), &mesh_coords, &mesh_states)?;
-    let diagnostics =
-        partitioner.diagnostics(&first_frame.coordinates, Some(&first_frame.velocities))?;
+    let mesh = session.mesh.clone();
+    let diagnostics = session.diagnostics.clone();
 
-    // Downsampled 3-D playback frames across the full DEM duration (up to 48 steps, all two particle sizes)
-    let n_cells = partitioner.n_cells();
+    // Downsampled 3-D playback frames across the full DEM duration (up to 48 steps)
+    let n_cells = session.n_cells;
     let first_ref = frames.values().next().unwrap();
     let sp_groups = detect_species(first_ref);
     let sp_small_mask = sp_groups
@@ -660,7 +452,7 @@ pub fn run_gui_comparison(
         }
         let f = &frames[&ts];
         let pt_stride = (f.n_particles() / 700).max(1);
-        let state_row = &hom_res.states_matrix[row_idx];
+        let state_row = &session.states_matrix[row_idx];
         let mut sub_coords = Vec::new();
         let mut sub_vels = Vec::new();
         let mut sub_diams = Vec::new();
@@ -735,17 +527,17 @@ pub fn run_gui_comparison(
         let dr = *t_row_map.get(&t).unwrap_or(&0);
         let ir = ei.min(s_mk_inh_s.rows.saturating_sub(1));
         if target_is_large {
-            dem_conc_traj.push(cell_teneur_row(hl.s_matrix.row(dr), hs.s_matrix.row(dr)));
+            dem_conc_traj.push(cell_teneur_row(s_dem_l.row(dr), s_dem_s.row(dr)));
             hom_conc_traj.push(cell_teneur_row(s_mk_hom_l.row(ei), s_mk_hom_s.row(ei)));
             inhom_conc_traj.push(cell_teneur_row(s_mk_inh_l.row(ir), s_mk_inh_s.row(ir)));
         } else {
-            dem_conc_traj.push(cell_teneur_row(hs.s_matrix.row(dr), hl.s_matrix.row(dr)));
+            dem_conc_traj.push(cell_teneur_row(s_dem_s.row(dr), s_dem_l.row(dr)));
             hom_conc_traj.push(cell_teneur_row(s_mk_hom_s.row(ei), s_mk_hom_l.row(ei)));
             inhom_conc_traj.push(cell_teneur_row(s_mk_inh_s.row(ir), s_mk_inh_l.row(ir)));
         }
     }
 
-    // Top-9 populated active cells + their population trajectories (`fig_compare_teneur` / `fig_states_top_populated`)
+    // Top-9 populated active cells + their population trajectories
     let mut active_cell_ids: Vec<usize> = (0..n_cells)
         .filter(|&c| *act_s.get(c).unwrap_or(&false) || *act_l.get(c).unwrap_or(&false))
         .collect();
@@ -759,7 +551,7 @@ pub fn run_gui_comparison(
                 .iter()
                 .map(|&t| {
                     let dr = *t_row_map.get(&t).unwrap_or(&0);
-                    hs.s_matrix.get(dr, c) + hl.s_matrix.get(dr, c)
+                    s_dem_s.get(dr, c) + s_dem_l.get(dr, c)
                 })
                 .sum();
             (c, sum / times_eval.len().max(1) as f64)
@@ -777,7 +569,7 @@ pub fn run_gui_comparison(
         top_cell_pop_dem.push(
             top_cells
                 .iter()
-                .map(|&c| hs.s_matrix.get(dr, c) + hl.s_matrix.get(dr, c))
+                .map(|&c| s_dem_s.get(dr, c) + s_dem_l.get(dr, c))
                 .collect(),
         );
         top_cell_pop_hom.push(
@@ -794,13 +586,9 @@ pub fn run_gui_comparison(
         );
     }
 
-    // Discrepancy heatmaps (Temps x Cellules) matching fig_discrepancy_analysis
+    // Discrepancy heatmaps (Temps x Cellules)
     let (heatmap_times, discrepancy_heatmap_hom) = build_discrepancy_heatmap(
-        if target_is_large {
-            &hl.s_matrix
-        } else {
-            &hs.s_matrix
-        },
+        if target_is_large { s_dem_l } else { s_dem_s },
         if target_is_large {
             &s_mk_hom_l
         } else {
@@ -811,11 +599,7 @@ pub fn run_gui_comparison(
         &active_cell_ids,
     );
     let (_, discrepancy_heatmap_inhom) = build_discrepancy_heatmap(
-        if target_is_large {
-            &il_res.s_matrix
-        } else {
-            &is_res.s_matrix
-        },
+        if target_is_large { s_dem_l } else { s_dem_s },
         if target_is_large {
             &s_mk_inh_l
         } else {
@@ -826,7 +610,7 @@ pub fn run_gui_comparison(
         &active_cell_ids,
     );
 
-    // Collect top off-diagonal transition edges for 3-D flow arrows (max 120 strongest edges)
+    // Top off-diagonal transition edges for 3-D flow arrows (max 120 strongest edges)
     let edge_mat = if target_is_large {
         &pl_clean
     } else {
@@ -866,8 +650,8 @@ pub fn run_gui_comparison(
         diagnostics,
         hom_metrics,
         inhom_metrics,
-        p_hom_small: p_hom_s.clone(),
-        p_hom_large: p_hom_l.clone(),
+        p_hom_small: p_hom_s,
+        p_hom_large: p_hom_l,
         blocks,
         block_rel_diffs,
         p_laws,
@@ -896,6 +680,16 @@ pub fn run_method_benchmark(
     methods: &[String],
     frames: &BTreeMap<usize, DemFrame>,
 ) -> Vec<MethodBenchmarkRow> {
+    let ephemeral = ResearchSessionCache::new();
+    run_method_benchmark_cached(base_req, methods, frames, &ephemeral)
+}
+
+pub fn run_method_benchmark_cached(
+    base_req: &SimulationRequest,
+    methods: &[String],
+    frames: &BTreeMap<usize, DemFrame>,
+    session_cache: &ResearchSessionCache,
+) -> Vec<MethodBenchmarkRow> {
     let mut rows = Vec::with_capacity(methods.len());
     for m in methods {
         let mut r = base_req.clone();
@@ -905,7 +699,7 @@ pub fn run_method_benchmark(
         } else {
             SimulationRequest::default_kwargs_for(m)
         };
-        if let Ok(b) = run_gui_comparison(&r, frames) {
+        if let Ok(b) = run_gui_comparison_cached(&r, frames, session_cache) {
             let n_dem_mean = if b.hom_metrics.n_particles_total_dem.is_empty() {
                 0.0
             } else {
