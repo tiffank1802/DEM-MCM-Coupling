@@ -520,16 +520,8 @@ impl PreparedMethodSession {
             compute_p_matrix(&prev, &curr, self.n_cells)
         };
 
-        let mask_a = &masks
-            .iter()
-            .find(|(s, _)| *s == sp_a_key)
-            .unwrap()
-            .1;
-        let mask_b = &masks
-            .iter()
-            .find(|(s, _)| *s == sp_b_key)
-            .unwrap()
-            .1;
+        let mask_a = &masks.iter().find(|(s, _)| *s == sp_a_key).unwrap().1;
+        let mask_b = &masks.iter().find(|(s, _)| *s == sp_b_key).unwrap().1;
 
         let p_hom_raw_small = compute_p_for_pairs(&pairs, mask_a);
         let p_hom_raw_large = if is_single {

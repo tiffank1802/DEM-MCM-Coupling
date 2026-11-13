@@ -235,7 +235,7 @@ impl eframe::App for DemMcmEguiApp {
             });
         }
 
-        if self.state.workbench_mode != WorkbenchMode::Study
+        if self.state.workbench_mode != WorkbenchMode::ResearchStudy
             && self.state.panels.timeline_expanded
         {
             if let Some(b) = &self.bundle_a {

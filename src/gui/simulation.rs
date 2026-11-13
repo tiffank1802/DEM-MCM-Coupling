@@ -303,9 +303,7 @@ pub fn run_gui_comparison_cached(
 
     let hom_metrics = ev.hom_metrics;
     let times_eval = hom_metrics.times_eval.clone();
-    let inhom_metrics = ev
-        .inhom_metrics
-        .unwrap_or_else(|| hom_metrics.clone());
+    let inhom_metrics = ev.inhom_metrics.unwrap_or_else(|| hom_metrics.clone());
     let inh_times_eval = inhom_metrics.times_eval.clone();
 
     let s_mk_hom_s = ev.s_mk_hom_small;

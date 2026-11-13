@@ -112,7 +112,13 @@ impl AxisValue {
         match self {
             Self::Int(v) => *v as f64,
             Self::Float(v) => *v,
-            Self::Bool(b) => if *b { 1.0 } else { 0.0 },
+            Self::Bool(b) => {
+                if *b {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
             Self::Text(_) => fallback_idx as f64,
         }
     }
@@ -194,7 +200,10 @@ impl StudyAxisSpec {
             JsonValue::String(self.kind.display_name().to_string()),
         );
         o.insert("is_numeric", JsonValue::Bool(self.kind.is_numeric()));
-        o.insert("couple_step_to_tau", JsonValue::Bool(self.couple_step_to_tau));
+        o.insert(
+            "couple_step_to_tau",
+            JsonValue::Bool(self.couple_step_to_tau),
+        );
         o.insert(
             "values",
             JsonValue::Array(self.values.iter().map(AxisValue::to_json).collect()),
@@ -385,7 +394,10 @@ impl StudySpec {
         o.insert("study_id", JsonValue::String(self.study_id.clone()));
         o.insert("title", JsonValue::String(self.title.clone()));
         o.insert("subtitle", JsonValue::String(self.subtitle.clone()));
-        o.insert("chain_mode", JsonValue::String(self.chain_mode.as_str().to_string()));
+        o.insert(
+            "chain_mode",
+            JsonValue::String(self.chain_mode.as_str().to_string()),
+        );
         o.insert("use_bed_frame", JsonValue::Bool(self.use_bed_frame));
         o.insert("enable_law_study", JsonValue::Bool(self.enable_law_study));
         o.insert(
@@ -764,7 +776,10 @@ fn apply_resolution_to_kwargs(
         "cylindrical" => {
             let nr = target_n.clamp(2, 8);
             kwargs.insert("nr".to_string(), JsonValue::Number(nr as f64));
-            kwargs.insert("ntheta".to_string(), JsonValue::Number((nr * 2).min(16) as f64));
+            kwargs.insert(
+                "ntheta".to_string(),
+                JsonValue::Number((nr * 2).min(16) as f64),
+            );
         }
         "octree" => {
             kwargs.insert(
@@ -772,7 +787,11 @@ fn apply_resolution_to_kwargs(
                 JsonValue::Number(target_n.max(15) as f64),
             );
         }
-        "spectral_biclustering" | "voronoi" | "physics" | "physics_full_vel" | "spectral"
+        "spectral_biclustering"
+        | "voronoi"
+        | "physics"
+        | "physics_full_vel"
+        | "spectral"
         | "gmm" => {
             kwargs.insert(
                 "n_cells".to_string(),
@@ -918,18 +937,19 @@ pub fn run_study(
                 &mut req,
                 &mut eval_params,
             );
-            let (p2_label, p2_num) = if let (Some(ax2), Some(val2)) = (&spec.secondary_axis, val2_opt) {
-                apply_axis_value(
-                    ax2.kind,
-                    val2,
-                    ax2.couple_step_to_tau,
-                    &mut req,
-                    &mut eval_params,
-                );
-                (val2.label(), val2.as_f64(idx2))
-            } else {
-                ("-".to_string(), 0.0)
-            };
+            let (p2_label, p2_num) =
+                if let (Some(ax2), Some(val2)) = (&spec.secondary_axis, val2_opt) {
+                    apply_axis_value(
+                        ax2.kind,
+                        val2,
+                        ax2.couple_step_to_tau,
+                        &mut req,
+                        &mut eval_params,
+                    );
+                    (val2.label(), val2.as_f64(idx2))
+                } else {
+                    ("-".to_string(), 0.0)
+                };
 
             let session_res = session_cache.get_or_build(
                 &req.dataset,
@@ -1089,7 +1109,11 @@ pub fn run_study(
                         .iter()
                         .map(|b| {
                             let v = b.get(src, dst);
-                            if v.is_finite() { v } else { 0.0 }
+                            if v.is_finite() {
+                                v
+                            } else {
+                                0.0
+                            }
                         })
                         .collect();
                     let n_b = values.len().min(ev.block_times.len());

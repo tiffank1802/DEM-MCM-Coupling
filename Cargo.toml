@@ -47,4 +47,8 @@ path = "tests_rs/test_parquet_real_data.rs"
 name = "gui_mesh_and_chains"
 path = "tests_rs/test_gui_mesh_and_chains.rs"
 
+[[test]]
+name = "research_studies"
+path = "tests_rs/test_research_studies.rs"
+
 [dependencies]

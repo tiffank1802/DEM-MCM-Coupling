@@ -120,7 +120,8 @@ pub fn build_preset_spec(preset_id: &str, base_req: &SimulationRequest) -> Study
             StudySpec {
                 study_id: "hom_start".to_string(),
                 title: "Homogène · Impact du départ d'apprentissage (start_index)".to_string(),
-                subtitle: "Transitoire initial vs régime permanent sur RSD(t) et Teneur".to_string(),
+                subtitle: "Transitoire initial vs régime permanent sur RSD(t) et Teneur"
+                    .to_string(),
                 base_request: req,
                 chain_mode: StudyChainMode::Homogeneous,
                 primary_axis: StudyAxisSpec {
@@ -157,7 +158,8 @@ pub fn build_preset_spec(preset_id: &str, base_req: &SimulationRequest) -> Study
             StudySpec {
                 study_id: "hom_nlt_frob".to_string(),
                 title: "Homogène · Convergence NLT & Norme de Frobenius".to_string(),
-                subtitle: "Erreur relative ||P_NLT - P_réf||_F / ||P_réf||_F et erreur RSD".to_string(),
+                subtitle: "Erreur relative ||P_NLT - P_réf||_F / ||P_réf||_F et erreur RSD"
+                    .to_string(),
                 base_request: req,
                 chain_mode: StudyChainMode::Homogeneous,
                 primary_axis: StudyAxisSpec {
@@ -193,7 +195,8 @@ pub fn build_preset_spec(preset_id: &str, base_req: &SimulationRequest) -> Study
             StudySpec {
                 study_id: "hom_step_dt".to_string(),
                 title: "Homogène · Pas d'échantillonnage dt & Lignes NaN".to_string(),
-                subtitle: "Influence de dt sur la visite des cellules et la stochasticité".to_string(),
+                subtitle: "Influence de dt sur la visite des cellules et la stochasticité"
+                    .to_string(),
                 base_request: req,
                 chain_mode: StudyChainMode::Homogeneous,
                 primary_axis: StudyAxisSpec {
@@ -228,7 +231,8 @@ pub fn build_preset_spec(preset_id: &str, base_req: &SimulationRequest) -> Study
             StudySpec {
                 study_id: "hom_step".to_string(),
                 title: "Homogène · Écart inter-blocs (step)".to_string(),
-                subtitle: "Effet de l'espacement entre fenêtres d'apprentissage sur le mélange".to_string(),
+                subtitle: "Effet de l'espacement entre fenêtres d'apprentissage sur le mélange"
+                    .to_string(),
                 base_request: req,
                 chain_mode: StudyChainMode::Homogeneous,
                 primary_axis: StudyAxisSpec {
@@ -261,7 +265,8 @@ pub fn build_preset_spec(preset_id: &str, base_req: &SimulationRequest) -> Study
             StudySpec {
                 study_id: "tau_sensitivity".to_string(),
                 title: "Horizon Markov τ · Dynamique RSD(t) & Temps de mélange t50".to_string(),
-                subtitle: "Impact spatial et temporel du pas markovien τ sur la prédiction".to_string(),
+                subtitle: "Impact spatial et temporel du pas markovien τ sur la prédiction"
+                    .to_string(),
                 base_request: req,
                 chain_mode: StudyChainMode::Both,
                 primary_axis: StudyAxisSpec {
@@ -292,7 +297,8 @@ pub fn build_preset_spec(preset_id: &str, base_req: &SimulationRequest) -> Study
             StudySpec {
                 study_id: "method_rsd".to_string(),
                 title: "Découpage spatial · Impact des méthodes sur le RSD(t)".to_string(),
-                subtitle: "Comparaison dynamique des maillages sur l'homogénéisation et la teneur".to_string(),
+                subtitle: "Comparaison dynamique des maillages sur l'homogénéisation et la teneur"
+                    .to_string(),
                 base_request: req,
                 chain_mode: StudyChainMode::Both,
                 primary_axis: StudyAxisSpec {
@@ -331,7 +337,8 @@ pub fn build_preset_spec(preset_id: &str, base_req: &SimulationRequest) -> Study
             StudySpec {
                 study_id: "spatial_resolution".to_string(),
                 title: format!("Résolution spatiale ({}) × Erreurs & NaN", req.method),
-                subtitle: "Impact du raffinement de maillage sur RSD, Teneur et cellules vides".to_string(),
+                subtitle: "Impact du raffinement de maillage sur RSD, Teneur et cellules vides"
+                    .to_string(),
                 base_request: req,
                 chain_mode: StudyChainMode::Homogeneous,
                 primary_axis: StudyAxisSpec {
@@ -366,20 +373,16 @@ pub fn build_preset_spec(preset_id: &str, base_req: &SimulationRequest) -> Study
                     .collect()
             };
             let nlts: Vec<AxisValue> = if is_real {
-                [3usize, 5, 8, 12]
-                    .into_iter()
-                    .map(AxisValue::Int)
-                    .collect()
+                [3usize, 5, 8, 12].into_iter().map(AxisValue::Int).collect()
             } else {
-                [3usize, 5, 7]
-                    .into_iter()
-                    .map(AxisValue::Int)
-                    .collect()
+                [3usize, 5, 7].into_iter().map(AxisValue::Int).collect()
             };
             StudySpec {
                 study_id: "inhom_laws_grid".to_string(),
-                title: "Inhomogène · Lois p_{i→j}(t) : Influence de (start_index × NLT)".to_string(),
-                subtitle: "Comparaison multi-familles (AICc & validation hors-bloc) selon le départ et le nombre de blocs".to_string(),
+                title: "Inhomogène · Lois p_{i→j}(t) : Influence de (start_index × NLT)"
+                    .to_string(),
+                subtitle: "Comparaison multi-familles (AICc & validation hors-bloc) selon le départ et le nombre de blocs"
+                    .to_string(),
                 base_request: req,
                 chain_mode: StudyChainMode::Inhomogeneous,
                 primary_axis: StudyAxisSpec {

@@ -220,7 +220,9 @@ pub struct TransitionLawComparison {
 
 impl TransitionLawComparison {
     pub fn best_candidate(&self) -> Option<&LawCandidateFit> {
-        self.candidates.iter().find(|c| c.family == self.best_family)
+        self.candidates
+            .iter()
+            .find(|c| c.family == self.best_family)
     }
 
     pub fn to_json(&self) -> JsonValue {
@@ -411,9 +413,7 @@ fn fit_raw_family(
                     }
                 }
             }
-            let lbl = format!(
-                "p = {best_a:.4} {best_b:+.4}·exp(-{best_alpha:.2}·u)"
-            );
+            let lbl = format!("p = {best_a:.4} {best_b:+.4}·exp(-{best_alpha:.2}·u)");
             (vec![best_a, best_b, best_alpha], lbl)
         }
         LawFamily::Logarithmic => {

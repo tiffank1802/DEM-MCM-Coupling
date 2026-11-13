@@ -10,7 +10,7 @@ pub fn draw_top_strip_and_ribbon(
     trigger_run: &mut bool,
     trigger_study_run: &mut bool,
 ) {
-    let is_study = state.workbench_mode == WorkbenchMode::Study;
+    let is_study = state.workbench_mode == WorkbenchMode::ResearchStudy;
     let view_needs_3d = matches!(
         state.active_tab,
         WorkspaceTab::Summary
@@ -38,22 +38,22 @@ pub fn draw_top_strip_and_ribbon(
             }
             if ui
                 .selectable_label(
-                    state.workbench_mode == WorkbenchMode::Study,
+                    state.workbench_mode == WorkbenchMode::ResearchStudy,
                     "Études de Recherche",
                 )
                 .clicked()
             {
-                state.workbench_mode = WorkbenchMode::Study;
+                state.workbench_mode = WorkbenchMode::ResearchStudy;
                 state.active_tab = WorkspaceTab::Study;
             }
             if ui
                 .selectable_label(
-                    state.workbench_mode == WorkbenchMode::Compare,
+                    state.workbench_mode == WorkbenchMode::CompareAB,
                     "Comparer A/B",
                 )
                 .clicked()
             {
-                state.workbench_mode = WorkbenchMode::Compare;
+                state.workbench_mode = WorkbenchMode::CompareAB;
                 state.active_tab = WorkspaceTab::Benchmark;
             }
 
@@ -81,14 +81,14 @@ pub fn draw_top_strip_and_ribbon(
 
             ui.separator();
             let action_lbl = match state.workbench_mode {
-                WorkbenchMode::Study => {
+                WorkbenchMode::ResearchStudy => {
                     if computing {
                         "Étude en cours..."
                     } else {
                         "Lancer l'étude"
                     }
                 }
-                WorkbenchMode::Compare => "Lancer Benchmark",
+                WorkbenchMode::CompareAB => "Lancer Benchmark",
                 WorkbenchMode::Explore => {
                     if computing {
                         "Calcul..."

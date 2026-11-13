@@ -445,11 +445,11 @@ fn handle_client(mut stream: TcpStream, state: Arc<ServerState>) {
                 }
             };
 
-            let resp = match frames_res.and_then(|frames| run_study(&spec, &state.sessions, &frames))
-            {
-                Ok(bundle) => ("200 OK".to_string(), bundle.to_json().to_string_compact()),
-                Err(e) => json_error("422 Unprocessable Entity", &format!("{e}")),
-            };
+            let resp =
+                match frames_res.and_then(|frames| run_study(&spec, &state.sessions, &frames)) {
+                    Ok(bundle) => ("200 OK".to_string(), bundle.to_json().to_string_compact()),
+                    Err(e) => json_error("422 Unprocessable Entity", &format!("{e}")),
+                };
             let _ = write_http_response(
                 &mut stream,
                 &resp.0,
