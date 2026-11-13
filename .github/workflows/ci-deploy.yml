@@ -55,21 +55,67 @@ jobs:
             libxkbcommon-dev libgl-dev libwayland-dev pkg-config
 
       - name: Check formatting
-        run: cargo fmt --check
+        id: fmt
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          echo "=== cargo fmt --check ===" >> /tmp/rust_ci.log
+          cargo fmt --check 2>&1 | tee -a /tmp/rust_ci.log
 
       - name: Run Clippy lints
-        run: cargo clippy --all-targets -- -D warnings
+        id: clippy
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          echo "=== cargo clippy ===" >> /tmp/rust_ci.log
+          cargo clippy --all-targets -- -D warnings 2>&1 | tee -a /tmp/rust_ci.log
 
       - name: Run full Rust test suite (--release)
-        run: cargo test --release
+        id: test
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          echo "=== cargo test --release ===" >> /tmp/rust_ci.log
+          cargo test --release 2>&1 | tee -a /tmp/rust_ci.log
 
       - name: Verify egui frontend compilation
-        run: cargo check --manifest-path gui-egui/Cargo.toml
+        id: egui
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          echo "=== gui-egui check ===" >> /tmp/rust_ci.log
+          cargo check --manifest-path gui-egui/Cargo.toml 2>&1 | tee -a /tmp/rust_ci.log
+
+      - name: Fail if any Rust check failed
+        if: steps.fmt.outcome == 'failure' || steps.clippy.outcome == 'failure' || steps.test.outcome == 'failure' || steps.egui.outcome == 'failure'
+        run: exit 1
 
       - name: Build & validate CLI against real DEM chunks
         run: |
           cargo build --release --bin dem-mcm-sweep --bin dem-mcm-gui
           ./target/release/dem-mcm-sweep --validate ./data/chunks
+
+      - name: Publish Rust failure diagnostics for arena branches
+        if: failure() && startsWith(github.ref, 'refs/heads/arena/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, urllib.request
+          log = pathlib.Path('/tmp/rust_ci.log').read_text(errors='replace') if pathlib.Path('/tmp/rust_ci.log').exists() else '(no log)'
+          body = "### Rust CI diagnostics\n```text\n" + log[-55000:] + "\n```"
+          req = urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/commits/{os.environ['GITHUB_SHA']}/comments",
+              data=json.dumps({"body": body}).encode(),
+              headers={
+                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                  "Accept": "application/vnd.github+json",
+                  "Content-Type": "application/json",
+              },
+              method="POST",
+          )
+          urllib.request.urlopen(req).read()
+          PY
 
   python-ci:
     name: Python (pytest suite)
