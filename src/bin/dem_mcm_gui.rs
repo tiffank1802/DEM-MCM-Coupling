@@ -200,56 +200,59 @@ fn export_static_bundle(
         )?;
     }
 
-    if data_dir.exists() {
-        if let Ok(real_frames) = cache.get_or_load_real(data_dir) {
-            let real_methods = ["cartesian", "cylindrical", "voronoi", "adaptive"];
-            let sp = "small";
-            for m in real_methods {
-                let req = SimulationRequest {
-                    dataset: "real_chunks".to_string(),
-                    method: m.to_string(),
-                    kwargs: SimulationRequest::default_kwargs_for(m),
-                    nlt: 3,
-                    step: 157,
-                    dt: 1,
-                    tau: 157,
-                    start_index: 157,
-                    permanent_start: 157,
-                    no_species: false,
-                    target_species: sp.to_string(),
-                    predict_full_duration: true,
-                    active_block: 0,
-                };
-                if let Ok(bundle) = run_gui_comparison(&req, &real_frames) {
-                    let p = static_dir.join(format!("sim_real_chunks_{m}_{sp}.json"));
-                    std::fs::write(p, bundle.to_json().to_string_compact().as_bytes())?;
-                }
-            }
-            let breq = SimulationRequest {
+    let real_opt = if data_dir.exists() {
+        cache.get_or_load_real(data_dir).ok()
+    } else {
+        None
+    };
+    if let Some(real_frames) = real_opt {
+        let real_methods = ["cartesian", "cylindrical", "voronoi", "adaptive"];
+        let sp = "small";
+        for m in real_methods {
+            let req = SimulationRequest {
                 dataset: "real_chunks".to_string(),
+                method: m.to_string(),
+                kwargs: SimulationRequest::default_kwargs_for(m),
                 nlt: 3,
                 step: 157,
                 dt: 1,
                 tau: 157,
                 start_index: 157,
                 permanent_start: 157,
+                no_species: false,
                 target_species: sp.to_string(),
-                ..SimulationRequest::default()
+                predict_full_duration: true,
+                active_block: 0,
             };
-            let rm: Vec<String> = real_methods.iter().map(|s| s.to_string()).collect();
-            let rows = run_method_benchmark(&breq, &rm, &real_frames);
-            let mut root = JsonValue::object();
-            root.insert("target_species", JsonValue::String(sp.to_string()));
-            root.insert("dataset", JsonValue::String("real_chunks".to_string()));
-            root.insert(
-                "rows",
-                JsonValue::Array(rows.into_iter().map(|r| r.to_json()).collect()),
-            );
-            std::fs::write(
-                static_dir.join(format!("benchmark_real_chunks_{sp}.json")),
-                root.to_string_compact().as_bytes(),
-            )?;
+            if let Ok(bundle) = run_gui_comparison(&req, &real_frames) {
+                let p = static_dir.join(format!("sim_real_chunks_{m}_{sp}.json"));
+                std::fs::write(p, bundle.to_json().to_string_compact().as_bytes())?;
+            }
         }
+        let breq = SimulationRequest {
+            dataset: "real_chunks".to_string(),
+            nlt: 3,
+            step: 157,
+            dt: 1,
+            tau: 157,
+            start_index: 157,
+            permanent_start: 157,
+            target_species: sp.to_string(),
+            ..SimulationRequest::default()
+        };
+        let rm: Vec<String> = real_methods.iter().map(|s| s.to_string()).collect();
+        let rows = run_method_benchmark(&breq, &rm, &real_frames);
+        let mut root = JsonValue::object();
+        root.insert("target_species", JsonValue::String(sp.to_string()));
+        root.insert("dataset", JsonValue::String("real_chunks".to_string()));
+        root.insert(
+            "rows",
+            JsonValue::Array(rows.into_iter().map(|r| r.to_json()).collect()),
+        );
+        std::fs::write(
+            static_dir.join(format!("benchmark_real_chunks_{sp}.json")),
+            root.to_string_compact().as_bytes(),
+        )?;
     }
 
     println!(
