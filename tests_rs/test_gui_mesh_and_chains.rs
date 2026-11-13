@@ -60,7 +60,29 @@ fn test_all_14_methods_produce_valid_3d_meshes_and_full_dem_chains() {
         assert!(json_str.contains("\"l1_mean_target\""));
         assert!(json_str.contains("\"rms_discrepancy_mean\""));
         assert!(json_str.contains("\"diameters\""));
+        assert!(json_str.contains("\"matrix_evolution_small\""));
+        assert!(json_str.contains("\"matrix_evolution_large\""));
+
+        // Verify inhomogeneous matrix component evolution covers diagonals & off-diagonals (> 0.01)
+        assert!(!bundle.matrix_evolution_small.components.is_empty());
+        assert!(bundle.matrix_evolution_small.global_vmax > 0.0);
+        assert!(bundle
+            .matrix_evolution_small
+            .components
+            .iter()
+            .all(|c| !c.values.is_empty() && !c.dense_predicted.is_empty()));
     }
+}
+
+#[test]
+fn test_web_ui_cad_shell_and_matrix_evolution_view() {
+    let html = dem_mcm_coupling::gui::web::index_html();
+    assert!(html.contains("DEM-MCM Studio"));
+    assert!(!html.contains("Liquid Glass"));
+    assert!(html.contains("pane-summary"));
+    assert!(html.contains("pane-matrix_evol"));
+    assert!(html.contains("feature-tree"));
+    assert!(html.contains("ribbon-bar"));
 }
 
 #[test]

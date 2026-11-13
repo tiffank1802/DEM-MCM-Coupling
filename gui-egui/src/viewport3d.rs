@@ -143,8 +143,13 @@ pub fn draw_viewport_3d(
     let w = rect.width() as f64;
     let h = rect.height() as f64;
     let proj = |cam: &Camera3D, p: [f64; 3]| -> Option<(Pos2, f64, f64)> {
-        cam.project(p, w, h)
-            .map(|pp| (Pos2::new(rect.left() + pp.x as f32, rect.top() + pp.y as f32), pp.depth, pp.scale))
+        cam.project(p, w, h).map(|pp| {
+            (
+                Pos2::new(rect.left() + pp.x as f32, rect.top() + pp.y as f32),
+                pp.depth,
+                pp.scale,
+            )
+        })
     };
 
     // Drum cylinder wireframe
@@ -156,7 +161,9 @@ pub fn draw_viewport_3d(
             let mut ring = Vec::new();
             for i in 0..=n_seg {
                 let a = (i as f64 / n_seg as f64) * 2.0 * PI;
-                if let Some((pt, _, _)) = proj(&state.camera, [dr.radius * a.cos(), dr.radius * a.sin(), z]) {
+                if let Some((pt, _, _)) =
+                    proj(&state.camera, [dr.radius * a.cos(), dr.radius * a.sin(), z])
+                {
                     ring.push(pt);
                 }
             }
@@ -166,9 +173,11 @@ pub fn draw_viewport_3d(
         }
     }
 
-    let frame = bundle
-        .frames
-        .get(state.frame_cursor.min(bundle.frames.len().saturating_sub(1)));
+    let frame = bundle.frames.get(
+        state
+            .frame_cursor
+            .min(bundle.frames.len().saturating_sub(1)),
+    );
     let ts = frame.map_or(0, |f| f.timestep);
 
     let mut items: Vec<DrawItem> = Vec::new();
@@ -322,10 +331,7 @@ pub fn draw_viewport_3d(
     for item in items {
         match item {
             DrawItem::Poly {
-                pts,
-                fill,
-                stroke,
-                ..
+                pts, fill, stroke, ..
             } => {
                 let s = stroke.map_or(Stroke::NONE, |c| Stroke::new(1.3, c));
                 painter.add(egui::Shape::convex_polygon(pts, fill, s));
@@ -359,7 +365,10 @@ pub fn draw_viewport_3d(
     }
 
     // Preset camera buttons overlay top-right
-    let btn_rect = Rect::from_min_size(rect.right_top() + egui::vec2(-220.0, 8.0), egui::vec2(212.0, 26.0));
+    let btn_rect = Rect::from_min_size(
+        rect.right_top() + egui::vec2(-220.0, 8.0),
+        egui::vec2(212.0, 26.0),
+    );
     ui.allocate_new_ui(egui::UiBuilder::new().max_rect(btn_rect), |ui| {
         ui.horizontal(|ui| {
             for (lbl, preset) in [

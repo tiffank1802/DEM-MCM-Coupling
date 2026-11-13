@@ -1,10 +1,20 @@
-//! `egui_plot` views comparing DEM vs Homogeneous vs Inhomogeneous Markov chains
-//! and block-by-block matrix inspection.
+//! `egui_plot` & heatmap primitives shared across Summary and Focus views.
 
-use dem_mcm_coupling::gui::ComparisonBundle;
+use dem_mcm_coupling::gui::{
+    ComparisonBundle, EvolutionScope, MatrixEvolutionData, MatrixEvolutionFilter, TransitionLawItem,
+};
 use dem_mcm_coupling::Matrix;
 use egui::{Color32, Stroke, Ui};
-use egui_plot::{Legend, Line, Plot, PlotPoints};
+use egui_plot::{Legend, Line, LineStyle, Plot, PlotPoints, Points};
+
+const PALETTE: &[Color32] = &[
+    Color32::from_rgb(125, 211, 189),
+    Color32::from_rgb(158, 192, 220),
+    Color32::from_rgb(238, 192, 120),
+    Color32::from_rgb(229, 152, 155),
+    Color32::from_rgb(184, 184, 230),
+    Color32::from_rgb(216, 164, 143),
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlotMetric {
@@ -22,6 +32,7 @@ pub fn draw_chain_curves(
     bundle: &ComparisonBundle,
     metric: PlotMetric,
     show_inhom: bool,
+    height: f32,
 ) {
     let times = &bundle.hom_metrics.times_eval;
     let (y_dem, y_hom, y_inh) = match metric {
@@ -67,7 +78,7 @@ pub fn draw_chain_curves(
 
     Plot::new(id_source)
         .legend(Legend::default())
-        .height(240.0)
+        .height(height)
         .show(ui, |plot_ui| {
             plot_ui.line(
                 Line::new(pts(y_dem))
@@ -78,24 +89,24 @@ pub fn draw_chain_curves(
             plot_ui.line(
                 Line::new(pts(y_hom))
                     .name("Markov Homogène")
-                    .color(Color32::from_rgb(59, 130, 246))
+                    .color(Color32::from_rgb(158, 192, 220))
                     .width(2.0),
             );
             if show_inhom {
                 plot_ui.line(
                     Line::new(pts(y_inh))
                         .name("Markov Inhomogène")
-                        .color(Color32::from_rgb(34, 211, 238))
+                        .color(Color32::from_rgb(125, 211, 189))
                         .width(2.2),
                 );
             }
         });
 }
 
-pub fn draw_transition_heatmap(ui: &mut Ui, p: &Matrix, title: &str) {
+pub fn draw_transition_heatmap(ui: &mut Ui, p: &Matrix, title: &str, max_side: f32) {
     ui.label(title);
     let n = p.rows.max(1);
-    let side = ui.available_width().min(280.0).max(120.0);
+    let side = ui.available_width().min(max_side).max(110.0);
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(side, side), egui::Sense::hover());
     let painter = ui.painter_at(rect);
     let cell = side / n as f32;
@@ -127,7 +138,81 @@ pub fn draw_transition_heatmap(ui: &mut Ui, p: &Matrix, title: &str) {
         let r = ((pos.y - rect.top()) / cell) as usize;
         if r < n && c < n {
             let val = p.get(r, c);
-            resp.on_hover_text(format!("P({r} -> {c}) = {:.4}", val));
+            resp.on_hover_text(format!("P({r} -> {c}) = {val:.4}"));
         }
     }
+}
+
+pub fn filter_evolution_items<'a>(
+    evol: &'a MatrixEvolutionData,
+    filter: &MatrixEvolutionFilter,
+) -> Vec<&'a TransitionLawItem> {
+    evol.components
+        .iter()
+        .filter(|c| c.max_prob >= filter.threshold)
+        .filter(|c| match filter.scope {
+            EvolutionScope::OffDiagonal => !c.is_diagonal,
+            EvolutionScope::Diagonal => c.is_diagonal,
+            EvolutionScope::All => true,
+            EvolutionScope::BySourceCell => c.src == filter.source_cell,
+        })
+        .collect()
+}
+
+pub fn draw_matrix_evolution_overlay(
+    ui: &mut Ui,
+    id_source: &str,
+    evol: &MatrixEvolutionData,
+    items: &[&TransitionLawItem],
+    filter: &MatrixEvolutionFilter,
+    height: f32,
+) {
+    let mut plot = Plot::new(id_source)
+        .legend(Legend::default())
+        .height(height);
+    if filter.common_y_scale {
+        plot = plot
+            .include_y(0.0)
+            .include_y(evol.global_vmax.clamp(0.05, 1.08));
+    }
+
+    plot.show(ui, |plot_ui| {
+        let limit = if filter.zoomed_pair.is_some() { 1 } else { 10 };
+        for (idx, item) in items.iter().take(limit).enumerate() {
+            let col = PALETTE[idx % PALETTE.len()];
+            let pts: PlotPoints = item
+                .block_times
+                .iter()
+                .zip(item.values.iter())
+                .map(|(&t, &v)| [t, v])
+                .collect();
+            let pts_mark: PlotPoints = item
+                .block_times
+                .iter()
+                .zip(item.values.iter())
+                .map(|(&t, &v)| [t, v])
+                .collect();
+            plot_ui.line(
+                Line::new(pts)
+                    .name(format!("p({} -> {})", item.src, item.dst))
+                    .color(col)
+                    .width(2.2),
+            );
+            plot_ui.points(Points::new(pts_mark).color(col).radius(3.8));
+            if filter.show_polynomial_fits && !item.dense_times.is_empty() {
+                let fpts: PlotPoints = item
+                    .dense_times
+                    .iter()
+                    .zip(item.dense_predicted.iter())
+                    .map(|(&t, &v)| [t, v])
+                    .collect();
+                plot_ui.line(
+                    Line::new(fpts)
+                        .color(col)
+                        .width(1.3)
+                        .style(LineStyle::Dashed { length: 6.0 }),
+                );
+            }
+        }
+    });
 }

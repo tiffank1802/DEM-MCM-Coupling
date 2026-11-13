@@ -15,39 +15,35 @@ use dem_mcm_coupling::gui::simulation::{
     run_gui_comparison, run_method_benchmark, GuiDatasetCache,
 };
 use dem_mcm_coupling::gui::state::{catalog_methods, SimulationRequest};
-use dem_mcm_coupling::gui::web_ui::INDEX_HTML;
+use dem_mcm_coupling::gui::web::index_html;
 use dem_mcm_coupling::io::json::JsonValue;
 
-const EGUI_ARCHITECTURE_NOTE: &str = r#"# Planification d'architecture Rust pour egui & Liquid Glass (gui-egui/)
+const EGUI_ARCHITECTURE_NOTE: &str = r#"# Architecture Modulaire CAO — DEM-MCM Studio (Rust · Web · egui)
 
 1. Cœur scientifique indépendant du backend UI (src/gui/) — zéro dépendance crates.io :
-   - camera3d.rs   : Camera3D (orbite sphérique yaw/pitch/distance/pan + vues Iso/XY/XZ/YZ).
-   - mesh3d.rs     : Extraction géométrique 3-D exacte des 14 approches de maillage :
-                     * Boîtes hexaédriques (Cartésien, Quantile, Octree axial)
-                     * Secteurs annulaires courbes 3-D (Cylindrique)
-                     * Clipper convexe de demi-espaces 3-D (Voronoï polyédrique & Octree oblique)
-                     * Plans de coupe y_split / strates récursives (Adaptatif & MultiZone)
-   - state.rs      : Ribbon UI (WorkspaceTab), critère Teneur en espèce (small/large),
-                     visibilité indépendante des deux tailles de particules (4mm / 8mm).
-   - simulation.rs : Cache Arc<BTreeMap<usize, DemFrame>>, construction des modèles sur
-                     [start_index .. start_index + NLT*(step+tau)) vs prédiction sur toute la
-                     durée de la DEM, métriques postprocess.py / postprocess_inhomogeneous.py
-                     (Teneur RMSE/MAE, L1 normalisée, Discrepancy RMS, N_particles, lois p_ij(t)),
-                     et benchmark multi-méthodes (run_method_benchmark).
+   - camera3d.rs          : Caméra 3D (orbite, pan, zoom, presets Iso/XY/XZ/YZ).
+   - mesh3d.rs            : Extraction géométrique 3D exacte des 14 approches de maillage.
+   - metrics_eval.rs      : Métriques postprocess.py (Teneur RMSE/MAE, L1, RMS discrepancy,
+                            RSD, entropie, Danckwerts, conservation N_particles).
+   - matrix_evolution.rs  : Évolution temporelle des composantes p_{i->j}(t) du modèle
+                            inhomogène sur tous les blocs P^(b), fits polynomiaux, échelle
+                            commune global_vmax et normes inter-blocs ΔP_k.
+   - state.rs             : État de l'atelier CAO (WorkspaceTab Sommaire + Vues spécifiques,
+                            CollapsiblePanelsState pour ruban/arbre/menus, filtres évolution).
+   - simulation.rs        : Orchestrateur léger avec cache Arc et benchmark multi-méthodes.
 
-2. Crate client natif/WASM prêt pour egui (gui-egui/) :
-   - Cargo.toml          : dépend de dem-mcm-coupling (path = ".."), eframe 0.29, egui 0.29, egui_plot 0.29.
-   - src/main.rs         : impl eframe::App for DemMcmEguiApp (Ribbon TopBottomPanel, thème Liquid Glass
-                           sombre léger, chargement asynchrone mpsc + ctx.request_repaint()).
-   - src/viewport3d.rs   : Rendu 3-D interactif via egui::Painter avec les deux tailles de particules
-                           à l'échelle 1:2 (0.004 m vs 0.008 m), vitesses, maillage et flux Markov.
-   - src/plots.rs        : Courbes DEM vs Homogène vs Inhomogène (RSD, Teneur, L1, RMS discrepancy,
-                           Nombre de particules) via egui_plot::Plot et heatmaps de matrices P / P^(b).
+2. Interface Web modulaire inspirée SolidWorks / Fusion 360 / Onshape (src/gui/web/) :
+   - styles.css + shell.html + store.js + viewport3d.js + charts.js + views/*.js
+   - Barre d'atelier haute, ruban contextuel pliable, arbre de modèle latéral pliable
+     (nœuds indépendants pliables/dépliables), frise paramétrique pliable et onglets
+     de vues en bas.
+   - Vue Sommaire synthétique avec boutons [En très grand] + 7 Vues Spécifiques plein format
+     dont la figure dédiée « Évolution P_inhom(t) » (mode superposé & grille échelle commune).
 
-3. Déploiement & Lancement :
+3. Client natif Desktop egui modulaire (gui-egui/src/) :
+   - app.rs + feature_tree.rs + ribbon.rs + viewport3d.rs + plots.rs + views/*.rs.
    - Serveur HTTP pure-Rust : dem-mcm-gui --port 8080 --data-dir ./data/chunks
    - Export statique GitHub Pages : dem-mcm-gui --export-static _site --data-dir ./data/chunks
-   - Client natif Desktop (OpenGL + crates.io) : cd gui-egui && cargo run --release
 "#;
 
 struct ServerState {
@@ -141,7 +137,7 @@ fn export_static_bundle(
     let static_dir = out_dir.join("static_data");
     std::fs::create_dir_all(&static_dir)?;
     std::fs::write(out_dir.join(".nojekyll"), b"")?;
-    std::fs::write(out_dir.join("index.html"), INDEX_HTML.as_bytes())?;
+    std::fs::write(out_dir.join("index.html"), index_html().as_bytes())?;
     std::fs::write(
         static_dir.join("methods.json"),
         methods_catalog_json().as_bytes(),
@@ -282,7 +278,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<ServerState>) {
                 &mut stream,
                 "200 OK",
                 "text/html; charset=utf-8",
-                INDEX_HTML.as_bytes(),
+                index_html().as_bytes(),
                 send_body,
             );
         }

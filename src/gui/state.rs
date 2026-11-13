@@ -1,23 +1,101 @@
-//! Shared UI state & configuration descriptors planned for both `egui` (`gui-egui`)
-//! and the Live Preview server (`dem-mcm-gui`).
+//! Shared UI state & configuration descriptors for both `egui` (`gui-egui`)
+//! and the Live Preview CAD-style workbench (`dem-mcm-gui`).
 
 use std::collections::HashMap;
 
 use crate::gui::camera3d::Camera3D;
 use crate::io::json::JsonValue;
 
-/// Top-level ribbon tabs mirroring the planned `egui` Ribbon architecture.
+/// Top-level views separating the compact Summary Dashboard from full-viewport Focus Views.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceTab {
+    Summary,
     Mesh3D,
-    TeneurParticles,
-    ErrorsChains,
+    Teneur,
+    Particles,
+    Errors,
+    MatrixEvolution,
+    Matrices,
     Benchmark,
     EguiPlan,
-    // Legacy aliases preserved for gui-egui compatibility
+    // Compatibility aliases preserved for existing callers
+    TeneurParticles,
+    ErrorsChains,
     Homogeneous,
     Inhomogeneous,
     DualCompare,
+}
+
+/// CAD-inspired collapsible drawer & dropdown visibility flags.
+#[derive(Debug, Clone)]
+pub struct CollapsiblePanelsState {
+    pub ribbon_expanded: bool,
+    pub feature_tree_expanded: bool,
+    pub timeline_expanded: bool,
+    pub node_source_open: bool,
+    pub node_mesh_open: bool,
+    pub node_markov_open: bool,
+    pub node_criterion_open: bool,
+    pub node_layers_open: bool,
+    pub node_inspector_open: bool,
+}
+
+impl Default for CollapsiblePanelsState {
+    fn default() -> Self {
+        Self {
+            ribbon_expanded: true,
+            feature_tree_expanded: true,
+            timeline_expanded: true,
+            node_source_open: true,
+            node_mesh_open: true,
+            node_markov_open: true,
+            node_criterion_open: true,
+            node_layers_open: false,
+            node_inspector_open: true,
+        }
+    }
+}
+
+/// Interactive filters for the dedicated inhomogeneous matrix evolution view (`p_{i->j}(t)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EvolutionViewMode {
+    Overlay,
+    GridCommonScale,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EvolutionScope {
+    OffDiagonal,
+    Diagonal,
+    All,
+    BySourceCell,
+}
+
+#[derive(Debug, Clone)]
+pub struct MatrixEvolutionFilter {
+    pub mode: EvolutionViewMode,
+    pub scope: EvolutionScope,
+    pub source_cell: usize,
+    pub threshold: f64,
+    pub show_polynomial_fits: bool,
+    pub common_y_scale: bool,
+    pub page: usize,
+    pub zoomed_pair: Option<(usize, usize)>,
+}
+
+impl Default for MatrixEvolutionFilter {
+    fn default() -> Self {
+        Self {
+            mode: EvolutionViewMode::Overlay,
+            scope: EvolutionScope::OffDiagonal,
+            source_cell: 0,
+            threshold: 0.01,
+            show_polynomial_fits: true,
+            common_y_scale: true,
+            page: 0,
+            zoomed_pair: None,
+        }
+    }
 }
 
 /// How 3-D cells (or faces) are shaded in the 3-D viewport.
@@ -278,6 +356,8 @@ impl SimulationRequest {
 #[derive(Debug, Clone)]
 pub struct ViewerAppState {
     pub active_tab: WorkspaceTab,
+    pub panels: CollapsiblePanelsState,
+    pub evol_filter: MatrixEvolutionFilter,
     pub request: SimulationRequest,
     pub secondary_method: String,
     pub color_mode: CellColorMode,
@@ -299,7 +379,9 @@ pub struct ViewerAppState {
 impl Default for ViewerAppState {
     fn default() -> Self {
         Self {
-            active_tab: WorkspaceTab::Mesh3D,
+            active_tab: WorkspaceTab::Summary,
+            panels: CollapsiblePanelsState::default(),
+            evol_filter: MatrixEvolutionFilter::default(),
             request: SimulationRequest::default(),
             secondary_method: "voronoi".to_string(),
             color_mode: CellColorMode::DemConcentration,
