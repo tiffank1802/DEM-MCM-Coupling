@@ -75,10 +75,7 @@ fn test_seven_law_families_fitting_aicc_and_out_of_block_rmse() {
     assert!(cmp_exp.best_candidate().unwrap().r2 > 0.99);
 
     // 2. Linear curve -> AICc prefers Linear over over-parameterized Cubic
-    let y_lin: Vec<f64> = times
-        .iter()
-        .map(|&t| 0.20 + 0.40 * (t / span))
-        .collect();
+    let y_lin: Vec<f64> = times.iter().map(|&t| 0.20 + 0.40 * (t / span)).collect();
     let cmp_lin = compare_transition_laws(
         1,
         2,
@@ -144,11 +141,8 @@ fn test_all_8_study_presets_execute_and_serialize_cleanly() {
         }
         // Keep values compatible with the 180-frame test slice
         if spec.primary_axis.kind == StudyAxisKind::StartIndex {
-            spec.primary_axis.values = vec![
-                AxisValue::Int(0),
-                AxisValue::Int(20),
-                AxisValue::Int(40),
-            ];
+            spec.primary_axis.values =
+                vec![AxisValue::Int(0), AxisValue::Int(20), AxisValue::Int(40)];
         } else if spec.primary_axis.kind == StudyAxisKind::Step {
             spec.primary_axis.values =
                 vec![AxisValue::Int(5), AxisValue::Int(10), AxisValue::Int(15)];
@@ -171,10 +165,14 @@ fn test_all_8_study_presets_execute_and_serialize_cleanly() {
 
         let json_str = res.to_json().to_string_compact();
         assert!(json_str.contains("\"points\""));
-        assert!(!json_str.contains("NaN"), "Preset {} emitted NaN in JSON", p.id);
+        dem_mcm_coupling::io::json::JsonValue::parse(&json_str)
+            .unwrap_or_else(|e| panic!("Preset {} produced invalid JSON: {e}", p.id));
 
         if p.id == "inhom_laws_grid" {
-            assert!(!res.law_points.is_empty(), "2D laws preset had no law_points");
+            assert!(
+                !res.law_points.is_empty(),
+                "2D laws preset had no law_points"
+            );
             assert!(res.points.iter().any(|pt| pt.best_law_family.is_some()));
         }
     }
@@ -222,7 +220,10 @@ fn test_species_mode_and_velocity_weight_custom_studies() {
     };
     let out_sp = run_study(&spec_sp, &cache, &frames).unwrap();
     assert_eq!(out_sp.points.len(), 2);
-    assert!(out_sp.points.iter().all(|p| p.error.is_none() && p.rmse_rsd_inhom.is_some()));
+    assert!(out_sp
+        .points
+        .iter()
+        .all(|p| p.error.is_none() && p.rmse_rsd_inhom.is_some()));
 
     let spec_wv = StudySpec {
         study_id: "wv_test".to_string(),
