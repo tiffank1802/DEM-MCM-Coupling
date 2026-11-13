@@ -1,0 +1,9 @@
+.git
+target
+_site
+dist
+template-rapport-stage
+.pytest_cache
+__pycache__
+*.pyc
+*.egg-info
