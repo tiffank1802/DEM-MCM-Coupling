@@ -202,9 +202,12 @@ jobs:
   deploy-pages:
     name: Deploy 3D Studio to GitHub Pages
     needs: build-pages
+    # Déploie depuis master/main, les branches de travail arena/** et sur
+    # déclenchement manuel (workflow_dispatch avec deploy_pages=true).
     if: >-
       github.event_name != 'pull_request' &&
-      (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || inputs.deploy_pages == true)
+      (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' ||
+       startsWith(github.ref, 'refs/heads/arena/') || inputs.deploy_pages == true)
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
