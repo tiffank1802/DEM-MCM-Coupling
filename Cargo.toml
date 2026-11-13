@@ -1,0 +1,50 @@
+[package]
+name = "dem-mcm-coupling"
+version = "0.2.0"
+edition = "2021"
+rust-version = "1.77"
+description = "Markov chain models (homogeneous and inhomogeneous) coupled to DEM simulations of granular mixers"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/tiffank1802/DEM-MCM-Coupling"
+keywords = ["markov-chain", "dem", "granular", "mixing", "partitioning"]
+categories = ["science", "simulation", "mathematics"]
+autotests = false
+
+[lib]
+name = "dem_mcm_coupling"
+path = "src/lib.rs"
+
+[[bin]]
+name = "dem-mcm-sweep"
+path = "src/bin/dem_mcm_sweep.rs"
+
+[[bin]]
+name = "dem-mcm-gui"
+path = "src/bin/dem_mcm_gui.rs"
+
+[[test]]
+name = "markov_core"
+path = "tests_rs/test_markov_core.rs"
+
+[[test]]
+name = "partitioners"
+path = "tests_rs/test_partitioners.rs"
+
+[[test]]
+name = "pipelines"
+path = "tests_rs/test_pipelines.rs"
+
+[[test]]
+name = "data_sources_and_metrics"
+path = "tests_rs/test_data_sources_and_metrics.rs"
+
+[[test]]
+name = "parquet_real_data"
+path = "tests_rs/test_parquet_real_data.rs"
+
+[[test]]
+name = "gui_mesh_and_chains"
+path = "tests_rs/test_gui_mesh_and_chains.rs"
+
+[dependencies]

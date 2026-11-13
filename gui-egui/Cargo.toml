@@ -1,0 +1,12 @@
+[package]
+name = "dem-mcm-egui"
+version = "0.2.0"
+edition = "2021"
+description = "Native & WASM egui 3-D visualization frontend for DEM-MCM Coupling"
+license = "MIT"
+
+[dependencies]
+dem-mcm-coupling = { path = ".." }
+eframe = "0.29"
+egui = "0.29"
+egui_plot = "0.29"
