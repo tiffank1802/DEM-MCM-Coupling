@@ -27,7 +27,10 @@ permissions:
 
 concurrency:
   group: "ci-deploy-${{ github.ref }}"
-  cancel-in-progress: false
+  # Un nouveau push sur la branche annule le run précédent en cours : évite
+  # qu'un run bloqué (runner indisponible, approbation d'environnement…)
+  # ne bloque indéfiniment tous les runs suivants de la branche.
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
