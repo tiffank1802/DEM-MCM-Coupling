@@ -25,6 +25,7 @@ pub mod markov_core;
 pub mod metrics;
 pub mod ml;
 pub mod partitioners;
+pub mod research;
 pub mod rng;
 pub mod run_sweep;
 pub mod spatial;

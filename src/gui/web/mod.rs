@@ -10,6 +10,7 @@ pub const STYLES_CSS: &str = include_str!("styles.css");
 pub const SHELL_HTML: &str = include_str!("shell.html");
 
 pub const STORE_JS: &str = include_str!("store.js");
+pub const UI_MACHINE_JS: &str = include_str!("ui_machine.js");
 pub const VIEWPORT3D_JS: &str = include_str!("viewport3d.js");
 pub const CHARTS_JS: &str = include_str!("charts.js");
 
@@ -21,6 +22,7 @@ pub const VIEW_ERRORS_JS: &str = include_str!("views/errors.js");
 pub const VIEW_MATRIX_EVOL_JS: &str = include_str!("views/matrix_evol.js");
 pub const VIEW_MATRICES_JS: &str = include_str!("views/matrices.js");
 pub const VIEW_BENCHMARK_JS: &str = include_str!("views/benchmark.js");
+pub const VIEW_STUDY_JS: &str = include_str!("views/study.js");
 pub const VIEW_PLAN_JS: &str = include_str!("views/plan.js");
 pub const APP_JS: &str = include_str!("app.js");
 
@@ -31,6 +33,7 @@ static INDEX_CACHE: OnceLock<String> = OnceLock::new();
 pub fn index_html() -> &'static str {
     INDEX_CACHE.get_or_init(|| {
         let scripts = [
+            UI_MACHINE_JS,
             STORE_JS,
             VIEWPORT3D_JS,
             CHARTS_JS,
@@ -42,6 +45,7 @@ pub fn index_html() -> &'static str {
             VIEW_MATRIX_EVOL_JS,
             VIEW_MATRICES_JS,
             VIEW_BENCHMARK_JS,
+            VIEW_STUDY_JS,
             VIEW_PLAN_JS,
             APP_JS,
         ]

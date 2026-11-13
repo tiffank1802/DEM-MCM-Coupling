@@ -4,5 +4,6 @@ pub mod matrices;
 pub mod matrix_evolution;
 pub mod mixer3d;
 pub mod particles;
+pub mod study;
 pub mod summary;
 pub mod teneur;

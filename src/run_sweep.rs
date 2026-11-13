@@ -453,7 +453,7 @@ pub fn detect_species(frame: &DemFrame) -> Vec<(String, Vec<bool>)> {
         .collect()
 }
 
-fn compute_state_matrices(
+pub fn compute_state_matrices(
     timestep_dict: &BTreeMap<usize, DemFrame>,
     partitioner: &mut dyn Partitioner,
 ) -> Result<(Vec<Vec<i64>>, Vec<usize>)> {
@@ -514,7 +514,7 @@ fn compute_state_matrices(
     Ok((states_matrix, sorted_indices))
 }
 
-fn build_s_matrices(
+pub fn build_s_matrices(
     states_matrix: &[Vec<i64>],
     species_masks: &[(String, Vec<bool>)],
     n_states: usize,
@@ -536,7 +536,7 @@ fn build_s_matrices(
     out
 }
 
-fn build_pairs(
+pub fn build_pairs(
     config: &ExperimentConfig,
     max_ts: usize,
     idx_to_row: &HashMap<usize, usize>,
@@ -569,7 +569,7 @@ fn build_pairs(
     pairs
 }
 
-fn build_inhomogeneous_blocks(
+pub fn build_inhomogeneous_blocks(
     config: &ExperimentConfig,
     max_ts: usize,
     idx_to_row: &HashMap<usize, usize>,

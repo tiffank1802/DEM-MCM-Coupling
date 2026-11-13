@@ -136,6 +136,21 @@ function renderMatrixEvolutionView(b) {
           dash: [5, 4],
         });
       }
+      if (showFits && displayList.length === 1 && Array.isArray(c.law_candidates) && c.law_candidates.length) {
+        c.law_candidates
+          .filter(lc => lc.family === 'exponential' || lc.family === 'linear' || lc.family === c.best_law_family)
+          .slice(0, 3)
+          .forEach(lc => {
+            series.push({
+              label: `${lc.family_name} (AICc=${lc.aicc.toFixed(1)})`,
+              data: lc.dense_predicted,
+              x: xMode === 'block' ? toBlockX(lc.dense_times, xMin, xMax, nBlocks) : lc.dense_times,
+              color: LAW_FAMILY_COLORS[lc.family] || '#eec078',
+              lw: 1.6,
+              dash: [2, 3],
+            });
+          });
+      }
     });
 
     const mainTitle = document.getElementById('evol-main-title');
@@ -163,7 +178,7 @@ function renderMatrixEvolutionView(b) {
       tbl.innerHTML = `
         <table>
           <thead>
-            <tr><th>Transition</th><th>Max</th><th>Δp</th><th>Deg</th><th>R²</th><th>RMSE</th><th>Loi ajustée</th></tr>
+            <tr><th>Transition</th><th>Max</th><th>Δp</th><th>Meilleure loi</th><th>R²</th><th>RMSE</th><th>Loi polynomiale</th></tr>
           </thead>
           <tbody>
             ${filtered.map(c => {
@@ -173,7 +188,7 @@ function renderMatrixEvolutionView(b) {
                 <td class="${c.is_diagonal ? 'warn' : 'ok'}">${c.src} → ${c.dst}</td>
                 <td>${c.max_prob.toFixed(3)}</td>
                 <td>${c.range_prob.toFixed(3)}</td>
-                <td>d${c.degree}</td>
+                <td><span class="tpill" style="padding:1px 5px;">${c.best_law_family || ('d' + c.degree)}</span></td>
                 <td>${c.r2.toFixed(2)}</td>
                 <td>${c.rmse.toFixed(4)}</td>
                 <td style="text-align:left;max-width:190px;overflow:hidden;text-overflow:ellipsis;" title="${c.law_label}">${c.law_label}</td>

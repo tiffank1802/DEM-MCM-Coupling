@@ -12,11 +12,15 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use dem_mcm_coupling::gui::simulation::{
-    run_gui_comparison, run_method_benchmark, GuiDatasetCache,
+    run_gui_comparison_cached, run_method_benchmark_cached, GuiDatasetCache,
 };
 use dem_mcm_coupling::gui::state::{catalog_methods, SimulationRequest};
 use dem_mcm_coupling::gui::web::index_html;
 use dem_mcm_coupling::io::json::JsonValue;
+use dem_mcm_coupling::research::{
+    build_preset_spec, catalog_study_presets, run_study, study_presets_json, ResearchSessionCache,
+    StudySpec,
+};
 
 const EGUI_ARCHITECTURE_NOTE: &str = r#"# Architecture Modulaire CAO — DEM-MCM Studio (Rust · Web · egui)
 
@@ -49,6 +53,7 @@ const EGUI_ARCHITECTURE_NOTE: &str = r#"# Architecture Modulaire CAO — DEM-MCM
 struct ServerState {
     data_dir: PathBuf,
     cache: Mutex<GuiDatasetCache>,
+    sessions: ResearchSessionCache,
 }
 
 fn read_http_request(stream: &mut TcpStream) -> std::io::Result<(String, String, Vec<u8>)> {
@@ -148,6 +153,7 @@ fn export_static_bundle(
     )?;
 
     let mut cache = GuiDatasetCache::new();
+    let sessions = ResearchSessionCache::new();
     let synth_frames = cache.get_synthetic();
     let all_methods: Vec<String> = catalog_methods()
         .into_iter()
@@ -172,7 +178,7 @@ fn export_static_bundle(
                 target_species: sp.to_string(),
                 ..SimulationRequest::default()
             };
-            if let Ok(bundle) = run_gui_comparison(&req, &synth_frames) {
+            if let Ok(bundle) = run_gui_comparison_cached(&req, &synth_frames, &sessions) {
                 let p = static_dir.join(format!("sim_synthetic_drum_{m}_{sp}.json"));
                 std::fs::write(p, bundle.to_json().to_string_compact().as_bytes())?;
             }
@@ -182,7 +188,7 @@ fn export_static_bundle(
             target_species: sp.to_string(),
             ..SimulationRequest::default()
         };
-        let rows = run_method_benchmark(&breq, &bench_methods, &synth_frames);
+        let rows = run_method_benchmark_cached(&breq, &bench_methods, &synth_frames, &sessions);
         let mut root = JsonValue::object();
         root.insert("target_species", JsonValue::String(sp.to_string()));
         root.insert("dataset", JsonValue::String("synthetic_drum".to_string()));
@@ -194,6 +200,22 @@ fn export_static_bundle(
             static_dir.join(format!("benchmark_synthetic_drum_{sp}.json")),
             root.to_string_compact().as_bytes(),
         )?;
+    }
+
+    // Export preset research studies for synthetic_drum
+    std::fs::write(
+        static_dir.join("study_presets.json"),
+        study_presets_json().to_string_compact().as_bytes(),
+    )?;
+    let synth_base = SimulationRequest::default();
+    for preset in catalog_study_presets() {
+        let spec = build_preset_spec(preset.id, &synth_base);
+        if let Ok(res) = run_study(&spec, &sessions, &synth_frames) {
+            std::fs::write(
+                static_dir.join(format!("study_{}_synthetic_drum.json", preset.id)),
+                res.to_json().to_string_compact().as_bytes(),
+            )?;
+        }
     }
 
     let real_opt = if data_dir.exists() {
@@ -220,7 +242,7 @@ fn export_static_bundle(
                 predict_full_duration: true,
                 active_block: 0,
             };
-            if let Ok(bundle) = run_gui_comparison(&req, &real_frames) {
+            if let Ok(bundle) = run_gui_comparison_cached(&req, &real_frames, &sessions) {
                 let p = static_dir.join(format!("sim_real_chunks_{m}_{sp}.json"));
                 std::fs::write(p, bundle.to_json().to_string_compact().as_bytes())?;
             }
@@ -237,7 +259,7 @@ fn export_static_bundle(
             ..SimulationRequest::default()
         };
         let rm: Vec<String> = real_methods.iter().map(|s| s.to_string()).collect();
-        let rows = run_method_benchmark(&breq, &rm, &real_frames);
+        let rows = run_method_benchmark_cached(&breq, &rm, &real_frames, &sessions);
         let mut root = JsonValue::object();
         root.insert("target_species", JsonValue::String(sp.to_string()));
         root.insert("dataset", JsonValue::String("real_chunks".to_string()));
@@ -249,6 +271,15 @@ fn export_static_bundle(
             static_dir.join(format!("benchmark_real_chunks_{sp}.json")),
             root.to_string_compact().as_bytes(),
         )?;
+        for preset in catalog_study_presets() {
+            let spec = build_preset_spec(preset.id, &breq);
+            if let Ok(res) = run_study(&spec, &sessions, &real_frames) {
+                std::fs::write(
+                    static_dir.join(format!("study_{}_real_chunks.json", preset.id)),
+                    res.to_json().to_string_compact().as_bytes(),
+                )?;
+            }
+        }
     }
 
     println!(
@@ -319,6 +350,114 @@ fn handle_client(mut stream: TcpStream, state: Arc<ServerState>) {
                 send_body,
             );
         }
+        ("GET" | "HEAD", "/api/study/presets") => {
+            let body_str = study_presets_json().to_string_compact();
+            let _ = write_http_response(
+                &mut stream,
+                "200 OK",
+                "application/json; charset=utf-8",
+                body_str.as_bytes(),
+                send_body,
+            );
+        }
+        ("POST", "/api/study/preset_spec") => {
+            let raw = String::from_utf8_lossy(&body);
+            let parsed = match JsonValue::parse(&raw) {
+                Ok(v) => v,
+                Err(e) => {
+                    let (st, txt) = json_error("400 Bad Request", &format!("Invalid JSON: {e}"));
+                    let _ = write_http_response(
+                        &mut stream,
+                        &st,
+                        "application/json; charset=utf-8",
+                        txt.as_bytes(),
+                        true,
+                    );
+                    return;
+                }
+            };
+            let preset_id = parsed
+                .get("preset_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("hom_start");
+            let base_req = parsed
+                .get("base_request")
+                .map(SimulationRequest::from_json)
+                .unwrap_or_else(|| SimulationRequest::from_json(&parsed));
+            let spec = build_preset_spec(preset_id, &base_req);
+            let _ = write_http_response(
+                &mut stream,
+                "200 OK",
+                "application/json; charset=utf-8",
+                spec.to_json().to_string_compact().as_bytes(),
+                true,
+            );
+        }
+        ("POST", "/api/study/run") => {
+            let raw = String::from_utf8_lossy(&body);
+            let parsed = match JsonValue::parse(&raw) {
+                Ok(v) => v,
+                Err(e) => {
+                    let (st, txt) = json_error("400 Bad Request", &format!("Invalid JSON: {e}"));
+                    let _ = write_http_response(
+                        &mut stream,
+                        &st,
+                        "application/json; charset=utf-8",
+                        txt.as_bytes(),
+                        true,
+                    );
+                    return;
+                }
+            };
+            let spec = if parsed.get("primary_axis").is_some() {
+                match StudySpec::from_json(&parsed) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let (st, txt) = json_error("400 Bad Request", &format!("{e}"));
+                        let _ = write_http_response(
+                            &mut stream,
+                            &st,
+                            "application/json; charset=utf-8",
+                            txt.as_bytes(),
+                            true,
+                        );
+                        return;
+                    }
+                }
+            } else {
+                let preset_id = parsed
+                    .get("preset_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("hom_start");
+                let base_req = parsed
+                    .get("base_request")
+                    .map(SimulationRequest::from_json)
+                    .unwrap_or_else(|| SimulationRequest::from_json(&parsed));
+                build_preset_spec(preset_id, &base_req)
+            };
+
+            let frames_res = {
+                let mut guard = state.cache.lock().unwrap();
+                if spec.base_request.dataset == "real_chunks" {
+                    guard.get_or_load_real(&state.data_dir)
+                } else {
+                    Ok(guard.get_synthetic())
+                }
+            };
+
+            let resp =
+                match frames_res.and_then(|frames| run_study(&spec, &state.sessions, &frames)) {
+                    Ok(bundle) => ("200 OK".to_string(), bundle.to_json().to_string_compact()),
+                    Err(e) => json_error("422 Unprocessable Entity", &format!("{e}")),
+                };
+            let _ = write_http_response(
+                &mut stream,
+                &resp.0,
+                "application/json; charset=utf-8",
+                resp.1.as_bytes(),
+                true,
+            );
+        }
         ("POST", "/api/simulate") => {
             let raw = String::from_utf8_lossy(&body);
             let req = match JsonValue::parse(&raw) {
@@ -345,7 +484,9 @@ fn handle_client(mut stream: TcpStream, state: Arc<ServerState>) {
                 }
             };
 
-            let resp = match frames_res.and_then(|frames| run_gui_comparison(&req, &frames)) {
+            let resp = match frames_res
+                .and_then(|frames| run_gui_comparison_cached(&req, &frames, &state.sessions))
+            {
                 Ok(bundle) => ("200 OK".to_string(), bundle.to_json().to_string_compact()),
                 Err(e) => json_error("422 Unprocessable Entity", &format!("{e}")),
             };
@@ -406,7 +547,8 @@ fn handle_client(mut stream: TcpStream, state: Arc<ServerState>) {
 
             let resp = match frames_res {
                 Ok(frames) => {
-                    let rows = run_method_benchmark(&req, &methods, &frames);
+                    let rows =
+                        run_method_benchmark_cached(&req, &methods, &frames, &state.sessions);
                     let mut root = JsonValue::object();
                     root.insert("target_species", JsonValue::String(req.target_species));
                     root.insert("dataset", JsonValue::String(req.dataset));
@@ -495,6 +637,7 @@ fn main() {
     let state = Arc::new(ServerState {
         data_dir,
         cache: Mutex::new(cache),
+        sessions: ResearchSessionCache::new(),
     });
 
     println!("DEM-MCM 3D Viewer server listening on http://{addr}");

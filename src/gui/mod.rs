@@ -16,11 +16,12 @@ pub use mesh3d::{
 };
 pub use metrics_eval::{ChainPredictionMetrics, MethodBenchmarkRow};
 pub use simulation::{
-    generate_synthetic_drum_frames, run_gui_comparison, run_method_benchmark, BlockSummary,
-    ComparisonBundle, GuiDatasetCache, SnapshotFrame3D,
+    generate_synthetic_drum_frames, run_gui_comparison, run_gui_comparison_cached,
+    run_method_benchmark, run_method_benchmark_cached, BlockSummary, ComparisonBundle,
+    GuiDatasetCache, SnapshotFrame3D,
 };
 pub use state::{
     catalog_methods, ActiveSpecies, CellColorMode, CollapsiblePanelsState, EvolutionScope,
     EvolutionViewMode, MatrixEvolutionFilter, MethodDescriptor, SimulationRequest, ViewerAppState,
-    WorkspaceTab,
+    WorkbenchMode, WorkspaceTab,
 };

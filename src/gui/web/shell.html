@@ -15,6 +15,14 @@
       <span>DEM-MCM Studio</span>
     </div>
 
+    <div class="mode-switcher" id="workbench-mode-switch" title="Modes exclusifs d'atelier">
+      <button class="mode-btn active" data-mode="explore">Explorer</button>
+      <button class="mode-btn" data-mode="study">Études de Recherche</button>
+      <button class="mode-btn" data-mode="compare">Comparer A/B</button>
+    </div>
+
+    <span class="top-sep"></span>
+
     <button class="btn sm active-toggle" id="toggle-tree-btn" title="Plier/déplier l'arbre de modèle (SolidWorks/Onshape)">◂ Arbre</button>
     <button class="btn sm active-toggle" id="toggle-ribbon-btn" title="Plier/déplier le ruban de commandes (Fusion 360)">▴ Ruban</button>
     <button class="btn sm active-toggle" id="toggle-timeline-btn" title="Plier/déplier la frise temporelle">▾ Frise</button>
@@ -34,14 +42,14 @@
 
   <!-- 2. COLLAPSIBLE RIBBON (CAD WORKBENCH COMMANDS & DROPDOWNS) -->
   <section class="ribbon-bar" id="ribbon-bar">
-    <div class="r-group">
+    <div class="r-group" id="ribbon-group-views">
       <span class="r-lbl">Ateliers</span>
       <button class="btn sm" data-jump-view="summary">Sommaire</button>
       <button class="btn sm" data-jump-view="mesh3d">3D</button>
       <button class="btn sm" data-jump-view="matrix_evol">Évol. P(t)</button>
     </div>
 
-    <div class="r-group">
+    <div class="r-group" id="ribbon-group-3d">
       <details class="cad-dropdown" id="drop-cam">
         <summary>Caméra 3D</summary>
         <div class="dropdown-panel">
@@ -80,7 +88,9 @@
           <label class="chk-row"><input type="checkbox" id="show-drum" checked> Paroi du tambour</label>
         </div>
       </details>
+    </div>
 
+    <div class="r-group" id="ribbon-group-criterion">
       <details class="cad-dropdown" id="drop-criterion">
         <summary>Critère &amp; Horizon</summary>
         <div class="dropdown-panel">
@@ -168,7 +178,7 @@
               <label>start_index</label>
               <input type="number" id="start_index" value="40" min="0" max="6000">
             </div>
-            <button class="btn primary sm" id="run-tree-btn" style="width:100%;">Recalculer maillage &amp; chaînes</button>
+            <span class="hint-txt">Cliquez sur <b>Exécuter</b> en haut pour recalculer.</span>
           </div>
         </details>
 
@@ -551,7 +561,231 @@
         </div>
       </section>
 
-      <!-- VIEW 8: ARCHITECTURE NOTE -->
+      <!-- VIEW 8: RESEARCH STUDY WORKSHOP (SCHEMA-DRIVEN, ZERO-CLUTTER) -->
+      <section class="view-pane" id="pane-study">
+        <div class="study-layout">
+          <aside class="study-sidebar glass" id="study-sidebar">
+            <div class="tree-header">
+              <span>CONCEPTEUR D'ÉTUDE</span>
+              <button class="btn sm" id="study-toggle-builder-btn" title="Plier/déplier">◂</button>
+            </div>
+            <div class="tree-scroll">
+              <details class="tree-node" open>
+                <summary>1. Preset &amp; Type d'étude</summary>
+                <div class="tree-content">
+                  <div class="mini-field">
+                    <label>Preset scientifique</label>
+                    <select id="study-preset"></select>
+                  </div>
+                  <div class="mini-field">
+                    <label>Chaîne évaluée</label>
+                    <select id="study-chain-mode">
+                      <option value="homogeneous">Homogène</option>
+                      <option value="inhomogeneous">Inhomogène</option>
+                      <option value="both">Homogène + Inhomogène</option>
+                    </select>
+                  </div>
+                  <label class="chk-row">
+                    <input type="checkbox" id="study-enable-laws">
+                    Étude multi-lois p_{i→j}(t)
+                  </label>
+                </div>
+              </details>
+
+              <details class="tree-node" open>
+                <summary>2. Axe Paramétrique Primaire (X)</summary>
+                <div class="tree-content">
+                  <div class="mini-field">
+                    <label>Paramètre balayé</label>
+                    <select id="study-axis1-kind">
+                      <option value="start_index">Départ (start_index)</option>
+                      <option value="nlt">Nombre de blocs (NLT)</option>
+                      <option value="step">Écart inter-blocs (step)</option>
+                      <option value="dt">Pas intra-bloc (dt)</option>
+                      <option value="tau">Horizon Markov (τ)</option>
+                      <option value="method">Méthode de découpage (RSD)</option>
+                      <option value="spatial_resolution">Résolution spatiale</option>
+                      <option value="velocity_weight">Poids cinématique (w_V)</option>
+                      <option value="pred_start">Début prédiction (0 vs start)</option>
+                      <option value="species_mode">Avec vs sans espèces</option>
+                    </select>
+                  </div>
+
+                  <div class="mini-field" id="study-axis1-num-box">
+                    <label>Valeurs testées (virgules)</label>
+                    <input type="text" id="study-axis1-values" value="0, 20, 40, 80, 120, 180">
+                    <details class="cad-dropdown" style="margin-top:3px;">
+                      <summary>Générer plage automatique</summary>
+                      <div class="dropdown-panel" style="min-width:210px;">
+                        <div class="field-grid">
+                          <div class="mini-field"><label>Min</label><input type="number" id="study-range-min" value="10"></div>
+                          <div class="mini-field"><label>Max</label><input type="number" id="study-range-max" value="150"></div>
+                        </div>
+                        <div class="field-row">
+                          <label>Nb points</label>
+                          <input type="number" id="study-range-count" value="6" min="2" max="15">
+                        </div>
+                        <button class="btn sm primary" id="study-apply-range-btn">Appliquer plage</button>
+                      </div>
+                    </details>
+                  </div>
+
+                  <div id="study-axis1-method-box" style="display:none;">
+                    <details class="cad-dropdown">
+                      <summary>Méthodes sélectionnées</summary>
+                      <div class="dropdown-panel study-chip-grid" id="study-methods-list" style="min-width:255px;">
+                        <label class="chk-row"><input type="checkbox" value="cartesian" checked> cartesian</label>
+                        <label class="chk-row"><input type="checkbox" value="cylindrical" checked> cylindrical</label>
+                        <label class="chk-row"><input type="checkbox" value="quantile" checked> quantile</label>
+                        <label class="chk-row"><input type="checkbox" value="octree" checked> octree</label>
+                        <label class="chk-row"><input type="checkbox" value="voronoi" checked> voronoi</label>
+                        <label class="chk-row"><input type="checkbox" value="physics" checked> physics</label>
+                        <label class="chk-row"><input type="checkbox" value="adaptive" checked> adaptive</label>
+                        <label class="chk-row"><input type="checkbox" value="gmm"> gmm</label>
+                      </div>
+                    </details>
+                  </div>
+
+                  <div class="hint-txt" id="study-axis1-species-note" style="display:none;">
+                    Compare automatiquement la chaîne par espèce (4 mm / 8 mm) face à la matrice unique sans distinction d'espèces.
+                  </div>
+
+                  <label class="chk-row" id="study-tau-coupling-row" style="display:none;">
+                    <input type="checkbox" id="study-couple-tau">
+                    Coupler step = τ et dt = τ/10
+                  </label>
+                </div>
+              </details>
+
+              <details class="tree-node" id="study-law-node" open>
+                <summary>3. Lois p_{i→j}(t) &amp; Grille 2D</summary>
+                <div class="tree-content">
+                  <div class="mini-field">
+                    <label>Axe secondaire (option grille 2D)</label>
+                    <select id="study-axis2-kind">
+                      <option value="none">Aucun (étude 1D)</option>
+                      <option value="nlt">Nombre de blocs (NLT)</option>
+                      <option value="start_index">Départ (start_index)</option>
+                      <option value="tau">Horizon (τ)</option>
+                      <option value="dt">Pas (dt)</option>
+                    </select>
+                  </div>
+                  <div class="mini-field" id="study-axis2-val-box" style="display:none;">
+                    <label>Valeurs Axe 2</label>
+                    <input type="text" id="study-axis2-values" value="3, 5, 7">
+                  </div>
+                  <div id="study-law-controls-box" style="display:none;flex-direction:column;gap:6px;">
+                    <div class="mini-field">
+                      <label>Critère meilleure loi</label>
+                      <select id="study-law-criterion">
+                        <option value="aicc">AICc (parcimonie petits blocs)</option>
+                        <option value="out_of_block_rmse">Validation hors-bloc (OOB RMSE)</option>
+                        <option value="rmse">RMSE interne</option>
+                        <option value="r2">R² maximal</option>
+                      </select>
+                    </div>
+                    <div class="mini-field">
+                      <label>Transition p_{i→j} focalisée</label>
+                      <select id="study-transition-select">
+                        <option value="">Auto (plus forte variation)</option>
+                      </select>
+                    </div>
+                    <details class="cad-dropdown">
+                      <summary>Familles de lois candidates</summary>
+                      <div class="dropdown-panel study-chip-grid" id="study-law-families" style="min-width:255px;">
+                        <label class="chk-row"><input type="checkbox" value="constant" checked> Constante</label>
+                        <label class="chk-row"><input type="checkbox" value="linear" checked> Linéaire</label>
+                        <label class="chk-row"><input type="checkbox" value="quadratic" checked> Quadratique</label>
+                        <label class="chk-row"><input type="checkbox" value="cubic" checked> Cubique</label>
+                        <label class="chk-row"><input type="checkbox" value="exponential" checked> Exponentielle</label>
+                        <label class="chk-row"><input type="checkbox" value="logarithmic" checked> Logarithmique</label>
+                        <label class="chk-row"><input type="checkbox" value="power" checked> Puissance</label>
+                      </div>
+                    </details>
+                  </div>
+                </div>
+              </details>
+
+              <details class="tree-node" id="study-base-drawer">
+                <summary>4. Référence de base (avancé)</summary>
+                <div class="tree-content">
+                  <span class="hint-txt">Utilise le maillage et les paramètres fixes configurés dans l'Arbre Explorer.</span>
+                  <label class="chk-row">
+                    <input type="checkbox" id="study-bed-frame">
+                    Aligner repère principal du lit (PCA)
+                  </label>
+                </div>
+              </details>
+            </div>
+          </aside>
+
+          <div class="study-stage">
+            <div class="surface glass" style="padding:7px 10px;flex-shrink:0;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+                <div>
+                  <b id="study-title-lbl" style="font-size:13px;">Atelier d'Études Paramétriques</b>
+                  <div class="hint-txt" id="study-subtitle-lbl">Prêt — utilisez « Lancer l'étude » en haut.</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <button class="btn sm" id="study-export-csv">Exporter CSV</button>
+                  <button class="btn sm" id="study-export-json">Exporter JSON</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="row-flex" style="flex:1.35;">
+              <div class="surface glass" style="flex:1.15;">
+                <div class="subtle-bar">
+                  <b id="study-left-title">Courbes temporelles / Lois comparées</b>
+                  <select id="study-curve-chain">
+                    <option value="hom">Homogène</option>
+                    <option value="inhom">Inhomogène</option>
+                  </select>
+                </div>
+                <div class="canvas-box"><canvas id="chart-study-curves"></canvas></div>
+              </div>
+
+              <div class="surface glass" id="study-sensitivity-panel" style="flex:1;">
+                <div class="subtle-bar">
+                  <b id="study-right-title">Sensibilité paramétrique</b>
+                  <select id="study-sens-metric">
+                    <option value="rmse_rsd_hom">RMSE RSD</option>
+                    <option value="rmse_teneur_hom">RMSE Teneur</option>
+                    <option value="l1_mean_hom">Erreur L¹</option>
+                    <option value="frobenius_rel_err">Erreur Frobenius</option>
+                    <option value="nan_rows_hom">Lignes NaN</option>
+                    <option value="t50_compare">Temps t50</option>
+                    <option value="lambda_max">|λ|_max</option>
+                  </select>
+                </div>
+                <div class="canvas-box"><canvas id="chart-study-sensitivity"></canvas></div>
+              </div>
+
+              <div class="surface glass" id="study-heatmap-panel" style="flex:1;display:none;">
+                <div class="subtle-bar">
+                  <b>Carte 2D interactive (cliquer une case)</b>
+                  <select id="study-heat-metric">
+                    <option value="best_law_family">Meilleure loi gagnante</option>
+                    <option value="best_law_aicc">AICc ↓</option>
+                    <option value="best_law_oob_rmse">Out-of-Block RMSE ↓</option>
+                    <option value="best_law_r2">R² ↑</option>
+                    <option value="rmse_rsd_hom">RMSE RSD Hom</option>
+                    <option value="rmse_teneur_inhom">RMSE Teneur Inhom</option>
+                    <option value="nan_rows_hom">Lignes NaN</option>
+                  </select>
+                </div>
+                <div class="canvas-box"><canvas id="chart-study-heatmap"></canvas></div>
+              </div>
+            </div>
+
+            <div class="surface glass" style="flex:0.75;min-height:140px;">
+              <div class="table-wrap" id="study-table-wrap"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 9: ARCHITECTURE NOTE -->
       <section class="view-pane" id="pane-plan">
         <div class="surface glass" style="flex:1;">
           <div class="subtle-bar">
