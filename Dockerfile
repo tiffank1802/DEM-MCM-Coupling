@@ -6,12 +6,7 @@ COPY Cargo.toml ./
 COPY src ./src
 COPY tests_rs ./tests_rs
 
-# Cache mounts : sur Blacksmith, le disque du builder persiste entre les runs,
-# donc le registre Cargo et target/ sont réutilisés (builds quasi instantanés
-# quand seul le code source change).
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/build/target \
-    cargo build --release --bin dem-mcm-gui --bin dem-mcm-sweep
+RUN cargo build --release --bin dem-mcm-gui --bin dem-mcm-sweep
 
 FROM debian:bookworm-slim AS runtime
 
