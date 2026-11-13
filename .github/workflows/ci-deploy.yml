@@ -32,10 +32,17 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
 
+# Runners Blacksmith (https://docs.blacksmith.sh/blacksmith-runners/overview)
+# - ubuntu-latest  -> blacksmith-*-ubuntu-2404 (x64, Ubuntu 24.04)
+# - macos-latest   -> blacksmith-6vcpu-macos-latest (Apple Silicon M4)
+# - windows-latest -> blacksmith-*-windows-2025
+# Les actions de cache (actions/cache, Swatinem/rust-cache) utilisent
+# automatiquement le cache colocalisé Blacksmith (4x plus rapide, 25 Go offerts).
+
 jobs:
   rust-ci:
     name: Rust (fmt, clippy, 39 tests, egui check)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -45,6 +52,8 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      # Swatinem/rust-cache s'appuie sur actions/cache : sur Blacksmith,
+      # le cache est servi par l'infrastructure colocalisée (aucun changement requis).
       - name: Cache Cargo registry & targets
         uses: Swatinem/rust-cache@v2
 
@@ -55,71 +64,25 @@ jobs:
             libxkbcommon-dev libgl-dev libwayland-dev pkg-config
 
       - name: Check formatting
-        id: fmt
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          echo "=== cargo fmt --check ===" >> /tmp/rust_ci.log
-          cargo fmt --check 2>&1 | tee -a /tmp/rust_ci.log
+        run: cargo fmt --check
 
       - name: Run Clippy lints
-        id: clippy
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          echo "=== cargo clippy ===" >> /tmp/rust_ci.log
-          cargo clippy --all-targets -- -D warnings 2>&1 | tee -a /tmp/rust_ci.log
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Run full Rust test suite (--release)
-        id: test
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          echo "=== cargo test --release ===" >> /tmp/rust_ci.log
-          cargo test --release 2>&1 | tee -a /tmp/rust_ci.log
+        run: cargo test --release
 
       - name: Verify egui frontend compilation
-        id: egui
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          echo "=== gui-egui check ===" >> /tmp/rust_ci.log
-          cargo check --manifest-path gui-egui/Cargo.toml 2>&1 | tee -a /tmp/rust_ci.log
-
-      - name: Fail if any Rust check failed
-        if: steps.fmt.outcome == 'failure' || steps.clippy.outcome == 'failure' || steps.test.outcome == 'failure' || steps.egui.outcome == 'failure'
-        run: exit 1
+        run: cargo check --manifest-path gui-egui/Cargo.toml
 
       - name: Build & validate CLI against real DEM chunks
         run: |
           cargo build --release --bin dem-mcm-sweep --bin dem-mcm-gui
           ./target/release/dem-mcm-sweep --validate ./data/chunks
 
-      - name: Publish Rust failure diagnostics for arena branches
-        if: failure() && startsWith(github.ref, 'refs/heads/arena/')
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          python3 - <<'PY'
-          import json, os, pathlib, urllib.request
-          log = pathlib.Path('/tmp/rust_ci.log').read_text(errors='replace') if pathlib.Path('/tmp/rust_ci.log').exists() else '(no log)'
-          body = "### Rust CI diagnostics\n```text\n" + log[-55000:] + "\n```"
-          req = urllib.request.Request(
-              f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/commits/{os.environ['GITHUB_SHA']}/comments",
-              data=json.dumps({"body": body}).encode(),
-              headers={
-                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
-                  "Accept": "application/vnd.github+json",
-                  "Content-Type": "application/json",
-              },
-              method="POST",
-          )
-          urllib.request.urlopen(req).read()
-          PY
-
   python-ci:
     name: Python (pytest suite)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -152,13 +115,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: blacksmith-8vcpu-ubuntu-2404
             target: linux-x86_64
             ext: ""
-          - os: macos-latest
+          - os: blacksmith-6vcpu-macos-latest
             target: macos-arm64
             ext: ""
-          - os: windows-latest
+          - os: blacksmith-4vcpu-windows-2025
             target: windows-x86_64
             ext: ".exe"
     runs-on: ${{ matrix.os }}
@@ -195,7 +158,7 @@ jobs:
           Compress-Archive -Path dist-bin/* -DestinationPath "dem-mcm-coupling-${{ matrix.target }}.zip"
 
       - name: Build Python sdist & wheel
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.target == 'linux-x86_64'
         run: |
           python -m pip install --upgrade pip build
           python -m build
@@ -207,7 +170,7 @@ jobs:
           path: dem-mcm-coupling-${{ matrix.target }}.*
 
       - name: Upload Python distributions
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.target == 'linux-x86_64'
         uses: actions/upload-artifact@v4
         with:
           name: python-dist
@@ -217,7 +180,7 @@ jobs:
     name: Build static 3D Studio for GitHub Pages
     needs: [rust-ci, python-ci]
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -254,7 +217,7 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - name: Enable & configure GitHub Pages
         uses: actions/configure-pages@v5
@@ -269,13 +232,20 @@ jobs:
     name: Build & Push Docker image to GHCR
     needs: [rust-ci, python-ci]
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
+
+      # Builder Blacksmith : les couches Docker sont persistées sur disque NVMe
+      # entre les runs (jusqu'à 40x plus rapide que le cache type=gha).
+      - name: Set up Blacksmith Docker builder
+        uses: useblacksmith/setup-docker-builder@v2
+        with:
+          cache-key: Dockerfile
 
       - name: Log in to GitHub Container Registry (ghcr.io)
         uses: docker/login-action@v3
@@ -296,20 +266,20 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push container image
-        uses: docker/build-push-action@v6
+        uses: useblacksmith/build-push-action@v2
         with:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:latest
+          cache-to: type=inline
 
   deploy-release:
     name: Publish GitHub Release
     needs: build-artifacts
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
