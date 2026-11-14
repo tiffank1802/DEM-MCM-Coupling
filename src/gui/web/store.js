@@ -1,32 +1,6 @@
-const APP = {
-  staticMode: false,
-  workbenchMode: 'explore', // 'explore' | 'study' | 'compare'
-  executionStatus: 'idle',  // 'idle' | 'computing' | 'error'
-  activeView: 'summary',
-  methods: [],
-  bundleA: null,
-  bundleB: null,
-  benchRows: null,
-  studyPresets: [],
-  studyBundle: null,
-  studySelectedCell: { idx1: 0, idx2: 0 },
-  frameIdx: 0,
-  playing: false,
-  playTimer: null,
-  selectedCell: null,
-  selectedTransitionKey: null, // e.g. "0->3"
-  evolPage: 0,
-  evolZoomedKey: null,
-  cam: { yaw: 0.68, pitch: 0.44, distance: 0.34, target: [0, -0.01, 0], fov: 42 },
-  drag: { active: false, mode: 'orbit', x: 0, y: 0 },
-  projectedCells: [],
-  ui: {
-    treeOpen: true,
-    ribbonOpen: true,
-    timelineOpen: true,
-    studyBuilderOpen: true,
-  },
-};
+// `APP` (reactive store proxy) is defined in state.js and loaded before
+// this file. Every APP.x read/write here transparently maps to the central
+// store, so a change made anywhere propagates to all subscribers.
 
 const PALETTE = [
   '#8faec9', '#7dd3bd', '#eec078', '#e5989b', '#b8b8e6', '#d8a48f',
@@ -258,18 +232,21 @@ function gatherKwargs(method) {
 }
 
 function currentRequest(method, kwargs) {
+  // Read shared variables from the central reactive store (APP.*) so that a
+  // value updated in ANY part of the software is what gets sent to the API —
+  // the DOM controls are kept in sync via bindControl.
   return {
-    dataset: document.getElementById('dataset').value,
+    dataset: APP.dataset,
     method,
     kwargs,
-    nlt: parseInt(document.getElementById('nlt').value) || 3,
-    step: parseInt(document.getElementById('step').value) || 30,
-    dt: parseInt(document.getElementById('dt').value) || 1,
-    tau: parseInt(document.getElementById('tau').value) || 12,
-    start_index: parseInt(document.getElementById('start_index').value) || 0,
-    no_species: document.getElementById('no-species').checked,
-    target_species: document.getElementById('target-species').value,
-    predict_full_duration: document.getElementById('full-duration').checked,
+    nlt: APP.nlt || 3,
+    step: APP.step || 30,
+    dt: APP.dt || 1,
+    tau: APP.tau || 12,
+    start_index: APP.startIndex || 0,
+    no_species: !!APP.noSpecies,
+    target_species: APP.targetSpecies || 'small',
+    predict_full_duration: !!APP.predictFullDuration,
   };
 }
 

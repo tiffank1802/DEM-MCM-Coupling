@@ -9,6 +9,7 @@ use std::sync::OnceLock;
 pub const STYLES_CSS: &str = include_str!("styles.css");
 pub const SHELL_HTML: &str = include_str!("shell.html");
 
+pub const STATE_JS: &str = include_str!("state.js");
 pub const STORE_JS: &str = include_str!("store.js");
 pub const UI_MACHINE_JS: &str = include_str!("ui_machine.js");
 pub const VIEWPORT3D_JS: &str = include_str!("viewport3d.js");
@@ -33,6 +34,7 @@ static INDEX_CACHE: OnceLock<String> = OnceLock::new();
 pub fn index_html() -> &'static str {
     INDEX_CACHE.get_or_init(|| {
         let scripts = [
+            STATE_JS,
             UI_MACHINE_JS,
             STORE_JS,
             VIEWPORT3D_JS,

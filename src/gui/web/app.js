@@ -141,7 +141,7 @@ async function runPrimary() {
   applyPanelVisibility();
   loader.classList.add('show');
   try {
-    const method = document.getElementById('method').value;
+    const method = APP.method;
     const bundle = await fetchSimulate(method, gatherKwargs(method));
     APP.bundleA = bundle;
     APP.frameIdx = 0;
@@ -193,8 +193,8 @@ async function runDual() {
   applyPanelVisibility();
   loader.classList.add('show');
   try {
-    const mA = document.getElementById('method').value;
-    const mB = document.getElementById('method-b').value;
+    const mA = APP.method;
+    const mB = APP.methodB;
     const [bA, bB] = await Promise.all([
       fetchSimulate(mA, gatherKwargs(mA)),
       fetchSimulate(mB, defaultKwargs(mB)),
@@ -310,41 +310,65 @@ async function initApp() {
     });
   });
 
-  // Dataset sync between top strip and feature tree
-  const syncDataset = val => {
-    document.getElementById('dataset').value = val;
-    document.getElementById('dataset-top').value = val;
-    document.getElementById('start_index').value = val === 'real_chunks' ? 157 : 40;
+  // Dataset: both controls share ONE store key — changing either one
+  // updates the store and propagates to the other control + the run action.
+  bindControl('dataset', document.getElementById('dataset'));
+  bindControl('dataset', document.getElementById('dataset-top'));
+  bindControl('startIndex', document.getElementById('start_index'), { parse: v => parseInt(v) || 0 });
+  STORE.subscribe('dataset', val => {
+    const si = val === 'real_chunks' ? 157 : 40;
+    STORE.set('startIndex', si);
     runContextualAction();
-  };
-  document.getElementById('dataset-top').addEventListener('change', e => syncDataset(e.target.value));
-  document.getElementById('dataset').addEventListener('change', e => syncDataset(e.target.value));
+  });
 
-  // Color mode sync between ribbon dropdown and feature tree
-  const syncColorMode = val => {
-    document.getElementById('color-mode').value = val;
-    document.getElementById('ribbon-color-mode').value = val;
-    render3DAll();
-  };
-  document.getElementById('color-mode').addEventListener('change', e => syncColorMode(e.target.value));
-  document.getElementById('ribbon-color-mode').addEventListener('change', e => syncColorMode(e.target.value));
+  // Color mode: both controls share ONE store key and re-render 3D.
+  bindControl('colorMode', document.getElementById('color-mode'));
+  bindControl('colorMode', document.getElementById('ribbon-color-mode'));
+  STORE.subscribe('colorMode', () => render3DAll());
 
   // Exclusive 3-mode switcher
   document.querySelectorAll('#workbench-mode-switch .mode-btn').forEach(btn => {
     btn.addEventListener('click', () => setWorkbenchMode(btn.dataset.mode));
   });
 
+  // Bind all shared simulation controls to the central store. Each control
+  // writes into the store on change; the store then propagates the value to
+  // every other part of the software (views, other controls, run actions).
+  bindControl('method', document.getElementById('method'));
+  bindControl('methodB', document.getElementById('method-b'));
+  bindControl('targetSpecies', document.getElementById('target-species'));
+  bindControl('noSpecies', document.getElementById('no-species'));
+  bindControl('predictFullDuration', document.getElementById('full-duration'));
+  bindControl('nlt', document.getElementById('nlt'), { parse: v => parseInt(v) || 0 });
+  bindControl('step', document.getElementById('step'), { parse: v => parseInt(v) || 0 });
+  bindControl('dt', document.getElementById('dt'), { parse: v => parseInt(v) || 0 });
+  bindControl('tau', document.getElementById('tau'), { parse: v => parseInt(v) || 0 });
+  bindControl('showSmall', document.getElementById('show-small'));
+  bindControl('showLarge', document.getElementById('show-large'));
+  bindControl('showWire', document.getElementById('show-wire'));
+  bindControl('showFaces', document.getElementById('show-faces'));
+  bindControl('showVel', document.getElementById('show-vel'));
+  bindControl('showEdges', document.getElementById('show-edges'));
+  bindControl('showDrum', document.getElementById('show-drum'));
+
   // Primary contextual run triggers
-  document.getElementById('method').addEventListener('change', e => {
-    renderMethodParams(e.target.value);
-    applyPanelVisibility();
-  });
   document.getElementById('run-btn').addEventListener('click', runContextualAction);
   document.getElementById('run-dual-btn').addEventListener('click', runDual);
   document.getElementById('run-bench-btn').addEventListener('click', runBenchmark);
-  document.getElementById('target-species').addEventListener('change', runPrimary);
-  document.getElementById('full-duration').addEventListener('change', runPrimary);
-  document.getElementById('no-species').addEventListener('change', runPrimary);
+
+  // Method change → refresh param fields + panel visibility
+  STORE.subscribe('method', () => {
+    renderMethodParams(STORE.get('method'));
+    applyPanelVisibility();
+  });
+  // Species / duration / no-species / numeric params → re-run the primary simulation
+  ['targetSpecies', 'predictFullDuration', 'noSpecies', 'nlt', 'step', 'dt', 'tau'].forEach(key => {
+    STORE.subscribe(key, () => runPrimary());
+  });
+  // 3-D layer toggles → re-render 3D from the store values
+  ['showSmall', 'showLarge', 'showWire', 'showFaces', 'showVel', 'showEdges', 'showDrum'].forEach(key => {
+    STORE.subscribe(key, () => render3DAll());
+  });
 
   // Study Workshop presets & schema-driven form gating
   const studyPresetData = await fetchStudyPresets();
@@ -407,11 +431,6 @@ async function initApp() {
   const expJson = document.getElementById('study-export-json');
   if (expJson) expJson.addEventListener('click', () => exportStudyData('json'));
 
-  // Layer toggles
-  ['show-small', 'show-large', 'show-wire', 'show-faces', 'show-vel', 'show-edges', 'show-drum'].forEach(id => {
-    document.getElementById(id).addEventListener('change', render3DAll);
-  });
-
   // View-specific filters
   ['teneur-cell-select', 'teneur-global-metric', 'npart-species', 'npart-cell-count', 'l1-scope', 'heat-disc-chain', 'mat-view', 'block-select'].forEach(id => {
     document.getElementById(id).addEventListener('change', renderActiveView);
@@ -443,11 +462,11 @@ async function initApp() {
     renderMatrixEvolutionView(APP.bundleA);
   });
 
-  // Timeline slider & playback
-  document.getElementById('time-slider').addEventListener('input', e => {
-    APP.frameIdx = parseInt(e.target.value) || 0;
-    render3DAll();
-  });
+  // Timeline slider & playback: the slider is bound to the central store
+  // key `frameIdx`; every change (from the slider OR from playback) updates
+  // the store and propagates to the 3-D views and the slider itself.
+  bindControl('frameIdx', document.getElementById('time-slider'), { parse: v => parseInt(v) || 0 });
+  STORE.subscribe('frameIdx', () => render3DAll());
   document.getElementById('play-btn').addEventListener('click', () => {
     APP.playing = !APP.playing;
     document.getElementById('play-btn').textContent = APP.playing ? 'Pause' : 'Lecture';
@@ -455,8 +474,6 @@ async function initApp() {
       APP.playTimer = setInterval(() => {
         if (!APP.bundleA) return;
         APP.frameIdx = (APP.frameIdx + 1) % APP.bundleA.frames.length;
-        document.getElementById('time-slider').value = APP.frameIdx;
-        render3DAll();
       }, 130);
     } else {
       clearInterval(APP.playTimer);
