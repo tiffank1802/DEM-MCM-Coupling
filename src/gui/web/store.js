@@ -219,7 +219,67 @@ function defaultKwargs(method) {
   }[method] || {};
 }
 
+// ── Method partitioning parameters (store-backed, shared with the visuals) ──
+// The kwargs live in the central store (APP.methodKwargs, a method->kwargs
+// map) so the parameter inputs and the simulation/visualization read the SAME
+// reference. Editing an input writes to the store (firing subscribers) which
+// triggers a debounced re-run, keeping visuals in sync with the parameters.
+function getMethodKwargs(method) {
+  const map = APP.methodKwargs || {};
+  const stored = map[method];
+  return stored ? Object.assign({}, stored) : defaultKwargs(method);
+}
+
+function ensureMethodKwargs(method) {
+  const map = APP.methodKwargs || {};
+  if (!map[method]) {
+    APP.methodKwargs = Object.assign({}, map, { [method]: defaultKwargs(method) });
+  }
+  return APP.methodKwargs[method];
+}
+
+function setMethodKwarg(method, key, value) {
+  const map = APP.methodKwargs || {};
+  const cur = map[method] ? Object.assign({}, map[method]) : defaultKwargs(method);
+  cur[key] = value;
+  // Top-level set so the reactive store fires subscribers (nested writes would not).
+  APP.methodKwargs = Object.assign({}, map, { [method]: cur });
+}
+
+// Bind a partitioning-parameter input to the store so parameter and visuals
+// share one reference: initialize the control from the store, write back on
+// every change (the store subscription in app.js re-runs the simulation).
+function bindKwarg(key, el, opts = {}) {
+  if (!el) return;
+  const method = APP.method;
+  const cur = getMethodKwargs(method);
+  const apply = (v) => {
+    if (el.tagName === 'SELECT') el.value = String(v);
+    else if (el.type === 'checkbox') el.checked = Boolean(v);
+    else el.value = v == null ? '' : String(v);
+  };
+  apply(cur[key]);
+  const onInput = () => {
+    let v;
+    if (el.tagName === 'SELECT') v = el.value;
+    else if (el.type === 'checkbox') v = el.checked;
+    else v = el.value;
+    if (opts.parse) v = opts.parse(v);
+    else if (el.tagName !== 'SELECT') v = parseFloat(v);
+    // Guard against NaN from an empty/partial numeric field: keep the last
+    // valid value instead of propagating a non-finite number to the store.
+    if (typeof v === 'number' && !Number.isFinite(v)) return;
+    setMethodKwarg(method, key, v);
+  };
+  el.addEventListener('change', onInput);
+  if (el.type === 'text' || el.tagName === 'INPUT') {
+    el.addEventListener('input', onInput);
+  }
+}
+
 function renderMethodParams(method) {
+  ensureMethodKwargs(method);
+  const kw = getMethodKwargs(method);
   const box = document.getElementById('method-params');
   const m = APP.methods.find(x => x.id === method);
   const famLbl = document.getElementById('method-family-lbl');
@@ -244,7 +304,7 @@ function renderMethodParams(method) {
   let html = fields.map(([k, lbl, val, mn, mx, st]) => `
     <div class="mini-field">
       <label>${lbl}</label>
-      <input type="number" data-kw="${k}" value="${val}" min="${mn}" max="${mx}" step="${st || 1}">
+      <input type="number" data-kw="${k}" value="${kw[k] != null ? kw[k] : val}" min="${mn}" max="${mx}" step="${st || 1}">
     </div>
   `).join('');
 
@@ -264,14 +324,16 @@ function renderMethodParams(method) {
       </select></div>`;
   }
   box.innerHTML = html;
+  // Bind every partitioning input to the store (shared reference with the
+  // visuals): editing one writes to the store and triggers a re-run.
+  box.querySelectorAll('[data-kw]').forEach(el => bindKwarg(el.dataset.kw, el));
 }
 
 function gatherKwargs(method) {
-  const kw = {};
-  document.querySelectorAll('#method-params [data-kw]').forEach(el => {
-    const k = el.dataset.kw;
-    kw[k] = el.tagName === 'SELECT' ? el.value : parseFloat(el.value);
-  });
+  // Read the partitioning parameters from the central store (shared reference
+  // with the parameter inputs), not from the DOM, so parameters and visuals
+  // always read the same values.
+  const kw = getMethodKwargs(method);
   if (method === 'adaptive') {
     kw.y_split_mode = 'quantile';
     kw.top_method = 'single';

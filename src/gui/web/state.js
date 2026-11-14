@@ -65,6 +65,9 @@ const STORE = createStore({
   dataset: 'synthetic_drum',
   method: 'cartesian',
   methodB: 'voronoi',
+  // Partitioning parameters per method (single source of truth shared by the
+  // parameter inputs AND the simulation/visualization: method -> kwargs object)
+  methodKwargs: {},
   targetSpecies: 'small',
   noSpecies: false,
   predictFullDuration: true,

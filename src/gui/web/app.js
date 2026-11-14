@@ -569,6 +569,10 @@ async function initApp() {
   ['targetSpecies', 'predictFullDuration', 'noSpecies', 'nlt', 'step', 'dt', 'tau'].forEach(key => {
     STORE.subscribe(key, () => runSoon());
   });
+  // Partitioning parameters (method kwargs) live in the store and are shared
+  // with the visualization: editing one re-runs the contextual simulation so
+  // the 3-D visuals stay synchronized with the parameters.
+  STORE.subscribe('methodKwargs', () => runSoon());
   // 3-D layer toggles → re-render 3D from the store values
   ['showSmall', 'showLarge', 'showWire', 'showFaces', 'showVel', 'showEdges', 'showDrum'].forEach(key => {
     STORE.subscribe(key, () => render3DAll());
