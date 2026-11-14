@@ -269,12 +269,14 @@ async function runContextualAction() {
 
 async function runPrimary() {
   const loader = document.getElementById('loader');
+  const token = beginRun();
   APP.executionStatus = 'computing';
   applyPanelVisibility();
   loader.classList.add('show');
   try {
     const method = APP.method;
     const bundle = await fetchSimulate(method, gatherKwargs(method));
+    if (!runIsCurrent(token)) return; // superseded by a newer run
     APP.bundleA = bundle;
     toast(`Simulation OK · ${method} · ${bundle.diagnostics.n_visited}/${bundle.mesh.n_cells} cellules visitées`, 'success', 4000);
     APP.frameIdx = 0;
@@ -291,38 +293,41 @@ async function runPrimary() {
     APP.executionStatus = 'idle';
     renderActiveView();
   } catch (e) {
+    if (!runIsCurrent(token)) return; // stale failure, ignore
     APP.executionStatus = 'error';
     toast('Erreur Rust : ' + e.message, 'error', 6000);
   } finally {
-    loader.classList.remove('show');
-    applyPanelVisibility();
+    if (runIsCurrent(token)) { loader.classList.remove('show'); applyPanelVisibility(); }
   }
 }
 
 async function runStudy() {
   const loader = document.getElementById('loader');
+  const token = beginRun();
   APP.executionStatus = 'computing';
   applyPanelVisibility();
   loader.classList.add('show');
   try {
     const spec = gatherStudySpecPayload();
     const res = await fetchStudyRun(spec);
+    if (!runIsCurrent(token)) return; // superseded by a newer run
     APP.studyBundle = res;
     APP.studySelectedCell = { idx1: 0, idx2: 0 };
     toast(`Étude OK · ${res.method} · ${res.diagnostics.n_visited} cellules visitées`, 'success', 4000);
     APP.executionStatus = 'idle';
     renderStudyView();
   } catch (e) {
+    if (!runIsCurrent(token)) return; // stale failure, ignore
     APP.executionStatus = 'error';
     toast('Erreur Étude : ' + e.message, 'error', 6000);
   } finally {
-    loader.classList.remove('show');
-    applyPanelVisibility();
+    if (runIsCurrent(token)) { loader.classList.remove('show'); applyPanelVisibility(); }
   }
 }
 
 async function runDual() {
   const loader = document.getElementById('loader');
+  const token = beginRun();
   APP.executionStatus = 'computing';
   applyPanelVisibility();
   loader.classList.add('show');
@@ -333,22 +338,24 @@ async function runDual() {
       fetchSimulate(mA, gatherKwargs(mA)),
       fetchSimulate(mB, defaultKwargs(mB)),
     ]);
+    if (!runIsCurrent(token)) return; // superseded by a newer run
     APP.bundleA = bA;
     APP.bundleB = bB;
     toast(`Dual-Mesh OK · ${mA} ⊗ ${mB}`, 'success', 4000);
     APP.executionStatus = 'idle';
     renderActiveView();
   } catch (e) {
+    if (!runIsCurrent(token)) return; // stale failure, ignore
     APP.executionStatus = 'error';
     toast('Erreur Dual-Mesh : ' + e.message, 'error', 6000);
   } finally {
-    loader.classList.remove('show');
-    applyPanelVisibility();
+    if (runIsCurrent(token)) { loader.classList.remove('show'); applyPanelVisibility(); }
   }
 }
 
 async function runBenchmark() {
   const loader = document.getElementById('loader');
+  const token = beginRun();
   APP.executionStatus = 'computing';
   applyPanelVisibility();
   loader.classList.add('show');
@@ -357,16 +364,17 @@ async function runBenchmark() {
     const payload = currentRequest(method, gatherKwargs(method));
     payload.methods = ['cartesian', 'cylindrical', 'quantile', 'octree', 'voronoi', 'physics', 'adaptive'];
     const data = await fetchBenchmark(payload);
+    if (!runIsCurrent(token)) return; // superseded by a newer run
     APP.benchRows = data.rows;
     toast(`Benchmark OK · ${data.rows.length} méthodes évaluées`, 'success', 4000);
     APP.executionStatus = 'idle';
     renderBenchmarkView();
   } catch (e) {
+    if (!runIsCurrent(token)) return; // stale failure, ignore
     APP.executionStatus = 'error';
     toast('Erreur Benchmark : ' + e.message, 'error', 6000);
   } finally {
-    loader.classList.remove('show');
-    applyPanelVisibility();
+    if (runIsCurrent(token)) { loader.classList.remove('show'); applyPanelVisibility(); }
   }
 }
 
@@ -488,6 +496,11 @@ async function initApp() {
     });
   });
 
+  // Debounced contextual run: parameter changes (typing numerics, switching
+  // method/species/dataset) must NOT fire one full server simulation per
+  // keystroke. A short pause coalesces bursts into a single up-to-date run.
+  const runSoon = debounce(() => runContextualAction(), 350);
+
   // Dataset: both controls share ONE store key — changing either one
   // updates the store and propagates to the other control + the run action.
   bindControl('dataset', document.getElementById('dataset'));
@@ -496,7 +509,7 @@ async function initApp() {
   STORE.subscribe('dataset', val => {
     const si = val === 'real_chunks' ? 157 : 40;
     STORE.set('startIndex', si);
-    runContextualAction();
+    runSoon();
   });
 
   // Color mode: both controls share ONE store key and re-render 3D.
@@ -530,7 +543,7 @@ async function initApp() {
   bindControl('showDrum', document.getElementById('show-drum'));
 
   // Primary contextual run triggers
-  document.getElementById('run-btn').addEventListener('click', runContextualAction);
+  document.getElementById('run-btn').addEventListener('click', () => { runSoon.cancel(); runContextualAction(); });
   document.getElementById('run-dual-btn').addEventListener('click', runDual);
   document.getElementById('run-bench-btn').addEventListener('click', runBenchmark);
 
@@ -540,13 +553,13 @@ async function initApp() {
   STORE.subscribe('method', () => {
     renderMethodParams(STORE.get('method'));
     applyPanelVisibility();
-    runContextualAction();
+    runSoon();
   });
   // Species / duration / no-species / numeric params → re-run the CONTEXTUAL
   // action (NOT always runPrimary) so a change in study mode re-executes the
   // study, in compare mode re-runs the dual sim, and in explore the primary.
   ['targetSpecies', 'predictFullDuration', 'noSpecies', 'nlt', 'step', 'dt', 'tau'].forEach(key => {
-    STORE.subscribe(key, () => runContextualAction());
+    STORE.subscribe(key, () => runSoon());
   });
   // 3-D layer toggles → re-render 3D from the store values
   ['showSmall', 'showLarge', 'showWire', 'showFaces', 'showVel', 'showEdges', 'showDrum'].forEach(key => {

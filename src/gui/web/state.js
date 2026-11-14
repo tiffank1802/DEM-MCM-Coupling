@@ -159,6 +159,30 @@ function toast(message, type = 'info', timeout = 3500) {
   if (timeout > 0) timer = setTimeout(remove, timeout);
 }
 
+// ── Run serialization (debounce + stale-response guard) ───────────────────
+// Rapid parameter changes would otherwise fire one full server simulation per
+// keystroke, overlapping requests and letting a slower older response overwrite
+// a fresher one. `debounce` coalesces bursts; `beginRun`/`runIsCurrent` give
+// each in-flight run a token so stale completions are discarded.
+function debounce(fn, delay = 350) {
+  let timer = null;
+  const wrapped = (...args) => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => { timer = null; fn(...args); }, delay);
+  };
+  wrapped.cancel = () => { if (timer) clearTimeout(timer); timer = null; };
+  return wrapped;
+}
+
+let RUN_SEQ = 0;
+function beginRun() {
+  RUN_SEQ += 1;
+  return RUN_SEQ;
+}
+function runIsCurrent(token) {
+  return token === RUN_SEQ;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { createStore, STORE, APP, bindControl, toast };
+  module.exports = { createStore, STORE, APP, bindControl, toast, debounce, beginRun, runIsCurrent };
 }
