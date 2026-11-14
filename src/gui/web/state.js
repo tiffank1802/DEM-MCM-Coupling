@@ -132,6 +132,33 @@ function bindControl(key, el, opts = {}) {
   }
 }
 
+// ── Non-blocking toast notifications ─────────────────────────────────────
+// Replaces blocking alert() with a small stacked message queue in the
+// bottom-right corner. `toast(msg, type)` where type is one of
+// 'info' (default), 'success', 'warn', 'error'.
+const TOAST_ICONS = { info: 'ℹ', success: '✓', warn: '⚠', error: '✕' };
+function toast(message, type = 'info', timeout = 3500) {
+  if (typeof document === 'undefined') return;
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.innerHTML =
+    `<span class="t-icon">${TOAST_ICONS[type] || TOAST_ICONS.info}</span>` +
+    `<span class="t-msg"></span>`;
+  el.querySelector('.t-msg').textContent = message;
+  container.appendChild(el);
+  let timer = null;
+  const remove = () => {
+    if (timer) clearTimeout(timer);
+    if (!el.parentElement) return;
+    el.classList.add('hide');
+    setTimeout(() => { if (el.parentElement) el.remove(); }, 220);
+  };
+  el.addEventListener('click', remove);
+  if (timeout > 0) timer = setTimeout(remove, timeout);
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { createStore, STORE, APP, bindControl };
+  module.exports = { createStore, STORE, APP, bindControl, toast };
 }

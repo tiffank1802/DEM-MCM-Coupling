@@ -276,6 +276,7 @@ async function runPrimary() {
     const method = APP.method;
     const bundle = await fetchSimulate(method, gatherKwargs(method));
     APP.bundleA = bundle;
+    toast(`Simulation OK · ${method} · ${bundle.diagnostics.n_visited}/${bundle.mesh.n_cells} cellules visitées`, 'success', 4000);
     APP.frameIdx = 0;
     APP.selectedCell = null;
     APP.selectedTransitionKey = null;
@@ -291,7 +292,7 @@ async function runPrimary() {
     renderActiveView();
   } catch (e) {
     APP.executionStatus = 'error';
-    alert('Erreur Rust: ' + e.message);
+    toast('Erreur Rust : ' + e.message, 'error', 6000);
   } finally {
     loader.classList.remove('show');
     applyPanelVisibility();
@@ -308,11 +309,12 @@ async function runStudy() {
     const res = await fetchStudyRun(spec);
     APP.studyBundle = res;
     APP.studySelectedCell = { idx1: 0, idx2: 0 };
+    toast(`Étude OK · ${res.method} · ${res.diagnostics.n_visited} cellules visitées`, 'success', 4000);
     APP.executionStatus = 'idle';
     renderStudyView();
   } catch (e) {
     APP.executionStatus = 'error';
-    alert('Erreur Étude: ' + e.message);
+    toast('Erreur Étude : ' + e.message, 'error', 6000);
   } finally {
     loader.classList.remove('show');
     applyPanelVisibility();
@@ -333,11 +335,12 @@ async function runDual() {
     ]);
     APP.bundleA = bA;
     APP.bundleB = bB;
+    toast(`Dual-Mesh OK · ${mA} ⊗ ${mB}`, 'success', 4000);
     APP.executionStatus = 'idle';
     renderActiveView();
   } catch (e) {
     APP.executionStatus = 'error';
-    alert('Erreur Dual-Mesh: ' + e.message);
+    toast('Erreur Dual-Mesh : ' + e.message, 'error', 6000);
   } finally {
     loader.classList.remove('show');
     applyPanelVisibility();
@@ -355,11 +358,12 @@ async function runBenchmark() {
     payload.methods = ['cartesian', 'cylindrical', 'quantile', 'octree', 'voronoi', 'physics', 'adaptive'];
     const data = await fetchBenchmark(payload);
     APP.benchRows = data.rows;
+    toast(`Benchmark OK · ${data.rows.length} méthodes évaluées`, 'success', 4000);
     APP.executionStatus = 'idle';
     renderBenchmarkView();
   } catch (e) {
     APP.executionStatus = 'error';
-    alert('Erreur Benchmark: ' + e.message);
+    toast('Erreur Benchmark : ' + e.message, 'error', 6000);
   } finally {
     loader.classList.remove('show');
     applyPanelVisibility();
