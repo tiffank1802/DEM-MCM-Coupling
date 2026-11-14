@@ -58,7 +58,7 @@ function applyPanelVisibility() {
     workbenchMode: APP.workbenchMode,
     activeView: APP.activeView,
     executionStatus: APP.executionStatus,
-    activeMethod: document.getElementById('method')?.value || 'cartesian',
+    activeMethod: APP.method,
     ui: APP.ui,
     study: studySt,
   });
@@ -337,7 +337,7 @@ async function fetchStudyPresets() {
 }
 
 async function fetchStudyPresetSpec(presetId) {
-  const method = document.getElementById('method')?.value || 'cartesian';
+  const method = APP.method;
   const base_request = currentRequest(method, gatherKwargs(method));
   if (!APP.staticMode) {
     try {

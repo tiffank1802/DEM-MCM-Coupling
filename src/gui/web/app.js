@@ -218,7 +218,7 @@ async function runBenchmark() {
   applyPanelVisibility();
   loader.classList.add('show');
   try {
-    const method = document.getElementById('method').value;
+    const method = APP.method;
     const payload = currentRequest(method, gatherKwargs(method));
     payload.methods = ['cartesian', 'cylindrical', 'quantile', 'octree', 'voronoi', 'physics', 'adaptive'];
     const data = await fetchBenchmark(payload);
@@ -256,7 +256,7 @@ async function initApp() {
   document.getElementById('method').innerHTML = opts;
   document.getElementById('method-b').innerHTML = opts;
   document.getElementById('method-b').value = 'voronoi';
-  renderMethodParams('cartesian');
+  renderMethodParams(APP.method);
 
   await loadPlanText();
 
@@ -356,14 +356,19 @@ async function initApp() {
   document.getElementById('run-dual-btn').addEventListener('click', runDual);
   document.getElementById('run-bench-btn').addEventListener('click', runBenchmark);
 
-  // Method change → refresh param fields + panel visibility
+  // Method change → refresh param fields, panel visibility, then re-run the
+  // CONTEXTUAL action (runStudy in study mode, runDual in compare mode,
+  // runPrimary in explore mode) so the correct executor runs.
   STORE.subscribe('method', () => {
     renderMethodParams(STORE.get('method'));
     applyPanelVisibility();
+    runContextualAction();
   });
-  // Species / duration / no-species / numeric params → re-run the primary simulation
+  // Species / duration / no-species / numeric params → re-run the CONTEXTUAL
+  // action (NOT always runPrimary) so a change in study mode re-executes the
+  // study, in compare mode re-runs the dual sim, and in explore the primary.
   ['targetSpecies', 'predictFullDuration', 'noSpecies', 'nlt', 'step', 'dt', 'tau'].forEach(key => {
-    STORE.subscribe(key, () => runPrimary());
+    STORE.subscribe(key, () => runContextualAction());
   });
   // 3-D layer toggles → re-render 3D from the store values
   ['showSmall', 'showLarge', 'showWire', 'showFaces', 'showVel', 'showEdges', 'showDrum'].forEach(key => {

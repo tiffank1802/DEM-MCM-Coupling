@@ -100,7 +100,7 @@ function applyPresetFallbackToBuilder(presetId) {
 
 function gatherStudySpecPayload() {
   const st = getStudyBuilderState();
-  const method = document.getElementById('method')?.value || 'cartesian';
+  const method = APP.method;
   const base_request = currentRequest(method, gatherKwargs(method));
 
   let axis1Values = [];
