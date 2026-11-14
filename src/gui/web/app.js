@@ -381,7 +381,7 @@ async function initApp() {
   const presetSel = document.getElementById('study-preset');
   if (presetSel) {
     presetSel.innerHTML = APP.studyPresets
-      .map(p => `<option value="${p.id}" title="${p.description}">${p.title}</option>`)
+      .map(p => `<option value="${p.id}" title="${p.description || ''}">${p.title || p.name || p.id}</option>`)
       .join('');
     presetSel.addEventListener('change', async () => {
       const spec = await fetchStudyPresetSpec(presetSel.value);

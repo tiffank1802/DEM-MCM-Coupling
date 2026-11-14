@@ -303,11 +303,17 @@ function renderViewport3D(canvas, bundle, recordHits = false) {
   if (recordHits) APP.projectedCells = [];
 
   const tri = [];
+  const triDepth = [];
   const line = [];
   const point = [];
   const col = (c, size = 0) => { const p = parseColor(c); return [p[0], p[1], p[2], p[3], size]; };
 
   const proj = p => projectPt(p, basis, W, H, APP.cam.fov);
+  // View-space depth (along the camera forward axis) for painter's sorting.
+  const viewDepth = p => {
+    const dx = p[0] - basis.eye[0], dy = p[1] - basis.eye[1], dz = p[2] - basis.eye[2];
+    return dx * basis.fwd[0] + dy * basis.fwd[1] + dz * basis.fwd[2];
+  };
 
   // Drum (cylinder wireframe)
   if (showDrum) {
@@ -354,12 +360,18 @@ function renderViewport3D(canvas, bundle, recordHits = false) {
       // Triangulate each polygon as a fan; world coords go straight to the GPU.
       const fc = col(faceFill);
       for (const poly of cell.faces) {
+        if (!poly || poly.length < 3) continue;
+        // Centroid view-depth for back-to-front (painter) sorting.
+        let sd = 0;
+        for (const v of poly) sd += viewDepth(v);
+        sd /= poly.length;
         for (let i = 1; i < poly.length - 1; i++) {
           tri.push(
             [poly[0][0], poly[0][1], poly[0][2], fc[0], fc[1], fc[2], fc[3], 0],
             [poly[i][0], poly[i][1], poly[i][2], fc[0], fc[1], fc[2], fc[3], 0],
             [poly[i + 1][0], poly[i + 1][1], poly[i + 1][2], fc[0], fc[1], fc[2], fc[3], 0]
           );
+          triDepth.push(sd);
         }
       }
     }
@@ -380,12 +392,16 @@ function renderViewport3D(canvas, bundle, recordHits = false) {
     const sc = col('rgba(125,211,189,0.14)');
     const stroke = col('rgba(125,211,189,0.75)');
     const quad = sp.quad;
+    let spd = 0;
+    for (const v of quad) spd += viewDepth(v);
+    spd /= quad.length;
     for (let i = 1; i < quad.length - 1; i++) {
       tri.push(
         [quad[0][0], quad[0][1], quad[0][2], sc[0], sc[1], sc[2], sc[3], 0],
         [quad[i][0], quad[i][1], quad[i][2], sc[0], sc[1], sc[2], sc[3], 0],
         [quad[i + 1][0], quad[i + 1][1], quad[i + 1][2], sc[0], sc[1], sc[2], sc[3], 0]
       );
+      triDepth.push(spd);
     }
     for (let i = 0; i < quad.length; i++) {
       const a = quad[i], b = quad[(i + 1) % quad.length];
@@ -422,6 +438,7 @@ function renderViewport3D(canvas, bundle, recordHits = false) {
         [e1[0], e1[1], e1[2], colc[0], colc[1], colc[2], colc[3], 0],
         [e2[0], e2[1], e2[2], colc[0], colc[1], colc[2], colc[3], 0]
       );
+      triDepth.push(viewDepth(cd));
     }
   }
 
@@ -448,16 +465,22 @@ function renderViewport3D(canvas, bundle, recordHits = false) {
     }
   }
 
-  // Upload & draw: faces first (write depth), then lines, then points.
+  // Upload & draw using painter's algorithm: sort faces back-to-front and
+  // do NOT write depth (they are semi-transparent), so no face is wrongly
+  // occluded by another drawn earlier. Lines and points draw on top.
   const triBuf = [];
   const lineBuf = [];
   const pointBuf = [];
-  buildBuffer(triBuf, tri);
+  const order = tri.map((_, i) => i);
+  order.sort((a, b) => triDepth[b] - triDepth[a]); // far -> near
+  buildBuffer(triBuf, order.map(i => tri[i]));
   buildBuffer(lineBuf, line);
   buildBuffer(pointBuf, point);
+  gl.depthMask(false);
   drawBuffer(gl, locs, triBuf[0], gl.TRIANGLES);
   drawBuffer(gl, locs, lineBuf[0], gl.LINES);
   drawBuffer(gl, locs, pointBuf[0], gl.POINTS);
+  gl.depthMask(true);
 }
 
 function wire3DEvents(canvas, onRender3D, onCellSelected) {

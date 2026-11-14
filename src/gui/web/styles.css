@@ -321,7 +321,7 @@ details.tree-node {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.025);
-  overflow: hidden;
+  overflow: visible;
 }
 details.tree-node > summary {
   list-style: none;
@@ -334,6 +334,7 @@ details.tree-node > summary {
   align-items: center;
   justify-content: space-between;
   background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px 8px 0 0;
   user-select: none;
 }
 details.tree-node > summary::-webkit-details-marker { display: none; }
