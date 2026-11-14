@@ -71,7 +71,83 @@ function render3DAll() {
   }
 }
 
+// ── Right inspector: live 3D legend showing the parameters that influence
+//    the 3-D display. Reads from the central store, so it updates automatically
+//    whenever any influencing variable changes (propagation).
+const COLOR_MODE_SWATCH = {
+  dem_teneur: '#9ec0dc', hom_teneur: '#7dd3bd', inhom_teneur: '#eec078',
+  hom_err: '#e5989b', inhom_err: '#d8a48f', cell_rmse: '#b8b8e6',
+  population: '#88c9c2', cell_id: '#c9a6e0',
+};
+const COLOR_MODE_LABEL = {
+  dem_teneur: 'Teneur DEM (réf.)', hom_teneur: 'Teneur Homogène',
+  inhom_teneur: 'Teneur Inhomogène', hom_err: 'Erreur Hom |ΔT|',
+  inhom_err: 'Erreur Inhom |ΔT|', cell_rmse: 'Discrepancy RMSE',
+  population: 'Population N_i', cell_id: 'Identifiant cellule',
+};
+
+function renderInspectorLegend() {
+  const wrap = document.getElementById('inspector-legend');
+  if (!wrap) return;
+  const view = APP.activeView || 'summary';
+  const is3D = view === 'summary' || view === 'mesh3d' || view === 'benchmark';
+  const b = APP.bundleA;
+
+  if (!b) {
+    wrap.innerHTML = `<div class="legend-section"><h4>Inspecteur</h4>`
+      + `<div class="legend-empty">Aucun modèle chargé. Lancez une simulation pour afficher la légende 3D.</div></div>`;
+    return;
+  }
+
+  const frame = b.frames[Math.min(APP.frameIdx, b.frames.length - 1)] || b.frames[0];
+  const rows = [];
+  const row = (k, v) => `<div class="legend-row"><span class="lk">${k}</span><span class="lv">${v}</span></div>`;
+
+  if (is3D) {
+    const cm = APP.colorMode || 'dem_teneur';
+    const sw = COLOR_MODE_SWATCH[cm] || '#8faec9';
+    rows.push(`<div class="legend-row"><span class="lk">Coloration</span>`
+      + `<span class="lv"><span class="legend-swatch" style="background:${sw};"></span>${COLOR_MODE_LABEL[cm] || cm}</span></div>`);
+    rows.push(row('Méthode', APP.method));
+    rows.push(row('Jeu de données', APP.dataset));
+    rows.push(row('Espèce cible', APP.targetSpecies));
+    rows.push(row('Horizon τ', APP.tau));
+    const layer = (label, key, color) => {
+      const on = APP[key];
+      const c = color ? `<span class="legend-swatch" style="background:${color};"></span>` : '';
+      return `<div class="legend-row"><span class="lk">${c}${label}</span><span class="lv" style="color:${on ? 'var(--accent-teal)' : 'var(--dim)'}">${on ? 'ON' : 'OFF'}</span></div>`;
+    };
+    rows.push(layer('Petites (4 mm)', 'showSmall', '#7dd3c8'));
+    rows.push(layer('Grosses (8 mm)', 'showLarge', '#eec078'));
+    rows.push(layer('Faces', 'showFaces'));
+    rows.push(layer('Fils (arêtes)', 'showWire'));
+    rows.push(layer('Flux Markov', 'showEdges'));
+    rows.push(layer('Vecteurs V', 'showVel'));
+    rows.push(layer('Paroi tambour', 'showDrum'));
+    rows.push(row('Cellules', `${b.mesh.n_cells} · visitées ${b.diagnostics.n_visited}`));
+    rows.push(row('Frame', `${APP.frameIdx} / ${b.frames.length - 1}`));
+    if (frame) rows.push(row('t', frame.timestep));
+  } else {
+    rows.push(row('Vue', view));
+    rows.push(row('Méthode', APP.method));
+    rows.push(row('Jeu de données', APP.dataset));
+    rows.push(row('Espèce cible', APP.targetSpecies));
+    rows.push(row('Cellules', `${b.mesh.n_cells} · visitées ${b.diagnostics.n_visited}`));
+    rows.push(row('Frame', `${APP.frameIdx} / ${b.frames.length - 1}`));
+  }
+
+  wrap.innerHTML = `<div class="legend-section"><h4>Paramètres d'affichage</h4>${rows.join('')}</div>`;
+}
+
+// Re-render the legend whenever an influencing variable or the active view changes.
+['activeView', 'colorMode', 'method', 'dataset', 'targetSpecies', 'tau', 'nlt', 'step', 'dt',
+  'showSmall', 'showLarge', 'showWire', 'showFaces', 'showEdges', 'showVel', 'showDrum',
+  'frameIdx'].forEach(key => {
+  STORE.subscribe(key, () => renderInspectorLegend());
+});
+
 function renderActiveView() {
+  renderInspectorLegend();
   const b = APP.bundleA;
   if (!b) return;
   renderTelemetry(b);
@@ -234,8 +310,35 @@ async function runBenchmark() {
   }
 }
 
+// ── Theme (dark / light) ──────────────────────────────────────────────────
+function applyTheme(theme) {
+  const t = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = t;
+  const icon = document.getElementById('theme-icon');
+  if (icon) icon.textContent = t === 'light' ? '☀' : '☾';
+  const btn = document.getElementById('theme-toggle-btn');
+  if (btn) btn.title = t === 'light' ? 'Passer en sombre' : 'Passer en clair';
+}
+// Persist the theme choice and keep the DOM in sync with the store so the
+// theme updates propagate from any part of the software.
+STORE.subscribe('theme', applyTheme);
+
 async function initApp() {
   restoreUiLayout();
+  // Restore the user's theme choice (persisted) and apply it before first paint.
+  try {
+    const savedTheme = localStorage.getItem('dem_mcm_theme');
+    if (savedTheme === 'light' || savedTheme === 'dark') APP.theme = savedTheme;
+  } catch (_) {}
+  applyTheme(APP.theme);
+  // Toggle button: flips the store theme (which propagates via the subscription).
+  const themeBtn = document.getElementById('theme-toggle-btn');
+  if (themeBtn) {
+    themeBtn.addEventListener('click', () => {
+      APP.theme = APP.theme === 'dark' ? 'light' : 'dark';
+      try { localStorage.setItem('dem_mcm_theme', APP.theme); } catch (_) {}
+    });
+  }
   applyPanelVisibility();
 
   let data = null;
@@ -278,6 +381,12 @@ async function initApp() {
     applyPanelVisibility();
     saveUiLayout();
     setTimeout(renderActiveView, 40);
+  });
+  document.getElementById('inspector-toggle-btn').addEventListener('click', () => {
+    APP.ui.inspectorOpen = !APP.ui.inspectorOpen;
+    applyPanelVisibility();
+    saveUiLayout();
+    setTimeout(renderInspectorLegend, 40);
   });
   document.getElementById('collapse-all-nodes-btn').addEventListener('click', () => {
     const nodes = Array.from(document.querySelectorAll('details.tree-node'));

@@ -40,6 +40,7 @@ function createStore(initial) {
 
 const STORE = createStore({
   staticMode: false,
+  theme: 'dark', // 'dark' | 'light' — user-selectable, persisted
   workbenchMode: 'explore', // 'explore' | 'study' | 'compare'
   executionStatus: 'idle',  // 'idle' | 'computing' | 'error'
   activeView: 'summary',
@@ -87,6 +88,7 @@ const STORE = createStore({
     ribbonOpen: true,
     timelineOpen: true,
     studyBuilderOpen: true,
+    inspectorOpen: true,
   },
 });
 

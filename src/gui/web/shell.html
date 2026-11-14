@@ -36,20 +36,24 @@
     <button class="btn primary sm" id="run-btn">Exécuter</button>
     <span class="loader-pill" id="loader"><span class="spin"></span> Calcul…</span>
 
+    <button class="btn sm icon-btn" id="theme-toggle-btn" title="Basculer thème clair / sombre" aria-label="Basculer thème">
+      <span class="theme-icon" id="theme-icon">☾</span>
+    </button>
+
     <span class="top-spacer"></span>
     <span class="status-chip" id="horizon-badge">Modèle [—] · DEM [—]</span>
   </header>
 
-  <!-- 2. COLLAPSIBLE RIBBON (CAD WORKBENCH COMMANDS & DROPDOWNS) -->
-  <section class="ribbon-bar" id="ribbon-bar">
-    <div class="r-group" id="ribbon-group-views">
+  <!-- 2. CONTEXTUAL TOOLBAR (CAD workbench commands — groups appear per active tab) -->
+  <section class="ribbon-bar context-toolbar" id="ribbon-bar">
+    <div class="r-group" id="ribbon-group-views" data-ctx="*">
       <span class="r-lbl">Ateliers</span>
       <button class="btn sm" data-jump-view="summary">Sommaire</button>
       <button class="btn sm" data-jump-view="mesh3d">3D</button>
       <button class="btn sm" data-jump-view="matrix_evol">Évol. P(t)</button>
     </div>
 
-    <div class="r-group" id="ribbon-group-3d">
+    <div class="r-group" id="ribbon-group-3d" data-ctx="summary mesh3d benchmark">
       <details class="cad-dropdown" id="drop-cam">
         <summary>Caméra 3D</summary>
         <div class="dropdown-panel">
@@ -90,7 +94,7 @@
       </details>
     </div>
 
-    <div class="r-group" id="ribbon-group-criterion">
+    <div class="r-group" id="ribbon-group-criterion" data-ctx="summary teneur particles errors matrix_evol matrices">
       <details class="cad-dropdown" id="drop-criterion">
         <summary>Critère &amp; Horizon</summary>
         <div class="dropdown-panel">
@@ -800,6 +804,15 @@
       </section>
 
     </main>
+
+    <!-- RIGHT INSPECTOR: contextual parameters + live 3D legend (Fusion 360 style) -->
+    <aside class="inspector-panel glass" id="inspector-panel">
+      <div class="tree-header">
+        <span>INSPECTEUR · LÉGENDE 3D</span>
+        <button class="btn sm" id="inspector-toggle-btn" title="Plier/déplier l'inspecteur">▾</button>
+      </div>
+      <div class="inspector-scroll" id="inspector-legend"></div>
+    </aside>
   </div>
 
   <!-- 4. COLLAPSIBLE PARAMETRIC TIMELINE -->

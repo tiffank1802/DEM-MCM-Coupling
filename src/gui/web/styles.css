@@ -18,6 +18,35 @@
   --mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
 }
 
+/* ── Light theme overrides (user-selectable via [data-theme="light"]) ── */
+[data-theme="light"] {
+  --bg-0: #e9edf4;
+  --bg-1: #dde3ee;
+  --glass-1: rgba(255, 255, 255, 0.86);
+  --glass-2: rgba(255, 255, 255, 0.72);
+  --glass-3: rgba(246, 249, 253, 0.60);
+  --border: rgba(24, 38, 60, 0.14);
+  --border-hi: rgba(58, 96, 140, 0.50);
+  --text: #1b2433;
+  --muted: #4d5a70;
+  --dim: #73819a;
+  --accent-ice: #3f6fa8;
+  --accent-teal: #1f8f78;
+  --accent-amber: #b9792f;
+  --accent-coral: #c2545a;
+}
+[data-theme="light"] body {
+  background:
+    radial-gradient(960px 620px at 14% 6%, rgba(31, 143, 120, 0.10), transparent 62%),
+    radial-gradient(880px 580px at 88% 12%, rgba(63, 111, 168, 0.10), transparent 62%),
+    linear-gradient(160deg, var(--bg-0), var(--bg-1));
+}
+[data-theme="light"] .top-strip { background: rgba(255, 255, 255, 0.88); }
+[data-theme="light"] .tree-header { background: rgba(255, 255, 255, 0.5); }
+[data-theme="light"] .subtle-bar { background: rgba(255, 255, 255, 0.45); }
+[data-theme="light"] .vtab.active { background: rgba(63, 111, 168, 0.16); }
+[data-theme="light"] .view-pane canvas, [data-theme="light"] .canvas-box { background: rgba(255, 255, 255, 0.5); }
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; }
 body {
@@ -171,6 +200,8 @@ select:focus, input[type="number"]:focus, input[type="text"]:focus { border-colo
   color: #fff;
 }
 .btn.sm { padding: 3px 8px; font-size: 11px; }
+.btn.icon-btn { padding: 3px 7px; min-width: 30px; justify-content: center; }
+.theme-icon { font-size: 14px; line-height: 1; }
 
 /* CAD Collapsible Dropdown (<details>) */
 details.cad-dropdown {
@@ -404,6 +435,78 @@ details.tree-node[open] > summary::after { transform: rotate(90deg); }
   gap: 8px;
 }
 .view-pane.active { display: flex; flex-direction: column; }
+
+/* ── RIGHT INSPECTOR PANEL + LIVE 3D LEGEND ─────────────────────────────── */
+.inspector-panel {
+  width: 250px;
+  flex-shrink: 0;
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.16s ease, opacity 0.16s ease;
+}
+.inspector-panel.collapsed {
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  opacity: 0;
+  pointer-events: none;
+  margin-left: -8px;
+}
+.inspector-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.legend-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
+  padding: 8px 9px;
+}
+.legend-section h4 {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--accent-ice);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.legend-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  padding: 2.5px 0;
+  border-bottom: 1px dashed var(--border);
+}
+.legend-row:last-child { border-bottom: none; }
+.legend-row .lk { color: var(--muted); white-space: nowrap; }
+.legend-row .lv {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-align: right;
+  word-break: break-word;
+}
+.legend-swatch {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 3px;
+  margin-right: 5px;
+  vertical-align: middle;
+  border: 1px solid var(--border-hi);
+}
+.legend-empty { font-size: 10.5px; color: var(--dim); font-style: italic; }
 
 .surface {
   border-radius: var(--radius);

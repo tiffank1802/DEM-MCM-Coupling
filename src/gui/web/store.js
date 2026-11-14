@@ -24,6 +24,7 @@ function saveUiLayout() {
       treeOpen: APP.ui.treeOpen,
       ribbonOpen: APP.ui.ribbonOpen,
       timelineOpen: APP.ui.timelineOpen,
+      inspectorOpen: APP.ui.inspectorOpen,
       nodes,
     }));
   } catch (_) {}
@@ -40,6 +41,7 @@ function restoreUiLayout() {
     if (typeof saved.treeOpen === 'boolean') APP.ui.treeOpen = saved.treeOpen;
     if (typeof saved.ribbonOpen === 'boolean') APP.ui.ribbonOpen = saved.ribbonOpen;
     if (typeof saved.timelineOpen === 'boolean') APP.ui.timelineOpen = saved.timelineOpen;
+    if (typeof saved.inspectorOpen === 'boolean') APP.ui.inspectorOpen = saved.inspectorOpen;
     if (saved.nodes && typeof saved.nodes === 'object') {
       Object.entries(saved.nodes).forEach(([id, isOpen]) => {
         const el = document.getElementById(id);
@@ -130,6 +132,20 @@ function applyPanelVisibility() {
   if (studySide) {
     studySide.classList.toggle('collapsed', !APP.ui.studyBuilderOpen);
   }
+  const inspector = document.getElementById('inspector-panel');
+  if (inspector) {
+    inspector.classList.toggle('collapsed', !APP.ui.inspectorOpen);
+  }
+
+  // Contextual toolbar: show only the command groups relevant to the active
+  // tab (SolidCraft/Fusion 360-style per-workspace toolbar). A group with
+  // data-ctx="*" is always visible; others list the views they apply to.
+  const activeView = APP.activeView || 'summary';
+  document.querySelectorAll('.context-toolbar .r-group[data-ctx]').forEach(grp => {
+    const ctx = (grp.dataset.ctx || '').split(/\s+/).filter(Boolean);
+    const show = ctx.includes('*') || ctx.includes(activeView);
+    grp.style.display = show ? '' : 'none';
+  });
 }
 
 function defaultKwargs(method) {
