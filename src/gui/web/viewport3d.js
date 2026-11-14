@@ -184,18 +184,28 @@ function mat4Multiply(a, b) {
   return o;
 }
 
+// parseColor is a pure function called heavily per cell / particle per frame.
+// Memoize it: the set of distinct colour strings is small and stable, so a
+// simple Map removes the repeated string parsing without changing results.
+const _parseColorCache = new Map();
 function parseColor(c) {
   if (typeof c === 'number') return [((c >> 16) & 255) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255, 1];
+  const cacheKey = c;
+  if (cacheKey != null && _parseColorCache.has(cacheKey)) return _parseColorCache.get(cacheKey);
   if (c && c[0] === '#') {
     let h = c.slice(1);
     if (h.length === 3) h = h.split('').map(x => x + x).join('');
     const n = parseInt(h, 16);
-    return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, 1];
+    const r1 = [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, 1];
+    _parseColorCache.set(cacheKey, r1);
+    return r1;
   }
   const m = c && c.match(/rgba?\(([^)]+)\)/);
   if (m) {
     const p = m[1].split(',').map(s => parseFloat(s));
-    return [p[0] / 255, p[1] / 255, p[2] / 255, p.length > 3 ? p[3] : 1];
+    const r2 = [p[0] / 255, p[1] / 255, p[2] / 255, p.length > 3 ? p[3] : 1];
+    _parseColorCache.set(cacheKey, r2);
+    return r2;
   }
   return [1, 1, 1, 1];
 }

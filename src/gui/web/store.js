@@ -366,15 +366,29 @@ async function fetchBenchmark(payload) {
   return await r.json();
 }
 
+// Memoized nearest evaluation row: getCellMetricValue calls this once per cell
+// per frame, and it does a linear scan over the evaluation time axis. The result
+// only depends on (bundle, timestep), so cache it per bundle/timestep — during
+// camera-only motion (frame unchanged) the redundant scans disappear.
+const _nearestEvalCache = new WeakMap();
 function nearestEvalRow(bundle, ts) {
-  const times = bundle.hom_metrics.times_eval;
-  if (!times || !times.length) return 0;
-  let best = 0;
-  let bestD = Infinity;
-  for (let i = 0; i < times.length; i++) {
-    const d = Math.abs(times[i] - ts);
-    if (d < bestD) { bestD = d; best = i; }
+  if (!bundle) return 0;
+  let byTs = _nearestEvalCache.get(bundle);
+  if (!byTs) {
+    byTs = new Map();
+    _nearestEvalCache.set(bundle, byTs);
   }
+  if (byTs.has(ts)) return byTs.get(ts);
+  const times = bundle.hom_metrics.times_eval;
+  let best = 0;
+  if (times && times.length) {
+    let bestD = Infinity;
+    for (let i = 0; i < times.length; i++) {
+      const d = Math.abs(times[i] - ts);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+  }
+  byTs.set(ts, best);
   return best;
 }
 
