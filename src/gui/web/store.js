@@ -54,6 +54,46 @@ function restoreUiLayout() {
   } catch (_) {}
 }
 
+// ── Workspace persistence ─────────────────────────────────────────────────
+// The simulation parameters that define the current working configuration are
+// saved to localStorage and restored on reload, so a refresh keeps the user's
+// method, dataset, species and integration settings instead of resetting them.
+const WORKSPACE_KEY = 'dem_mcm_workspace';
+const WORKSPACE_KEYS = [
+  'dataset', 'method', 'methodB', 'targetSpecies', 'noSpecies',
+  'predictFullDuration', 'nlt', 'step', 'dt', 'tau', 'startIndex',
+];
+
+function saveWorkspace() {
+  try {
+    const snap = {};
+    for (const k of WORKSPACE_KEYS) snap[k] = STORE.get(k);
+    localStorage.setItem(WORKSPACE_KEY, JSON.stringify(snap));
+  } catch (_) {}
+}
+
+function restoreWorkspace() {
+  try {
+    const raw = localStorage.getItem(WORKSPACE_KEY);
+    if (!raw) return false;
+    const saved = JSON.parse(raw);
+    if (!saved || typeof saved !== 'object') return false;
+    let restored = 0;
+    for (const k of WORKSPACE_KEYS) {
+      if (saved[k] !== undefined) {
+        STORE.set(k, saved[k]);
+        restored += 1;
+      }
+    }
+    return restored > 0;
+  } catch (_) {
+    return false;
+  }
+}
+
+// Debounced writer so a burst of parameter edits produces one localStorage write.
+const _workspaceSave = debounce(saveWorkspace, 400);
+
 function applyPanelVisibility() {
   const studySt = (typeof getStudyBuilderState === 'function') ? getStudyBuilderState() : {};
   const vis = deriveUiVisibility({

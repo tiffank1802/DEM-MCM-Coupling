@@ -393,6 +393,9 @@ STORE.subscribe('theme', applyTheme);
 
 async function initApp() {
   restoreUiLayout();
+  // Restore the saved simulation workspace (method, dataset, integration
+  // params) before binding controls so bound inputs display the saved values.
+  restoreWorkspace();
   // Restore the user's theme choice (persisted) and apply it before first paint.
   try {
     const savedTheme = localStorage.getItem('dem_mcm_theme');
@@ -534,6 +537,11 @@ async function initApp() {
   bindControl('step', document.getElementById('step'), { parse: v => parseInt(v) || 0 });
   bindControl('dt', document.getElementById('dt'), { parse: v => parseInt(v) || 0 });
   bindControl('tau', document.getElementById('tau'), { parse: v => parseInt(v) || 0 });
+  // Persist the workspace: save on any parameter change (debounced) and
+  // again on reload/close so nothing is lost.
+  WORKSPACE_KEYS.forEach(key => STORE.subscribe(key, () => _workspaceSave()));
+  window.addEventListener('beforeunload', saveWorkspace);
+
   bindControl('showSmall', document.getElementById('show-small'));
   bindControl('showLarge', document.getElementById('show-large'));
   bindControl('showWire', document.getElementById('show-wire'));
