@@ -567,10 +567,13 @@
           <aside class="study-sidebar glass" id="study-sidebar">
             <div class="tree-header">
               <span>CONCEPTEUR D'ÉTUDE</span>
-              <button class="btn sm" id="study-toggle-builder-btn" title="Plier/déplier">◂</button>
+              <span style="display:flex;gap:4px;">
+                <button class="btn sm" id="study-collapse-all-btn" title="Tout plier / déplier les sections">Plier/Déplier</button>
+                <button class="btn sm" id="study-toggle-builder-btn" title="Plier/déplier">◂</button>
+              </span>
             </div>
             <div class="tree-scroll">
-              <details class="tree-node" open>
+              <details class="tree-node" id="study-preset-node" open>
                 <summary>1. Preset &amp; Type d'étude</summary>
                 <div class="tree-content">
                   <div class="mini-field">
@@ -592,7 +595,7 @@
                 </div>
               </details>
 
-              <details class="tree-node" open>
+              <details class="tree-node" id="study-axis1-node">
                 <summary>2. Axe Paramétrique Primaire (X)</summary>
                 <div class="tree-content">
                   <div class="mini-field">
@@ -657,7 +660,7 @@
                 </div>
               </details>
 
-              <details class="tree-node" id="study-law-node" open>
+              <details class="tree-node" id="study-law-node">
                 <summary>3. Lois p_{i→j}(t) &amp; Grille 2D</summary>
                 <div class="tree-content">
                   <div class="mini-field">

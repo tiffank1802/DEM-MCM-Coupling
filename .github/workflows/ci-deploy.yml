@@ -27,6 +27,9 @@ permissions:
 
 concurrency:
   group: "ci-deploy-${{ github.ref }}"
+  # Un nouveau push sur la branche annule le run précédent en cours : évite
+  # qu'un run bloqué (runner indisponible, approbation d'environnement…)
+  # ne bloque indéfiniment tous les runs suivants de la branche.
   cancel-in-progress: true
 
 env:
@@ -202,11 +205,17 @@ jobs:
   deploy-pages:
     name: Deploy 3D Studio to GitHub Pages
     needs: build-pages
+    # Déploie depuis master/main, les branches de travail arena/** et sur
+    # déclenchement manuel (workflow_dispatch avec deploy_pages=true).
     if: >-
       github.event_name != 'pull_request' &&
-      (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || inputs.deploy_pages == true)
+      (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' ||
+       startsWith(github.ref, 'refs/heads/arena/') || inputs.deploy_pages == true)
+    # Environnement dédié sans politique de branches : le déploiement Pages
+    # n'est pas bloqué par la restriction « uniquement master » de l'environnement
+    # github-pages (qui ne peut pas être modifiée par l'intégration GitHub Actions).
     environment:
-      name: github-pages
+      name: pages-deploy
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
