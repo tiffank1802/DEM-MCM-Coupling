@@ -8,7 +8,7 @@ use std::env;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 
 use dem_mcm_coupling::gui::simulation::{
@@ -600,6 +600,10 @@ fn main() {
         .unwrap_or(8080);
     let mut data_dir = PathBuf::from("data/chunks");
     let mut export_dir: Option<PathBuf> = None;
+    // Maximum number of requests handled concurrently. Each connection runs a
+    // synchronous, CPU-heavy computation, so this bounds thread/compute
+    // explosion and applies backpressure when a request burst arrives.
+    let mut max_concurrent: usize = 8;
 
     let args: Vec<String> = env::args().collect();
     let mut i = 1;
@@ -617,10 +621,15 @@ fn main() {
                 export_dir = Some(PathBuf::from(&args[i + 1]));
                 i += 2;
             }
+            "--max-concurrent" if i + 1 < args.len() => {
+                max_concurrent = args[i + 1].parse().unwrap_or(max_concurrent).max(1);
+                i += 2;
+            }
             "-h" | "--help" => {
                 println!(
                     "dem-mcm-gui — Interactive 3-D DEM-MCM Visualization Server\n\n\
-                     USAGE:\n  dem-mcm-gui [--port <PORT>] [--data-dir <DIR>] [--export-static <OUT_DIR>]\n"
+                     USAGE:\n  dem-mcm-gui [--port <PORT>] [--data-dir <DIR>] [--export-static <OUT_DIR>]\
+                     [--max-concurrent <N>]\n"
                 );
                 return;
             }
@@ -653,9 +662,35 @@ fn main() {
         sessions: ResearchSessionCache::new(),
     });
 
-    println!("DEM-MCM 3D Viewer server listening on http://{addr}");
+    // Backpressure semaphore: bounds how many requests are handled at once.
+    // Each connection performs a synchronous, CPU-heavy computation, so without
+    // a bound a request burst would spawn an unbounded number of compute
+    // threads and starve the machine. When at capacity the accept loop waits
+    // here instead of spawning, which applies backpressure to the client.
+    let sem = Arc::new((Mutex::new(0usize), Condvar::new()));
+    println!(
+        "DEM-MCM 3D Viewer server listening on http://{addr} \
+         (max {max_concurrent} concurrent requests)"
+    );
     for stream in listener.incoming().flatten() {
+        // Acquire a concurrency slot (blocks while full = backpressure).
+        {
+            let (lock, cv) = &*sem;
+            let mut active = lock.lock().unwrap();
+            while *active >= max_concurrent {
+                active = cv.wait(active).unwrap();
+            }
+            *active += 1;
+        }
         let st = Arc::clone(&state);
-        thread::spawn(move || handle_client(stream, st));
+        let sem = Arc::clone(&sem);
+        thread::spawn(move || {
+            handle_client(stream, st);
+            // Release the slot and wake a waiter in the accept loop.
+            let (lock, cv) = &*sem;
+            let mut active = lock.lock().unwrap();
+            *active -= 1;
+            cv.notify_one();
+        });
     }
 }
