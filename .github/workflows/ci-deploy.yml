@@ -211,8 +211,11 @@ jobs:
       github.event_name != 'pull_request' &&
       (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' ||
        startsWith(github.ref, 'refs/heads/arena/') || inputs.deploy_pages == true)
+    # Environnement dédié sans politique de branches : le déploiement Pages
+    # n'est pas bloqué par la restriction « uniquement master » de l'environnement
+    # github-pages (qui ne peut pas être modifiée par l'intégration GitHub Actions).
     environment:
-      name: github-pages
+      name: pages-deploy
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
