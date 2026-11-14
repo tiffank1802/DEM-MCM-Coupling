@@ -56,6 +56,7 @@ function renderTimelineLabels() {
 }
 
 function render3DAll() {
+  renderViewCube();
   const b = APP.bundleA;
   if (!b) return;
   renderTimelineLabels();
@@ -136,18 +137,73 @@ function renderInspectorLegend() {
     rows.push(row('Frame', `${APP.frameIdx} / ${b.frames.length - 1}`));
   }
 
-  wrap.innerHTML = `<div class="legend-section"><h4>Paramètres d'affichage</h4>${rows.join('')}</div>`;
+  // Selection properties (shown when a cell is picked in the 3-D view).
+  let selectionHtml = '';
+  if (APP.selectedCell != null && frame) {
+    const cid = APP.selectedCell;
+    const cell = (b.mesh.cells || []).find(cc => cc.id === cid);
+    const ei = nearestEvalRow(b, frame.timestep);
+    const tD = b.dem_conc_traj[ei]?.[cid] ?? frame.cell_conc_dem?.[cid] ?? 0;
+    const tH = b.hom_conc_traj[ei]?.[cid] ?? 0;
+    const tI = b.inhom_conc_traj[ei]?.[cid] ?? 0;
+    const crm = b.inhom_metrics.cell_rmse_per_cell?.[cid] ?? 0;
+    const pop = frame.cell_pop?.[cid] ?? 0;
+    selectionHtml = `<div class="legend-section"><h4>Sélection · Cellule #${cid}</h4>`
+      + row('Zone', cell ? cell.zone : '—')
+      + row('Particules N', pop)
+      + row('Teneur DEM', Number(tD).toFixed(3))
+      + row('Teneur Hom', Number(tH).toFixed(3))
+      + row('Teneur Inhom', Number(tI).toFixed(3))
+      + row('RMSE cell.', Number(crm).toFixed(4))
+      + `</div>`;
+  }
+
+  wrap.innerHTML = selectionHtml + `<div class="legend-section"><h4>Paramètres d'affichage</h4>${rows.join('')}</div>`;
 }
 
 // Re-render the legend whenever an influencing variable or the active view changes.
-['activeView', 'colorMode', 'method', 'dataset', 'targetSpecies', 'tau', 'nlt', 'step', 'dt',
+['activeView', 'colorMode', 'method', 'dataset', 'targetSpecies', 'tau', 'nlt', 'step', 'dt', 'selectedCell',
   'showSmall', 'showLarge', 'showWire', 'showFaces', 'showEdges', 'showVel', 'showDrum',
   'frameIdx'].forEach(key => {
   STORE.subscribe(key, () => renderInspectorLegend());
 });
 
+// ── Status bar (Fusion 360-style contextual status) ──────────────────────
+const VIEW_NAMES = {
+  summary: 'Sommaire', mesh3d: 'Mélangeur 3D', teneur: 'Teneur', particles: 'Particules',
+  errors: 'Erreurs', matrix_evol: 'Évolution P(t)', matrices: 'Matrices',
+  benchmark: 'Comparateur', study: 'Études', plan: 'Architecture',
+};
+const MODE_NAMES = { explore: 'Explorer', study: 'Études', compare: 'Comparer' };
+
+function renderStatusBar() {
+  const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+  set('sb-view', `Vue : <b>${VIEW_NAMES[APP.activeView] || APP.activeView || '—'}</b>`);
+  set('sb-mode', `Mode : <b>${MODE_NAMES[APP.workbenchMode] || APP.workbenchMode || '—'}</b>`);
+  const sel = APP.selectedCell;
+  set('sb-selection', sel != null ? `Sélection : <b>Cellule #${sel}</b>` : 'Sélection : —');
+  const b = APP.bundleA;
+  if (b && b.frames.length) {
+    const nf = b.frames.length - 1;
+    set('sb-frame', `Frame <b>${Math.min(APP.frameIdx, nf)}</b> / ${nf}`);
+    const fp = b.frames[Math.min(APP.frameIdx, nf)] || b.frames[0];
+    const total = (fp.cell_pop || []).reduce((a, x) => a + (x || 0), 0);
+    set('sb-counts', `${total} particules`);
+  } else {
+    set('sb-frame', 'Frame <b>0</b> / 0');
+    set('sb-counts', '<b>0</b> particules');
+  }
+  set('sb-theme', `Thème : <b>${APP.theme === 'light' ? 'clair' : 'sombre'}</b>`);
+}
+
+// Keep the status bar in sync with any contextual change.
+['activeView', 'workbenchMode', 'selectedCell', 'frameIdx', 'theme'].forEach(key => {
+  STORE.subscribe(key, () => renderStatusBar());
+});
+
 function renderActiveView() {
   renderInspectorLegend();
+  renderStatusBar();
   const b = APP.bundleA;
   if (!b) return;
   renderTelemetry(b);
@@ -415,6 +471,15 @@ async function initApp() {
   document.querySelectorAll('[data-cam]').forEach(btn => {
     btn.addEventListener('click', () => {
       setCamPreset(btn.dataset.cam);
+      render3DAll();
+    });
+  });
+
+  // View cube: clicking a face snaps the camera to that orientation.
+  document.querySelectorAll('.vc-face').forEach(btn => {
+    btn.addEventListener('click', () => {
+      APP.cam.yaw = parseFloat(btn.dataset.yaw) || 0;
+      APP.cam.pitch = parseFloat(btn.dataset.pitch) || 0;
       render3DAll();
     });
   });

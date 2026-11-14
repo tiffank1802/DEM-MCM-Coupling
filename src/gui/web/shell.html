@@ -210,6 +210,16 @@
             <div class="viewport-wrap" style="border:none;">
               <canvas id="canvas3d-mini"></canvas>
               <div class="hud-overlay hud-tl" id="mini-3d-lbl">—</div>
+              <div class="view-cube view-cube-sm" id="view-cube-mini" title="Cube de vue">
+                <div class="vc-inner" id="view-cube-mini-inner">
+                  <button class="vc-face vc-f-front" data-yaw="0" data-pitch="0">A</button>
+                  <button class="vc-face vc-f-back" data-yaw="3.141593" data-pitch="0">R</button>
+                  <button class="vc-face vc-f-right" data-yaw="1.570796" data-pitch="0">D</button>
+                  <button class="vc-face vc-f-left" data-yaw="-1.570796" data-pitch="0">G</button>
+                  <button class="vc-face vc-f-top" data-yaw="0" data-pitch="1.570796">H</button>
+                  <button class="vc-face vc-f-bottom" data-yaw="0" data-pitch="-1.570796">B</button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -269,6 +279,16 @@
             <button class="btn sm" data-jump-view="summary">Vue Sommaire</button>
           </div>
           <div class="hud-overlay hud-bl" id="cell-info"></div>
+          <div class="view-cube" id="view-cube" title="Cube de vue — cliquez une face pour orienter la caméra">
+            <div class="vc-inner" id="view-cube-inner">
+              <button class="vc-face vc-f-front" data-yaw="0" data-pitch="0">Avant</button>
+              <button class="vc-face vc-f-back" data-yaw="3.141593" data-pitch="0">Arrière</button>
+              <button class="vc-face vc-f-right" data-yaw="1.570796" data-pitch="0">Droite</button>
+              <button class="vc-face vc-f-left" data-yaw="-1.570796" data-pitch="0">Gauche</button>
+              <button class="vc-face vc-f-top" data-yaw="0" data-pitch="1.570796">Haut</button>
+              <button class="vc-face vc-f-bottom" data-yaw="0" data-pitch="-1.570796">Bas</button>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -840,6 +860,21 @@
     <button class="vtab" data-view="benchmark">Comparateur &amp; Benchmark</button>
     <button class="vtab" data-view="plan">Architecture</button>
   </nav>
+
+  <!-- 6. STATUS BAR (Fusion 360-style contextual status) -->
+  <footer class="status-bar" id="status-bar">
+    <span class="sb-item" id="sb-view">Vue : Sommaire</span>
+    <span class="sb-sep"></span>
+    <span class="sb-item" id="sb-mode">Mode : Explorer</span>
+    <span class="sb-sep"></span>
+    <span class="sb-item" id="sb-selection">Sélection : —</span>
+    <span class="sb-spacer"></span>
+    <span class="sb-item" id="sb-frame">Frame 0 / 0</span>
+    <span class="sb-sep"></span>
+    <span class="sb-item" id="sb-counts">0 particules</span>
+    <span class="sb-sep"></span>
+    <span class="sb-item" id="sb-theme">Thème : sombre</span>
+  </footer>
 
   <div class="chart-tooltip" id="chart-tooltip"></div>
 

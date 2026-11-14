@@ -46,6 +46,43 @@ function setCamPreset(p) {
   else if (p === 'fit' && APP.bundleA) { fitCameraToMesh(APP.bundleA.mesh); }
 }
 
+// Fusion 360-style view cube: rotates to match the camera and highlights the
+// face currently pointing toward the viewer. Clicking a face snaps the camera.
+const VC_FACES = [
+  { sel: 'vc-f-front',  n: [0, 0, 1] },
+  { sel: 'vc-f-back',   n: [0, 0, -1] },
+  { sel: 'vc-f-right',  n: [1, 0, 0] },
+  { sel: 'vc-f-left',   n: [-1, 0, 0] },
+  { sel: 'vc-f-top',    n: [0, 1, 0] },
+  { sel: 'vc-f-bottom', n: [0, -1, 0] },
+];
+
+function renderViewCube() {
+  const cam = APP.cam;
+  // Direction pointing from the scene toward the camera (opposite of fwd).
+  const cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+  const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw);
+  const toCam = [cp * sy, sp, cp * cy];
+
+  let best = 0, bestDot = -2;
+  VC_FACES.forEach((f, i) => {
+    const d = f.n[0] * toCam[0] + f.n[1] * toCam[1] + f.n[2] * toCam[2];
+    if (d > bestDot) { bestDot = d; best = i; }
+  });
+
+  const rot = `rotateX(${cam.pitch}rad) rotateY(${-cam.yaw}rad)`;
+  [['view-cube-inner', '#view-cube'], ['view-cube-mini-inner', '#view-cube-mini']].forEach(([innerId, cubeSel]) => {
+    const inner = document.getElementById(innerId);
+    if (!inner) return;
+    inner.style.transform = rot;
+    const cube = document.querySelector(cubeSel);
+    if (cube) {
+      const faces = cube.querySelectorAll('.vc-face');
+      faces.forEach((el, i) => el.classList.toggle('active', i === best));
+    }
+  });
+}
+
 function camBasis(cam) {
   const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw);
   const cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);

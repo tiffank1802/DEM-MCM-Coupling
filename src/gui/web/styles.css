@@ -629,6 +629,65 @@ details.view-toolbar > summary::-webkit-details-marker { display: none; }
 .hud-bl { bottom: 8px; left: 8px; display: none; max-width: 280px; }
 .hud-bl.show { display: block; }
 
+/* ── View Cube (Fusion 360-style orientation indicator) ───────────────── */
+.view-cube {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 84px;
+  height: 84px;
+  perspective: 340px;
+  z-index: 30;
+  pointer-events: auto;
+}
+.view-cube-sm { width: 60px; height: 60px; right: 8px; bottom: 8px; perspective: 260px; }
+.vc-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transform: rotateX(0.44rad) rotateY(-0.68rad);
+  transition: transform 0.12s ease;
+}
+.vc-face {
+  position: absolute;
+  width: 84px;
+  height: 84px;
+  border: 1px solid var(--border-hi);
+  background: var(--glass-2);
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backface-visibility: hidden;
+  border-radius: 6px;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.view-cube-sm .vc-face { width: 60px; height: 60px; font-size: 9px; }
+.vc-f-front  { transform: translateZ(42px); }
+.vc-f-back   { transform: rotateY(180deg) translateZ(42px); }
+.vc-f-right  { transform: rotateY(90deg) translateZ(42px); }
+.vc-f-left   { transform: rotateY(-90deg) translateZ(42px); }
+.vc-f-top    { transform: rotateX(90deg) translateZ(42px); }
+.vc-f-bottom { transform: rotateX(-90deg) translateZ(42px); }
+.view-cube-sm .vc-f-front  { transform: translateZ(30px); }
+.view-cube-sm .vc-f-back   { transform: rotateY(180deg) translateZ(30px); }
+.view-cube-sm .vc-f-right  { transform: rotateY(90deg) translateZ(30px); }
+.view-cube-sm .vc-f-left   { transform: rotateY(-90deg) translateZ(30px); }
+.view-cube-sm .vc-f-top    { transform: rotateX(90deg) translateZ(30px); }
+.view-cube-sm .vc-f-bottom { transform: rotateX(-90deg) translateZ(30px); }
+.vc-face:hover { background: var(--glass-3); }
+.vc-face.active {
+  background: var(--accent-teal);
+  color: #06231d;
+  border-color: var(--accent-teal);
+  box-shadow: 0 0 12px rgba(125, 211, 189, 0.45);
+}
+[data-theme="light"] .vc-face.active { color: #fff; }
+
 /* Matrix Evolution Paginated Grid (fig_matrix_components_evolution) */
 .evol-grid {
   flex: 1;
@@ -807,6 +866,28 @@ tr.selected-row { background: rgba(125, 211, 189, 0.16); }
   background: rgba(125, 211, 189, 0.14);
   border-color: rgba(125, 211, 189, 0.40);
 }
+[data-theme="light"] .view-tabs { background: rgba(255, 255, 255, 0.92); }
+
+/* ── Status Bar (Fusion 360-style) ────────────────────────────────────── */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px;
+  min-height: 24px;
+  font-size: 10.5px;
+  color: var(--muted);
+  background: rgba(11, 15, 21, 0.95);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+[data-theme="light"] .status-bar { background: rgba(255, 255, 255, 0.92); }
+.sb-item { display: inline-flex; align-items: center; }
+.sb-sep { width: 1px; height: 12px; background: var(--border); }
+.sb-spacer { flex: 1; }
+.sb-item b { color: var(--text); font-family: var(--mono); }
 
 pre#egui-plan-text {
   font-family: var(--mono);
